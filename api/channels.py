@@ -1,0 +1,77 @@
+from fastapi import APIRouter, Query
+from supabase import create_client
+import os
+from dotenv import load_dotenv
+from datetime import datetime, timedelta, timezone
+
+load_dotenv()
+router = APIRouter()
+supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
+
+
+def _since(range_: str) -> str:
+    now = datetime.now(timezone.utc)
+    deltas = {"today": timedelta(days=1), "7d": timedelta(days=7), "30d": timedelta(days=30)}
+    return (now - deltas.get(range_, timedelta(days=7))).isoformat()
+
+
+@router.get("/api/channels")
+def channels(range: str = Query("7d", pattern="^(today|7d|30d)$")):
+    since = _since(range)
+
+    leads = supabase.table("leads").select("id,channel,status").execute().data
+    messages = supabase.table("messages").select("lead_id,direction,sent_at").gte("sent_at", since).execute().data
+    calls = supabase.table("calls").select("id,duration_seconds,called_at").gte("called_at", since).execute().data
+
+    wa_leads = [l for l in leads if l.get("channel") == "whatsapp"]
+    mq_leads = [l for l in leads if l.get("channel") == "maqsam"]
+
+    wa_converted = sum(1 for l in wa_leads if l.get("status") == "converted")
+    mq_converted = sum(1 for l in mq_leads if l.get("status") == "converted")
+
+    lead_ids_by_channel = {
+        "whatsapp": {l["id"] for l in wa_leads},
+        "maqsam": {l["id"] for l in mq_leads},
+    }
+
+    wa_msgs = [m for m in messages if m.get("lead_id") in lead_ids_by_channel["whatsapp"]]
+    response_times = []
+    by_lead: dict[str, list] = {}
+    for m in wa_msgs:
+        by_lead.setdefault(m["lead_id"], []).append(m)
+
+    for msgs in by_lead.values():
+        sorted_msgs = sorted(msgs, key=lambda x: x["sent_at"])
+        last_in = None
+        for m in sorted_msgs:
+            if m["direction"] == "inbound":
+                last_in = datetime.fromisoformat(m["sent_at"].replace("Z", "+00:00"))
+            elif m["direction"] == "outbound" and last_in:
+                out_t = datetime.fromisoformat(m["sent_at"].replace("Z", "+00:00"))
+                gap = (out_t - last_in).total_seconds() / 60
+                if gap >= 0:
+                    response_times.append(gap)
+                last_in = None
+
+    avg_response = round(sum(response_times) / len(response_times), 1) if response_times else 0
+    avg_call_dur = round(
+        sum(c.get("duration_seconds") or 0 for c in calls) / len(calls), 1
+    ) if calls else 0
+
+    return {
+        "range": range,
+        "whatsapp": {
+            "leads": len(wa_leads),
+            "converted": wa_converted,
+            "conversion_rate": round(wa_converted / len(wa_leads) * 100, 1) if wa_leads else 0,
+            "messages": len(wa_msgs),
+            "avg_response_time_min": avg_response,
+        },
+        "maqsam": {
+            "leads": len(mq_leads),
+            "converted": mq_converted,
+            "conversion_rate": round(mq_converted / len(mq_leads) * 100, 1) if mq_leads else 0,
+            "calls": len(calls),
+            "avg_call_duration_seconds": avg_call_dur,
+        },
+    }

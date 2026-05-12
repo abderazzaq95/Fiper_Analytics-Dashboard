@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+.DS_Store
+uvicorn_out.txt
+uvicorn_err.txt
