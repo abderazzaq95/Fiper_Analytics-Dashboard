@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fiper Intelligence Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo-dot {
+      width: 36px; height: 36px; border-radius: 8px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 18px;
+    }
+    .logo h1 { font-size: 20px; font-weight: 700; color: #fff; }
+    .logo span { font-size: 12px; color: #64748b; margin-top: 2px; display: block; }
+
+    .header-right { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .last-updated { font-size: 12px; color: #64748b; }
+
+    /* ── Range tabs ── */
+    .range-tabs { display: flex; background: #0f1117; border-radius: 8px; padding: 3px; gap: 2px; }
+    .range-tabs button {
+      background: transparent; border: none; color: #64748b;
+      padding: 6px 16px; border-radius: 6px; cursor: pointer;
+      font-size: 13px; font-weight: 500; transition: all .15s;
+    }
+    .range-tabs button.active { background: #6366f1; color: #fff; }
+    .range-tabs button:hover:not(.active) { color: #e2e8f0; background: #1e2235; }
+
+    /* ── Refresh btn ── */
+    .btn-refresh {
+      background: #1e2235; border: 1px solid #2d3148; color: #94a3b8;
+      padding: 6px 14px; border-radius: 8px; cursor: pointer;
+      font-size: 13px; transition: all .15s;
+    }
+    .btn-refresh:hover { background: #2d3148; color: #e2e8f0; }
+
+    /* ── Layout ── */
+    main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
+
+    /* ── Section heading ── */
+    .section-title {
+      font-size: 13px; font-weight: 600; color: #64748b;
+      text-transform: uppercase; letter-spacing: .08em;
+      margin: 28px 0 14px;
+    }
+
+    /* ── Stat cards ── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+    }
+    .stat-card {
+      background: #1a1d27; border: 1px solid #2d3148;
+      border-radius: 12px; padding: 20px 22px;
+      transition: border-color .15s;
+    }
+    .stat-card:hover { border-color: #6366f1; }
+    .stat-label { font-size: 12px; color: #64748b; margin-bottom: 8px; font-weight: 500; }
+    .stat-value { font-size: 32px; font-weight: 700; color: #fff; line-height: 1; }
+    .stat-sub { font-size: 12px; color: #64748b; margin-top: 6px; }
+    .stat-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 20px;
+      font-size: 11px; font-weight: 600; margin-top: 8px;
+    }
+    .badge-green { background: #14532d33; color: #4ade80; }
+    .badge-yellow { background: #7c3aed33; color: #a78bfa; }
+    .badge-red { background: #7f1d1d33; color: #f87171; }
+    .badge-blue { background: #1e3a5f33; color: #60a5fa; }
+
+    /* ── 2-col grid ── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+    @media (max-width: 1100px) { .three-col { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 760px) { .two-col, .three-col { grid-template-columns: 1fr; } }
+
+    /* ── Chart card ── */
+    .chart-card {
+      background: #1a1d27; border: 1px solid #2d3148;
+      border-radius: 12px; padding: 22px 24px;
+    }
+    .chart-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 18px; color: #cbd5e1; }
+    .chart-wrap { position: relative; height: 230px; }
+
+    /* ── Table card ── */
+    .table-card {
+      background: #1a1d27; border: 1px solid #2d3148;
+      border-radius: 12px; overflow: hidden;
+    }
+    .table-card h3 {
+      font-size: 14px; font-weight: 600; color: #cbd5e1;
+      padding: 18px 22px 14px; border-bottom: 1px solid #2d3148;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left; font-size: 11px; font-weight: 600;
+      color: #475569; text-transform: uppercase; letter-spacing: .06em;
+      padding: 10px 22px; background: #12141e;
+    }
+    td { padding: 12px 22px; font-size: 13px; border-top: 1px solid #1e2235; }
+    tr:hover td { background: #1e2235; }
+    .agent-name { font-weight: 600; color: #e2e8f0; }
+    .pill {
+      display: inline-block; padding: 2px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 600;
+    }
+    .pill-purple { background: #3730a333; color: #a5b4fc; }
+    .pill-green  { background: #14532d33; color: #4ade80; }
+    .pill-red    { background: #7f1d1d33; color: #f87171; }
+    .pill-yellow { background: #78350f33; color: #fbbf24; }
+    .pill-gray   { background: #1e2a3a;   color: #64748b; }
+
+    /* ── Alert list ── */
+    .alert-item {
+      display: flex; align-items: flex-start; gap: 14px;
+      padding: 16px 22px; border-top: 1px solid #1e2235;
+    }
+    .alert-item:first-child { border-top: none; }
+    .alert-dot {
+      width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0;
+    }
+    .dot-high { background: #ef4444; }
+    .dot-med  { background: #f59e0b; }
+    .dot-low  { background: #6366f1; }
+    .alert-msg { font-size: 13px; color: #cbd5e1; line-height: 1.5; }
+    .alert-meta { font-size: 11px; color: #475569; margin-top: 3px; }
+
+    /* ── Empty state ── */
+    .empty {
+      text-align: center; padding: 40px 20px;
+      color: #475569; font-size: 13px;
+    }
+    .empty .icon { font-size: 28px; margin-bottom: 8px; }
+
+    /* ── Channel compare ── */
+    .channel-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 22px; border-top: 1px solid #1e2235;
+      font-size: 13px;
+    }
+    .channel-row:first-child { border-top: none; }
+    .channel-name { font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 8px; }
+    .ch-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .ch-wa { background: #25d366; }
+    .ch-mq { background: #6366f1; }
+    .channel-stats { display: flex; gap: 24px; }
+    .ch-stat { text-align: right; }
+    .ch-stat-val { font-weight: 700; color: #e2e8f0; }
+    .ch-stat-lbl { font-size: 11px; color: #475569; }
+
+    /* ── Loading spinner ── */
+    .spinner {
+      display: inline-block; width: 18px; height: 18px;
+      border: 2px solid #2d3148; border-top-color: #6366f1;
+      border-radius: 50%; animation: spin .7s linear infinite;
+      vertical-align: middle; margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Progress bar ── */
+    .progress-wrap { margin-top: 6px; background: #12141e; border-radius: 4px; height: 4px; }
+    .progress-bar { height: 4px; border-radius: 4px; background: linear-gradient(90deg, #6366f1, #8b5cf6); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot">F</div>
+    <div>
+      <h1>Fiper Intelligence</h1>
+      <span>Analytics Dashboard</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="range-tabs">
+      <button onclick="setRange('today')">Today</button>
+      <button onclick="setRange('7d')" class="active">7 Days</button>
+      <button onclick="setRange('30d')">30 Days</button>
+    </div>
+    <button class="btn-refresh" onclick="loadAll()">&#8635; Refresh</button>
+    <div class="last-updated" id="lastUpdated">—</div>
+  </div>
+</header>
+
+<main>
+
+  <!-- Overview cards -->
+  <div class="section-title">Overview</div>
+  <div class="stat-grid" id="overviewCards">
+    <div class="stat-card"><div class="spinner"></div> Loading…</div>
+  </div>
+
+  <!-- Charts row -->
+  <div class="section-title">Channels &amp; Leads</div>
+  <div class="three-col">
+    <div class="chart-card">
+      <h3>Leads by Channel</h3>
+      <div class="chart-wrap"><canvas id="channelPie"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>Lead Status Funnel</h3>
+      <div class="chart-wrap"><canvas id="funnelBar"></canvas></div>
+    </div>
+    <div class="table-card" style="border-radius:12px;">
+      <h3>Channel Breakdown</h3>
+      <div id="channelDetail"></div>
+    </div>
+  </div>
+
+  <!-- Agents table -->
+  <div class="section-title">Agent Performance</div>
+  <div class="table-card">
+    <h3>Agents <span id="agentCount" style="color:#475569;font-weight:400;font-size:12px;"></span></h3>
+    <div id="agentsTable"></div>
+  </div>
+
+  <!-- Bottom row: alerts + quality -->
+  <div class="section-title">Quality &amp; Alerts</div>
+  <div class="two-col">
+    <div class="table-card">
+      <h3>Open Alerts</h3>
+      <div id="alertsList"></div>
+    </div>
+    <div class="chart-card">
+      <h3>Sentiment Distribution</h3>
+      <div class="chart-wrap"><canvas id="sentimentChart"></canvas></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const API = '';   // same origin
+let currentRange = '7d';
+
+// ── chart instances (so we can destroy on re-render) ──
+let pieChart, funnelChart, sentimentChart;
+
+function setRange(r) {
+  currentRange = r;
+  document.querySelectorAll('.range-tabs button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.range-tabs button').forEach(b => {
+    if (b.textContent.replace(' ','').toLowerCase() === r || (r==='7d'&&b.textContent==='7 Days') || (r==='30d'&&b.textContent==='30 Days') || (r==='today'&&b.textContent==='Today')) b.classList.add('active');
+  });
+  loadAll();
+}
+
+async function get(path) {
+  const r = await fetch(`${API}${path}?range=${currentRange}`);
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+function fmt(n, decimals=0) {
+  if (n === null || n === undefined) return '—';
+  return Number(n).toLocaleString('en', {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
+}
+function pct(n) { return fmt(n, 1) + '%'; }
+function dur(s) {
+  if (!s) return '0s';
+  return s >= 60 ? fmt(s/60, 1) + 'm' : fmt(s, 0) + 's';
+}
+
+// ── Overview ──
+function renderOverview(d) {
+  const el = document.getElementById('overviewCards');
+  const leads = d.leads, calls = d.calls, alerts = d.alerts, msgs = d.messages;
+  el.innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Total Leads</div>
+      <div class="stat-value">${fmt(leads.total)}</div>
+      <div class="stat-sub">${fmt(leads.converted)} converted</div>
+      <span class="stat-badge badge-yellow">${pct(leads.conversion_rate)} CVR</span>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg Lead Score</div>
+      <div class="stat-value">${fmt(leads.avg_score, 1)}</div>
+      <div class="stat-sub">out of 100</div>
+      <div class="progress-wrap" style="margin-top:12px"><div class="progress-bar" style="width:${leads.avg_score||0}%"></div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Calls</div>
+      <div class="stat-value">${fmt(calls.total)}</div>
+      <div class="stat-sub">Avg duration: ${dur(calls.avg_duration_seconds)}</div>
+      <span class="stat-badge badge-blue">Maqsam</span>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Messages</div>
+      <div class="stat-value">${fmt(msgs.total)}</div>
+      <div class="stat-sub">${fmt(msgs.inbound)} in · ${fmt(msgs.outbound)} out</div>
+      <span class="stat-badge badge-green">WhatsApp</span>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Open Alerts</div>
+      <div class="stat-value" style="color:${alerts.open>0?'#f87171':'#4ade80'}">${fmt(alerts.open)}</div>
+      <div class="stat-sub">${fmt(alerts.high)} high severity</div>
+      <span class="stat-badge ${alerts.high>0?'badge-red':'badge-green'}">${alerts.high>0?'Action needed':'All clear'}</span>
+    </div>
+  `;
+}
+
+// ── Channel pie ──
+function renderChannelPie(ch) {
+  if (pieChart) pieChart.destroy();
+  const ctx = document.getElementById('channelPie').getContext('2d');
+  const wa = ch.whatsapp.leads, mq = ch.maqsam.leads;
+  pieChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['WhatsApp', 'Maqsam (Calls)'],
+      datasets: [{ data: [wa, mq], backgroundColor: ['#25d366', '#6366f1'], borderWidth: 0, hoverOffset: 6 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#94a3b8', font: { size: 12 }, boxWidth: 12 } }
+      }
+    }
+  });
+}
+
+// ── Funnel bar ──
+function renderFunnelBar(leads) {
+  if (funnelChart) funnelChart.destroy();
+  const ctx = document.getElementById('funnelBar').getContext('2d');
+  const funnel = leads.funnel || {};
+  const labels = Object.keys(funnel);
+  const values = Object.values(funnel);
+  const colors = { new:'#6366f1', engaged:'#8b5cf6', converted:'#4ade80', lost:'#f87171', callback:'#fbbf24' };
+  funnelChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels.map(l => l.charAt(0).toUpperCase()+l.slice(1)),
+      datasets: [{ data: values, backgroundColor: labels.map(l=>colors[l]||'#6366f1'), borderRadius: 6, borderWidth: 0 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#64748b', font: { size: 12 } }, grid: { display: false } },
+        y: { ticks: { color: '#64748b', font: { size: 11 } }, grid: { color: '#1e2235' } }
+      }
+    }
+  });
+}
+
+// ── Channel detail ──
+function renderChannelDetail(ch) {
+  const el = document.getElementById('channelDetail');
+  const wa = ch.whatsapp, mq = ch.maqsam;
+  el.innerHTML = `
+    <div class="channel-row">
+      <div class="channel-name"><span class="ch-dot ch-wa"></span>WhatsApp</div>
+      <div class="channel-stats">
+        <div class="ch-stat"><div class="ch-stat-val">${fmt(wa.leads)}</div><div class="ch-stat-lbl">Leads</div></div>
+        <div class="ch-stat"><div class="ch-stat-val">${fmt(wa.messages)}</div><div class="ch-stat-lbl">Messages</div></div>
+        <div class="ch-stat"><div class="ch-stat-val">${wa.avg_response_time_min ? fmt(wa.avg_response_time_min,1)+'m' : '—'}</div><div class="ch-stat-lbl">Avg Reply</div></div>
+      </div>
+    </div>
+    <div class="channel-row">
+      <div class="channel-name"><span class="ch-dot ch-mq"></span>Maqsam</div>
+      <div class="channel-stats">
+        <div class="ch-stat"><div class="ch-stat-val">${fmt(mq.leads)}</div><div class="ch-stat-lbl">Leads</div></div>
+        <div class="ch-stat"><div class="ch-stat-val">${fmt(mq.calls)}</div><div class="ch-stat-lbl">Calls</div></div>
+        <div class="ch-stat"><div class="ch-stat-val">${dur(mq.avg_call_duration_seconds)}</div><div class="ch-stat-lbl">Avg Call</div></div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Agents table ──
+function renderAgents(data) {
+  const agents = data.agents || [];
+  document.getElementById('agentCount').textContent = `(${agents.length} agents)`;
+  const el = document.getElementById('agentsTable');
+  if (!agents.length) { el.innerHTML = '<div class="empty"><div class="icon">👥</div>No agent data</div>'; return; }
+  const rows = agents.map(a => {
+    const sentTot = (a.sentiment.positive||0)+(a.sentiment.neutral||0)+(a.sentiment.negative||0);
+    const sentLabel = sentTot === 0 ? '<span class="pill pill-gray">No data</span>'
+      : a.sentiment.positive > a.sentiment.negative
+        ? `<span class="pill pill-green">Positive</span>`
+        : `<span class="pill pill-red">Negative</span>`;
+    const alertPill = a.open_alerts > 0
+      ? `<span class="pill pill-red">${a.open_alerts}</span>`
+      : `<span class="pill pill-gray">0</span>`;
+    return `<tr>
+      <td><span class="agent-name">${a.agent}</span></td>
+      <td>${fmt(a.leads)}</td>
+      <td>${fmt(a.converted)}</td>
+      <td><span class="pill ${a.conversion_rate>0?'pill-green':'pill-gray'}">${pct(a.conversion_rate)}</span></td>
+      <td>${fmt(a.messages_sent)}</td>
+      <td>${a.avg_response_time_min ? fmt(a.avg_response_time_min,1)+'m' : '—'}</td>
+      <td>${a.avg_treatment_score ? fmt(a.avg_treatment_score,1) : '—'}</td>
+      <td>${sentLabel}</td>
+      <td>${alertPill}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<table>
+    <thead><tr>
+      <th>Agent</th><th>Leads</th><th>Converted</th><th>CVR</th>
+      <th>Msgs Sent</th><th>Avg Reply</th><th>Treatment</th><th>Sentiment</th><th>Alerts</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// ── Alerts ──
+function renderAlerts(q) {
+  const el = document.getElementById('alertsList');
+  const list = (q.alerts && q.alerts.list) || [];
+  if (!list.length) {
+    el.innerHTML = '<div class="empty"><div class="icon">✅</div>No open alerts</div>';
+    return;
+  }
+  el.innerHTML = list.slice(0, 20).map(a => {
+    const dot = a.severity==='HIGH'?'dot-high':a.severity==='MED'?'dot-med':'dot-low';
+    const badge = a.severity==='HIGH'?'pill-red':a.severity==='MED'?'pill-yellow':'pill-purple';
+    const ts = a.created_at ? new Date(a.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+    return `<div class="alert-item">
+      <div class="alert-dot ${dot}"></div>
+      <div>
+        <div class="alert-msg">${a.message}</div>
+        <div class="alert-meta">
+          <span class="pill ${badge}" style="margin-right:6px">${a.severity}</span>
+          ${a.type ? `<span style="color:#475569">${a.type}</span>` : ''}
+          ${a.agent_name ? ` · ${a.agent_name}` : ''}
+          ${ts ? ` · ${ts}` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── Sentiment donut ──
+function renderSentiment(q) {
+  if (sentimentChart) sentimentChart.destroy();
+  const ctx = document.getElementById('sentimentChart').getContext('2d');
+  const s = q.sentiment || {};
+  const pos = s.positive||0, neu = s.neutral||0, neg = s.negative||0;
+  const total = pos + neu + neg;
+  if (total === 0) {
+    ctx.canvas.parentElement.innerHTML = `<div class="empty" style="height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center"><div class="icon">💬</div><div>Sentiment data will appear<br>after WhatsApp webhook is connected</div></div>`;
+    return;
+  }
+  sentimentChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Positive', 'Neutral', 'Negative'],
+      datasets: [{ data: [pos, neu, neg], backgroundColor: ['#4ade80','#6366f1','#f87171'], borderWidth: 0, hoverOffset: 6 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#94a3b8', font: { size: 12 }, boxWidth: 12 } } }
+    }
+  });
+}
+
+// ── Load everything ──
+async function loadAll() {
+  try {
+    const [overview, channels, leads, agents, quality] = await Promise.all([
+      get('/api/overview'),
+      get('/api/channels'),
+      get('/api/leads'),
+      get('/api/agents'),
+      get('/api/quality'),
+    ]);
+    renderOverview(overview);
+    renderChannelPie(channels);
+    renderFunnelBar(leads);
+    renderChannelDetail(channels);
+    renderAgents(agents);
+    renderAlerts(quality);
+    renderSentiment(quality);
+    document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  } catch (e) {
+    console.error('Load failed:', e);
+    document.getElementById('overviewCards').innerHTML = `<div class="stat-card" style="grid-column:1/-1;color:#f87171">Failed to load data: ${e.message}</div>`;
+  }
+}
+
+// Auto-refresh every 5 minutes
+setInterval(loadAll, 5 * 60 * 1000);
+loadAll();
+</script>
+</body>
+</html>

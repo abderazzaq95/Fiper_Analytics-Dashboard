@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from supabase import create_client
 from dotenv import load_dotenv
@@ -209,6 +211,13 @@ app.include_router(agents.router)
 app.include_router(leads.router)
 app.include_router(channels.router)
 app.include_router(quality.router)
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/")
+def dashboard():
+    return FileResponse("static/index.html")
 
 
 # ---------------------------------------------------------------------------
