@@ -572,10 +572,21 @@ function renderOutcomes(quality) {
   if (!document.getElementById('outcomesChart')) {
     wrap.innerHTML = '<canvas id="outcomesChart"></canvas>';
   }
-  const lmap = {completed:lang==='ar'?'مكتمل':'Completed',no_answer:lang==='ar'?'لا رد':'No Answer',busy:lang==='ar'?'مشغول':'Busy'};
+  const OUTCOME_META = {
+    completed:   {en:'Completed',  ar:'مكتمل',   color:'#26CF4B'},
+    no_answer:   {en:'No Answer',  ar:'لا رد',    color:'#FF0003'},
+    busy:        {en:'Busy',       ar:'مشغول',    color:'#FF8F3C'},
+    failed:      {en:'Failed',     ar:'فشل',      color:'#2D3C58'},
+    abandoned:   {en:'Abandoned',  ar:'تخلى',     color:'#8D9097'},
+    in_progress: {en:'In Progress',ar:'جارٍ',     color:'#0774FF'},
+    unknown:     {en:'Unknown',    ar:'غير معروف', color:'#E9EDFF'},
+  };
+  const keys   = Object.keys(outcomes);
+  const labels = keys.map(k => (OUTCOME_META[k]?.(lang==='ar'?'ar':'en') || k));
+  const colors = keys.map(k => OUTCOME_META[k]?.color || '#8D9097');
   charts.outcomes = new Chart(document.getElementById('outcomesChart').getContext('2d'), {
     type:'doughnut',
-    data:{ labels:Object.keys(outcomes).map(k=>lmap[k]||k), datasets:[{ data:Object.values(outcomes), backgroundColor:['#26CF4B','#FF0003','#FF8F3C'], borderWidth:0, hoverOffset:6 }] },
+    data:{ labels, datasets:[{ data:Object.values(outcomes), backgroundColor:colors, borderWidth:0, hoverOffset:6 }] },
     options:{...CHART_OPTS, plugins:{...CHART_OPTS.plugins}}
   });
 }

@@ -20,25 +20,42 @@ def _since(range_: str) -> str:
 def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
     since = _since(range)
 
-    leads = supabase.table("leads").select("id,assigned_agent,status,score").execute().data
-    messages = supabase.table("messages").select("agent_name,direction,sent_at,lead_id").gte("sent_at", since).execute().data
-    analyses = supabase.table("ai_analysis").select("lead_id,sentiment,treatment_score,source").execute().data
-    alerts = supabase.table("alerts").select("agent_name,severity,resolved").eq("resolved", False).execute().data
+    leads    = supabase.table("leads").select("id,assigned_agent,status,score").execute().data or []
+    messages = supabase.table("messages").select("agent_name,direction,sent_at,lead_id").gte("sent_at", since).execute().data or []
+    calls    = supabase.table("calls").select("agent_name,lead_id,duration_seconds,called_at").gte("called_at", since).execute().data or []
+    analyses = supabase.table("ai_analysis").select("lead_id,sentiment,treatment_score,source").execute().data or []
+    alerts   = supabase.table("alerts").select("agent_name,lead_id,severity,resolved").eq("resolved", False).execute().data or []
 
+    # ── Build lookup dicts ────────────────────────────────────────────────────
+
+    # leads grouped by assigned_agent (WhatsApp path)
     agent_leads: dict[str, list] = defaultdict(list)
     for l in leads:
         if l.get("assigned_agent"):
             agent_leads[l["assigned_agent"]].append(l)
 
+    # WhatsApp messages grouped by agent
     agent_msgs: dict[str, list] = defaultdict(list)
     for m in messages:
         if m.get("agent_name"):
             agent_msgs[m["agent_name"]].append(m)
 
+    # Maqsam calls grouped by agent + their lead_ids
+    agent_calls: dict[str, list] = defaultdict(list)
+    call_lead_ids_by_agent: dict[str, set] = defaultdict(set)
+    for c in calls:
+        ag = c.get("agent_name")
+        if ag:
+            agent_calls[ag].append(c)
+            if c.get("lead_id"):
+                call_lead_ids_by_agent[ag].add(c["lead_id"])
+
+    # ai_analysis grouped by lead_id
     lead_analysis: dict[str, list] = defaultdict(list)
     for a in analyses:
         lead_analysis[a["lead_id"]].append(a)
 
+    # Alert attribution: agent_name → list of alerts
     lead_agent_map = {l["id"]: l.get("assigned_agent") for l in leads}
     agent_alerts: dict[str, list] = defaultdict(list)
     for a in alerts:
@@ -48,21 +65,22 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
         if agent:
             agent_alerts[agent].append(a)
 
-    result = []
-    all_agents = set(agent_leads.keys()) | set(agent_msgs.keys())
+    # All agents: WhatsApp (leads + messages) + Maqsam (calls)
+    all_agents = set(agent_leads.keys()) | set(agent_msgs.keys()) | set(agent_calls.keys())
 
+    result = []
     for agent in all_agents:
         al = agent_leads.get(agent, [])
         am = agent_msgs.get(agent, [])
-        converted = sum(1 for l in al if l.get("status") == "converted")
+        ac = agent_calls.get(agent, [])
 
-        inbound_msgs = [m for m in am if m["direction"] == "inbound"]
+        converted = sum(1 for l in al if l.get("status") == "converted")
         outbound_msgs = [m for m in am if m["direction"] == "outbound"]
 
+        # Response times (WhatsApp)
         by_lead: dict[str, list] = defaultdict(list)
         for m in am:
             by_lead[m["lead_id"]].append(m)
-
         response_times = []
         for msgs in by_lead.values():
             sorted_msgs = sorted(msgs, key=lambda x: x["sent_at"])
@@ -77,34 +95,38 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
                         response_times.append(gap)
                     last_in = None
 
-        agent_lead_ids = {l["id"] for l in al}
-        sentiments = []
-        treatment_scores = []
-        for lid in agent_lead_ids:
+        # ── Collect ai_analysis for this agent ───────────────────────────────
+        # Lead IDs via: assigned_agent on leads + calls handled in this period
+        analysis_lead_ids = {l["id"] for l in al} | call_lead_ids_by_agent.get(agent, set())
+
+        sentiments: list[str] = []
+        treatment_scores: list[float] = []
+        for lid in analysis_lead_ids:
             for a in lead_analysis.get(lid, []):
                 if a.get("sentiment"):
                     sentiments.append(a["sentiment"])
                 if a.get("treatment_score") is not None:
-                    # Skip maqsam entries with score=0 — these are no-answer call artifacts
+                    # Exclude maqsam score=0: no-answer call artifacts
                     if not (a.get("source") == "maqsam" and a["treatment_score"] == 0):
                         treatment_scores.append(a["treatment_score"])
 
         sentiment_summary = {
             "positive": sentiments.count("positive"),
-            "neutral": sentiments.count("neutral"),
+            "neutral":  sentiments.count("neutral"),
             "negative": sentiments.count("negative"),
         }
 
         result.append({
-            "agent": agent,
-            "leads": len(al),
-            "converted": converted,
-            "conversion_rate": round(converted / len(al) * 100, 1) if al else 0,
-            "messages_sent": len(outbound_msgs),
-            "avg_response_time_min": round(sum(response_times) / len(response_times), 1) if response_times else 0,
-            "avg_treatment_score": round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else 0,
-            "sentiment": sentiment_summary,
-            "open_alerts": len(agent_alerts.get(agent, [])),
+            "agent":                  agent,
+            "leads":                  len(al),
+            "converted":              converted,
+            "conversion_rate":        round(converted / len(al) * 100, 1) if al else 0,
+            "messages_sent":          len(outbound_msgs),
+            "calls_handled":          len([c for c in ac if (c.get("duration_seconds") or 0) > 0]),
+            "avg_response_time_min":  round(sum(response_times) / len(response_times), 1) if response_times else 0,
+            "avg_treatment_score":    round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else 0,
+            "sentiment":              sentiment_summary,
+            "open_alerts":            len(agent_alerts.get(agent, [])),
         })
 
     result.sort(key=lambda x: x["converted"], reverse=True)

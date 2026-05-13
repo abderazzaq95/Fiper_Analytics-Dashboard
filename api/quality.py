@@ -30,7 +30,25 @@ def quality(range: str = Query("7d", pattern="^(today|7d|30d)$")):
         .order("created_at", desc=True)
         .execute()
         .data
-    )
+    ) or []
+
+    # Resolve agent_name for alerts that have lead_id but no agent_name
+    unresolved_lead_ids = list({
+        a["lead_id"] for a in alerts
+        if not a.get("agent_name") and a.get("lead_id")
+    })
+    if unresolved_lead_ids:
+        lead_rows = (
+            supabase.table("leads")
+            .select("id,assigned_agent")
+            .in_("id", unresolved_lead_ids)
+            .execute()
+            .data
+        ) or []
+        lead_agent_map = {r["id"]: r.get("assigned_agent") for r in lead_rows}
+        for a in alerts:
+            if not a.get("agent_name") and a.get("lead_id"):
+                a["agent_name"] = lead_agent_map.get(a["lead_id"])
 
     analyses = (
         supabase.table("ai_analysis")
