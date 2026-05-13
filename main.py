@@ -140,31 +140,73 @@ async def ingest_maqsam():
 
 
 async def run_ai_on_new_leads():
-    """Run Claude analysis on leads that have messages but no ai_analysis yet."""
-    unanalyzed = (
-        supabase.table("leads")
-        .select("id")
-        .execute()
-        .data
-    )
-    for row in unanalyzed:
-        lead_id = row["id"]
-        existing = supabase.table("ai_analysis").select("id").eq("lead_id", lead_id).execute()
-        if existing.data:
+    """Run Claude analysis on leads that have new data but no ai_analysis yet.
+
+    WhatsApp leads: must have at least one message.
+    Maqsam leads:  must have at least one call with duration > 0 (skip pure no-answers).
+    Uses bulk fetches to avoid N+1 queries.
+    """
+    from collections import defaultdict
+
+    # Bulk-fetch everything needed
+    all_leads = supabase.table("leads").select("id,channel").execute().data or []
+    analyzed_ids = {
+        r["lead_id"]
+        for r in (supabase.table("ai_analysis").select("lead_id").execute().data or [])
+    }
+
+    all_msgs_raw = supabase.table("messages").select("lead_id,direction,body,sent_at").execute().data or []
+    msgs_by_lead: dict = defaultdict(list)
+    for m in all_msgs_raw:
+        msgs_by_lead[m["lead_id"]].append(m)
+
+    all_calls_raw = supabase.table("calls").select("lead_id,duration_seconds,outcome,agent_name,called_at").execute().data or []
+    calls_by_lead: dict = defaultdict(list)
+    for c in all_calls_raw:
+        if c.get("lead_id"):
+            calls_by_lead[c["lead_id"]].append(c)
+
+    for lead in all_leads:
+        lead_id = lead["id"]
+        channel = lead.get("channel", "")
+
+        if lead_id in analyzed_ids:
             continue
-        msgs = supabase.table("messages").select("*").eq("lead_id", lead_id).execute().data
-        if not msgs:
+
+        if channel == "whatsapp":
+            msgs = sorted(msgs_by_lead.get(lead_id, []), key=lambda m: m.get("sent_at") or "")
+            if not msgs:
+                continue
+            source = "whatsapp"
+            data_for_claude = msgs
+
+        elif channel == "maqsam":
+            calls = calls_by_lead.get(lead_id, [])
+            # Skip leads where every call was unanswered (duration = 0)
+            if not any((c.get("duration_seconds") or 0) > 0 for c in calls):
+                continue
+            source = "maqsam"
+            data_for_claude = [
+                {
+                    "direction": "outbound",
+                    "body": f"Phone call — Duration: {c.get('duration_seconds') or 0}s, "
+                            f"Outcome: {c.get('outcome') or 'unknown'}, "
+                            f"Agent: {c.get('agent_name') or 'agent'}",
+                    "sent_at": c.get("called_at") or "",
+                }
+                for c in sorted(calls, key=lambda c: c.get("called_at") or "")
+            ]
+        else:
             continue
+
         try:
-            result = ai_analyzer.analyze_conversation(msgs)
+            result = ai_analyzer.analyze_conversation(data_for_claude)
             supabase.table("ai_analysis").insert({
                 "lead_id": lead_id,
-                "source": "whatsapp",
+                "source": source,
                 **result,
             }).execute()
-            supabase.table("leads").update({
-                "score": result.get("score"),
-            }).eq("id", lead_id).execute()
+            supabase.table("leads").update({"score": result.get("score")}).eq("id", lead_id).execute()
         except Exception as e:
             log.error(f"AI analysis failed for lead {lead_id}: {e}")
 

@@ -92,8 +92,12 @@ def run():
     wa_with_msgs  = [l for l in wa_todo if msgs_by_lead.get(l["id"])]
     wa_no_msgs    = len(wa_todo) - len(wa_with_msgs)
 
-    # Only process Maqsam leads that have at least one call linked
-    mq_with_calls = [l for l in mq_todo if calls_by_lead.get(l["id"])]
+    # Only process Maqsam leads that have at least one call with duration > 0
+    # (all-zero-duration = pure no-answer, nothing for Claude to analyse)
+    mq_with_calls = [
+        l for l in mq_todo
+        if any((c.get("duration_seconds") or 0) > 0 for c in calls_by_lead.get(l["id"], []))
+    ]
     mq_no_calls   = len(mq_todo) - len(mq_with_calls)
 
     print(f"\nTo analyze:")
