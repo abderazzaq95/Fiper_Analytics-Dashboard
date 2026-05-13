@@ -229,7 +229,7 @@ html[dir=rtl] .scroll-top{right:auto;left:24px}
   <div class="section-label"><span data-en="Lead Pipeline &amp; Call Analytics" data-ar="خط العملاء وتحليل المكالمات">Lead Pipeline &amp; Call Analytics</span></div>
   <div class="three-col">
     <div class="card"><div class="card-head" data-en="Lead Status Funnel" data-ar="مسار حالة العملاء">Lead Status Funnel</div><div class="chart-wrap"><canvas id="funnelChart"></canvas></div></div>
-    <div class="card"><div class="card-head" data-en="Call Outcomes" data-ar="نتائج المكالمات">Call Outcomes</div><div class="chart-wrap"><canvas id="outcomesChart"></canvas></div></div>
+    <div class="card"><div class="card-head" data-en="Call Outcomes" data-ar="نتائج المكالمات">Call Outcomes</div><div class="chart-wrap" id="outcomesWrap"><canvas id="outcomesChart"></canvas></div></div>
     <div class="card"><div class="card-head" data-en="Lead Score Distribution" data-ar="توزيع نقاط العملاء">Lead Score Distribution</div><div class="chart-wrap"><canvas id="scoreChart"></canvas></div></div>
   </div>
 
@@ -239,7 +239,7 @@ html[dir=rtl] .scroll-top{right:auto;left:24px}
     <div class="card">
       <div class="card-head" data-en="Sentiment Analysis" data-ar="تحليل المشاعر">Sentiment Analysis</div>
       <div class="two-col" style="gap:12px;align-items:center">
-        <div class="chart-wrap" style="height:180px"><canvas id="sentimentChart"></canvas></div>
+        <div class="chart-wrap" style="height:180px" id="sentimentWrap"><canvas id="sentimentChart"></canvas></div>
         <div class="gauge-wrap" id="treatGauge">
           <div class="gauge-circle">
             <svg width="100" height="100" viewBox="0 0 100 100">
@@ -262,7 +262,7 @@ html[dir=rtl] .scroll-top{right:auto;left:24px}
       <div class="card-head" data-en="Topics &amp; Risk Flags" data-ar="المواضيع وعلامات الخطر">Topics &amp; Risk Flags</div>
       <div style="margin-bottom:14px">
         <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px" data-en="TOP TOPICS" data-ar="أهم المواضيع">TOP TOPICS</div>
-        <div class="chart-wrap" style="height:130px"><canvas id="topicsChart"></canvas></div>
+        <div class="chart-wrap" style="height:130px" id="topicsWrap"><canvas id="topicsChart"></canvas></div>
       </div>
       <div>
         <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px" data-en="RISK FLAGS" data-ar="علامات الخطر">RISK FLAGS</div>
@@ -514,14 +514,17 @@ function renderFunnel(leadsData) {
 
 function renderOutcomes(quality) {
   destroyChart('outcomes');
+  const wrap = document.getElementById('outcomesWrap');
   const outcomes = quality?.call_outcomes || {};
   if (!Object.keys(outcomes).length) {
-    // fallback placeholder
-    document.getElementById('outcomesChart').parentElement.innerHTML = `<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-text" data-en="No call outcome data" data-ar="لا توجد بيانات">${lang==='ar'?'لا توجد بيانات':'No call outcome data'}</div></div>`;
+    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-text">${lang==='ar'?'لا توجد بيانات':'No call outcome data'}</div></div>`;
     return;
   }
+  if (!document.getElementById('outcomesChart')) {
+    wrap.innerHTML = '<canvas id="outcomesChart"></canvas>';
+  }
   const lmap = {completed:lang==='ar'?'مكتمل':'Completed',no_answer:lang==='ar'?'لا رد':'No Answer',busy:lang==='ar'?'مشغول':'Busy'};
-  charts.outcomes = new Chart(document.getElementById('outcomesChart')?.getContext('2d'), {
+  charts.outcomes = new Chart(document.getElementById('outcomesChart').getContext('2d'), {
     type:'doughnut',
     data:{ labels:Object.keys(outcomes).map(k=>lmap[k]||k), datasets:[{ data:Object.values(outcomes), backgroundColor:['#26CF4B','#FF0003','#FF8F3C'], borderWidth:0, hoverOffset:6 }] },
     options:{...CHART_OPTS, plugins:{...CHART_OPTS.plugins}}
@@ -541,11 +544,15 @@ function renderScoreDist(leadsData) {
 
 function renderSentiment(quality) {
   destroyChart('sentiment');
+  const wrap = document.getElementById('sentimentWrap');
   const s = quality?.sentiment || {};
   const pos=s.positive||0, neu=s.neutral||0, neg=s.negative||0, tot=pos+neu+neg;
   if (!tot) {
-    document.getElementById('sentimentChart').parentElement.innerHTML = `<div class="empty-state" style="height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center"><div class="empty-icon">💬</div><div class="empty-text" style="font-size:12px" data-en="Pending webhook data" data-ar="في انتظار بيانات الويب هوك">${lang==='ar'?'في انتظار بيانات':'Pending webhook data'}</div></div>`;
+    wrap.innerHTML = `<div class="empty-state" style="height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center"><div class="empty-icon">💬</div><div class="empty-text" style="font-size:12px">${lang==='ar'?'في انتظار بيانات':'Pending webhook data'}</div></div>`;
   } else {
+    if (!document.getElementById('sentimentChart')) {
+      wrap.innerHTML = '<canvas id="sentimentChart"></canvas>';
+    }
     charts.sentiment = new Chart(document.getElementById('sentimentChart').getContext('2d'), {
       type:'doughnut',
       data:{ labels:[lang==='ar'?'إيجابي':'Positive',lang==='ar'?'محايد':'Neutral',lang==='ar'?'سلبي':'Negative'], datasets:[{ data:[pos,neu,neg], backgroundColor:['#26CF4B','#0774FF','#FF0003'], borderWidth:0, hoverOffset:6 }] },
@@ -571,10 +578,14 @@ function renderTopics(quality) {
   const tVals = tKeys.map(k=>topicsRaw[k]);
   const topicLabels = {pricing:lang==='ar'?'التسعير':'Pricing',product_fit:lang==='ar'?'ملاءمة المنتج':'Product Fit',competitor:lang==='ar'?'منافس':'Competitor',follow_up:lang==='ar'?'متابعة':'Follow-up',trading_education:lang==='ar'?'تعليم تداول':'Trading Edu',profit_expectations:lang==='ar'?'توقعات ربح':'Profit Expect',greetings:lang==='ar'?'تحيات':'Greetings',account_info:lang==='ar'?'معلومات الحساب':'Account Info'};
 
+  const topicsWrap = document.getElementById('topicsWrap');
   if (!tKeys.length) {
-    document.getElementById('topicsChart').parentElement.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-light);font-size:12px" data-en="No topic data yet" data-ar="لا توجد بيانات بعد">${lang==='ar'?'لا توجد بيانات بعد':'No topic data yet'}</div>`;
+    topicsWrap.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-light);font-size:12px">${lang==='ar'?'لا توجد بيانات بعد':'No topic data yet'}</div>`;
   } else {
-    charts.topics = new Chart(document.getElementById('topicsChart')?.getContext('2d'), {
+    if (!document.getElementById('topicsChart')) {
+      topicsWrap.innerHTML = '<canvas id="topicsChart"></canvas>';
+    }
+    charts.topics = new Chart(document.getElementById('topicsChart').getContext('2d'), {
       type:'bar', indexAxis:'y',
       data:{ labels:tKeys.map(k=>topicLabels[k]||k), datasets:[{ data:tVals, backgroundColor:'#0774FF', borderRadius:4, borderWidth:0 }] },
       options:{...CHART_OPTS, plugins:{...CHART_OPTS.plugins,legend:{display:false}}, scales:{x:{ticks:{color:'#8D9097',font:{size:10}},grid:{color:'#E9EDFF'}}, y:{ticks:{color:'#4C5671',font:{size:10}},grid:{display:false}}}}
@@ -700,8 +711,7 @@ async function loadAll() {
     renderGeo(allLeads);
 
     // Call outcomes — build from /api/quality or skip if unavailable
-    if (quality?.call_outcomes) renderOutcomes(quality);
-    else document.getElementById('outcomesChart').parentElement.innerHTML=`<div class="empty-state"><div class="empty-icon">📞</div><div class="empty-text" style="font-size:12px">${lang==='ar'?'لا توجد بيانات نتائج':'No outcome breakdown yet'}</div></div>`;
+    renderOutcomes(quality);
 
     document.getElementById('lastUpd').textContent = (lang==='ar'?'تحديث: ':'Updated: ') + new Date().toLocaleTimeString();
     applyLang();
