@@ -10,7 +10,7 @@ supabase = create_client(
 )
 
 
-def _upsert_alert(lead_id: str, agent_name: str, severity: str, alert_type: str, message: str):
+def _upsert_alert(lead_id, agent_name, severity, alert_type, message):
     existing = (
         supabase.table("alerts")
         .select("id")
@@ -81,8 +81,8 @@ def check_stale_callbacks():
             )
 
 
-def check_negative_sentiment():
-    """MED: AI analysis returned negative sentiment."""
+def check_negative_sentiment(leads_with_msgs: set):
+    """MED: AI analysis returned negative sentiment — only for leads with real messages."""
     analyses = (
         supabase.table("ai_analysis")
         .select("lead_id,sentiment")
@@ -91,6 +91,8 @@ def check_negative_sentiment():
         .data
     )
     for a in analyses:
+        if a["lead_id"] not in leads_with_msgs:
+            continue
         lead = supabase.table("leads").select("assigned_agent").eq("id", a["lead_id"]).single().execute().data
         agent = lead.get("assigned_agent", "unknown") if lead else "unknown"
         _upsert_alert(
@@ -133,8 +135,8 @@ def check_slow_response():
             )
 
 
-def check_profit_expectations():
-    """MED: AI detected profit_expectations topic."""
+def check_profit_expectations(leads_with_msgs: set):
+    """MED: AI detected profit_expectations topic — only for leads with real messages."""
     analyses = (
         supabase.table("ai_analysis")
         .select("lead_id,topics")
@@ -142,6 +144,8 @@ def check_profit_expectations():
         .data
     )
     for a in analyses:
+        if a["lead_id"] not in leads_with_msgs:
+            continue
         if "profit_expectations" in (a.get("topics") or []):
             lead = supabase.table("leads").select("assigned_agent").eq("id", a["lead_id"]).single().execute().data
             agent = lead.get("assigned_agent", "unknown") if lead else "unknown"
@@ -151,8 +155,8 @@ def check_profit_expectations():
             )
 
 
-def check_beginner_risk():
-    """MED: beginner lead (score < 30) with no onboarding topic detected."""
+def check_beginner_risk(leads_with_msgs: set):
+    """MED: beginner lead (score < 30) with no trading education — only for leads with real messages."""
     leads = (
         supabase.table("leads")
         .select("id,assigned_agent,score")
@@ -161,6 +165,8 @@ def check_beginner_risk():
         .data
     )
     for lead in leads:
+        if lead["id"] not in leads_with_msgs:
+            continue
         analyses = (
             supabase.table("ai_analysis")
             .select("topics")
@@ -177,8 +183,8 @@ def check_beginner_risk():
             )
 
 
-def check_poor_treatment():
-    """MED: AI treatment_score < 50."""
+def check_poor_treatment(leads_with_msgs: set):
+    """MED: AI treatment_score < 50 — only for leads with real messages."""
     analyses = (
         supabase.table("ai_analysis")
         .select("lead_id,treatment_score")
@@ -187,6 +193,8 @@ def check_poor_treatment():
         .data
     )
     for a in analyses:
+        if a["lead_id"] not in leads_with_msgs:
+            continue
         lead = supabase.table("leads").select("assigned_agent").eq("id", a["lead_id"]).single().execute().data
         agent = lead.get("assigned_agent", "unknown") if lead else "unknown"
         _upsert_alert(
@@ -196,13 +204,20 @@ def check_poor_treatment():
 
 
 def check_weak_engagement():
-    """LOW: 75%+ of conversations have fewer than 3 messages."""
-    conversations = (
-        supabase.table("leads")
-        .select("id,assigned_agent")
+    """LOW: 75%+ of conversations have fewer than 3 messages. Fires at most once (deduped)."""
+    # Dedup: skip if an open weak_engagement team alert already exists
+    existing = (
+        supabase.table("alerts")
+        .select("id")
+        .is_("lead_id", "null")
+        .eq("type", "weak_engagement")
+        .eq("resolved", False)
         .execute()
-        .data
     )
+    if existing.data:
+        return
+
+    conversations = supabase.table("leads").select("id,assigned_agent").execute().data
     total = len(conversations)
     if total == 0:
         return
@@ -219,7 +234,7 @@ def check_weak_engagement():
         if (count or 0) < 3:
             low_engagement += 1
 
-    if total > 0 and (low_engagement / total) >= 0.75:
+    if (low_engagement / total) >= 0.75:
         supabase.table("alerts").insert({
             "lead_id": None,
             "agent_name": "team",
@@ -230,11 +245,18 @@ def check_weak_engagement():
 
 
 def run_all_checks():
+    # Pre-fetch leads that have at least one real message — used as guard
+    # for conversation-quality checks so Maqsam no-answer calls don't trigger them.
+    leads_with_msgs = {
+        m["lead_id"]
+        for m in (supabase.table("messages").select("lead_id").execute().data or [])
+    }
+
     check_no_reply()
     check_stale_callbacks()
-    check_negative_sentiment()
+    check_negative_sentiment(leads_with_msgs)
     check_slow_response()
-    check_profit_expectations()
-    check_beginner_risk()
-    check_poor_treatment()
+    check_profit_expectations(leads_with_msgs)
+    check_beginner_risk(leads_with_msgs)
+    check_poor_treatment(leads_with_msgs)
     check_weak_engagement()
