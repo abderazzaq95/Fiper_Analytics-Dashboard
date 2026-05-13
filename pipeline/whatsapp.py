@@ -65,8 +65,6 @@ async def fetch_contacts(date_from: str | None = None, date_to: str | None = Non
         data = resp.json()
         return data if isinstance(data, list) else []
 
-    return contacts
-
 
 async def fetch_contact(contact_id: str) -> dict:
     """Fetch a single contact by ManyContacts ID."""
