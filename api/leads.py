@@ -28,12 +28,25 @@ def leads(range: str = Query("7d", pattern="^(today|7d|30d)$")):
         .data
     )
 
+    # Join AI summaries by lead_id
+    analyses = (
+        supabase.table("ai_analysis")
+        .select("lead_id,summary")
+        .execute()
+        .data
+    ) or []
+    summary_map = {a["lead_id"]: a.get("summary") for a in analyses}
+    for lead in all_leads:
+        lead["summary"] = summary_map.get(lead["id"])
+
     status_counts = {}
     score_buckets = {"0-25": 0, "26-50": 0, "51-75": 0, "76-100": 0}
     for l in all_leads:
         status = l.get("status", "new")
         status_counts[status] = status_counts.get(status, 0) + 1
-        score = l.get("score") or 0
+        score = l.get("score")
+        if score is None:
+            continue
         if score <= 25:
             score_buckets["0-25"] += 1
         elif score <= 50:

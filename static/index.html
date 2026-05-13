@@ -171,6 +171,34 @@ html[dir=rtl] .alert-item{border-left:none;border-right:4px solid transparent}
 .scroll-top.visible{opacity:1}
 html[dir=rtl] .scroll-top{right:auto;left:24px}
 
+/* ── Score badge ── */
+.score-badge{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;flex-shrink:0;font-family:var(--font-en)}
+
+/* ── Lead row ── */
+.lead-row{display:flex;align-items:flex-start;gap:14px;padding:12px 22px;border-bottom:1px solid var(--border);transition:background .15s}
+.lead-row:last-child{border-bottom:none}
+.lead-row:hover{background:#fafbff}
+.lead-summary{font-size:11px;color:var(--text-light);margin-top:3px;line-height:1.45;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+
+/* ── Traffic table ── */
+.traffic-tbl{width:100%;border-collapse:collapse}
+.traffic-tbl th{padding:8px 16px;text-align:left;font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid var(--border);background:var(--bg)}
+html[dir=rtl] .traffic-tbl th{text-align:right}
+.traffic-tbl td{padding:10px 16px;border-bottom:1px solid var(--border);font-size:13px}
+.traffic-tbl tr:last-child td{border-bottom:none}
+.traffic-tbl tr:hover td{background:#fafbff}
+.trend-arrow{font-size:16px;font-weight:800}
+.trend-up{color:var(--green)}.trend-dn{color:var(--red)}.trend-flat{color:var(--text-light)}
+
+/* ── Topic bars ── */
+.topic-bar-row{margin-bottom:10px}
+.topic-bar-row:last-child{margin-bottom:0}
+.topic-bar-meta{display:flex;justify-content:space-between;margin-bottom:4px}
+.topic-bar-label{font-size:12px;color:var(--navy);font-weight:600}
+.topic-bar-pct{font-size:11px;color:var(--text-light);font-weight:700}
+.topic-bar-track{background:var(--bg);border-radius:4px;height:8px;overflow:hidden}
+.topic-bar-fill{height:100%;border-radius:4px;background:var(--blue-grad);transition:width .8s ease}
+
 /* ── Responsive ── */
 @media(max-width:600px){
   header{padding:12px 16px}
@@ -225,6 +253,14 @@ html[dir=rtl] .scroll-top{right:auto;left:24px}
     <div class="card" id="mqCard"><div class="skeleton" style="height:120px"></div></div>
   </div>
 
+  <!-- Channel Traffic -->
+  <div class="card" style="margin-top:18px;padding:0;overflow:hidden">
+    <div style="padding:16px 22px 12px;border-bottom:1px solid var(--border)">
+      <div class="card-head" style="margin:0" data-en="Channel Traffic — Today / 2d / 7d" data-ar="حركة القنوات — اليوم / يومان / 7 أيام">Channel Traffic — Today / 2d / 7d</div>
+    </div>
+    <div id="trafficTable"><div class="skeleton" style="height:80px;margin:16px;border-radius:6px"></div></div>
+  </div>
+
   <!-- Charts -->
   <div class="section-label"><span data-en="Lead Pipeline &amp; Call Analytics" data-ar="خط العملاء وتحليل المكالمات">Lead Pipeline &amp; Call Analytics</span></div>
   <div class="three-col">
@@ -262,7 +298,7 @@ html[dir=rtl] .scroll-top{right:auto;left:24px}
       <div class="card-head" data-en="Topics &amp; Risk Flags" data-ar="المواضيع وعلامات الخطر">Topics &amp; Risk Flags</div>
       <div style="margin-bottom:14px">
         <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px" data-en="TOP TOPICS" data-ar="أهم المواضيع">TOP TOPICS</div>
-        <div class="chart-wrap" style="height:130px" id="topicsWrap"><canvas id="topicsChart"></canvas></div>
+        <div id="topicsWrap"><div class="skeleton" style="height:100px;border-radius:6px"></div></div>
       </div>
       <div>
         <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px" data-en="RISK FLAGS" data-ar="علامات الخطر">RISK FLAGS</div>
@@ -276,6 +312,19 @@ html[dir=rtl] .scroll-top{right:auto;left:24px}
   <div class="card">
     <div class="card-head" data-en="Leads by Country" data-ar="العملاء حسب الدولة">Leads by Country</div>
     <div id="geoList"><div class="skeleton" style="height:120px"></div></div>
+  </div>
+
+  <!-- Quality & Risk -->
+  <div class="section-label"><span data-en="Quality &amp; Risk Overview" data-ar="الجودة والمخاطر">Quality &amp; Risk Overview</span></div>
+  <div id="qualityRiskPanel"><div class="skeleton" style="height:200px;border-radius:var(--r)"></div></div>
+
+  <!-- Recent Leads -->
+  <div class="section-label" style="margin-top:28px">
+    <span data-en="Recent Leads" data-ar="العملاء الأخيرون">Recent Leads</span>
+    <span id="leadsCount" style="font-size:11px;color:var(--text-light);font-weight:500;margin-left:8px"></span>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div id="leadsList"><div class="skeleton" style="height:160px;margin:16px;border-radius:6px"></div></div>
   </div>
 
   <!-- Agents -->
@@ -569,36 +618,161 @@ function renderSentiment(quality) {
   document.getElementById('gaugeArc').setAttribute('stroke', gaugeColor);
 }
 
+const TOPIC_LABELS = {
+  pricing:            {en:'Pricing',           ar:'التسعير'},
+  product_fit:        {en:'Product Fit',        ar:'ملاءمة المنتج'},
+  competitor:         {en:'Competitor',          ar:'منافس'},
+  follow_up:          {en:'Follow-up',           ar:'متابعة'},
+  trading_education:  {en:'Trading Education',   ar:'تعليم التداول'},
+  profit_expectations:{en:'Profit Expectations', ar:'توقعات الربح'},
+  greetings:          {en:'Greetings',           ar:'تحيات'},
+  account_info:       {en:'Account Info',        ar:'معلومات الحساب'},
+  risk_management:    {en:'Risk Management',     ar:'إدارة المخاطر'},
+  withdrawal:         {en:'Withdrawal',           ar:'السحب'},
+};
+
 function renderTopics(quality) {
-  destroyChart('topics');
-  const topicsRaw = quality?.top_topics || {};
-  const riskRaw   = quality?.top_risk_flags || {};
-
-  const tKeys = Object.keys(topicsRaw).slice(0,6);
-  const tVals = tKeys.map(k=>topicsRaw[k]);
-  const topicLabels = {pricing:lang==='ar'?'التسعير':'Pricing',product_fit:lang==='ar'?'ملاءمة المنتج':'Product Fit',competitor:lang==='ar'?'منافس':'Competitor',follow_up:lang==='ar'?'متابعة':'Follow-up',trading_education:lang==='ar'?'تعليم تداول':'Trading Edu',profit_expectations:lang==='ar'?'توقعات ربح':'Profit Expect',greetings:lang==='ar'?'تحيات':'Greetings',account_info:lang==='ar'?'معلومات الحساب':'Account Info'};
-
+  const topicsRaw  = quality?.top_topics || {};
+  const riskRaw    = quality?.top_risk_flags || {};
   const topicsWrap = document.getElementById('topicsWrap');
-  if (!tKeys.length) {
-    topicsWrap.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-light);font-size:12px">${lang==='ar'?'لا توجد بيانات بعد':'No topic data yet'}</div>`;
-  } else {
-    if (!document.getElementById('topicsChart')) {
-      topicsWrap.innerHTML = '<canvas id="topicsChart"></canvas>';
-    }
-    charts.topics = new Chart(document.getElementById('topicsChart').getContext('2d'), {
-      type:'bar', indexAxis:'y',
-      data:{ labels:tKeys.map(k=>topicLabels[k]||k), datasets:[{ data:tVals, backgroundColor:'#0774FF', borderRadius:4, borderWidth:0 }] },
-      options:{...CHART_OPTS, plugins:{...CHART_OPTS.plugins,legend:{display:false}}, scales:{x:{ticks:{color:'#8D9097',font:{size:10}},grid:{color:'#E9EDFF'}}, y:{ticks:{color:'#4C5671',font:{size:10}},grid:{display:false}}}}
-    });
-  }
+  const tKeys      = Object.keys(topicsRaw).slice(0,6);
+  const total      = tKeys.reduce((s,k)=>s+topicsRaw[k],0);
+  const maxVal     = tKeys.length ? Math.max(...tKeys.map(k=>topicsRaw[k])) : 1;
 
-  const riskKeys = Object.keys(riskRaw).slice(0,5);
+  topicsWrap.innerHTML = tKeys.length
+    ? tKeys.map(k=>{
+        const lbl    = TOPIC_LABELS[k]?(lang==='ar'?TOPIC_LABELS[k].ar:TOPIC_LABELS[k].en):k;
+        const pctVal = total?Math.round(topicsRaw[k]/total*100):0;
+        const barW   = maxVal?Math.round(topicsRaw[k]/maxVal*100):0;
+        return `<div class="topic-bar-row">
+          <div class="topic-bar-meta"><span class="topic-bar-label">${lbl}</span><span class="topic-bar-pct">${pctVal}%</span></div>
+          <div class="topic-bar-track"><div class="topic-bar-fill" style="width:${barW}%"></div></div>
+        </div>`;
+      }).join('')
+    : `<div style="text-align:center;padding:20px;color:var(--text-light);font-size:12px">${lang==='ar'?'لا توجد بيانات بعد':'No topic data yet'}</div>`;
+
+  const riskKeys   = Object.keys(riskRaw).slice(0,5);
   const riskColors = {unanswered:'var(--blue)',profit_expectations:'var(--warn)',beginner_risk:'var(--red)',stale_callback:'var(--red)',negative_sentiment:'var(--red)',slow_response:'var(--warn)'};
-  const riskLabels  = {unanswered:lang==='ar'?'لا إجابة':'Unanswered',profit_expectations:lang==='ar'?'توقعات مفرطة':'Profit Expectations',beginner_risk:lang==='ar'?'خطر مبتدئ':'Beginner Risk',stale_callback:lang==='ar'?'معاودة متأخرة':'Stale Callback',negative_sentiment:lang==='ar'?'مشاعر سلبية':'Negative Sentiment',slow_response:lang==='ar'?'رد بطيء':'Slow Response'};
-
+  const riskLabels = {unanswered:lang==='ar'?'لا إجابة':'Unanswered',profit_expectations:lang==='ar'?'توقعات مفرطة':'Profit Expectations',beginner_risk:lang==='ar'?'خطر مبتدئ':'Beginner Risk',stale_callback:lang==='ar'?'معاودة متأخرة':'Stale Callback',negative_sentiment:lang==='ar'?'مشاعر سلبية':'Negative Sentiment',slow_response:lang==='ar'?'رد بطيء':'Slow Response'};
   document.getElementById('riskList').innerHTML = riskKeys.length
     ? riskKeys.map(k=>`<div class="risk-item"><span class="risk-name">${riskLabels[k]||k}</span><span class="risk-count" style="color:${riskColors[k]||'var(--red)'}">${riskRaw[k]}</span></div>`).join('')
-    : `<div style="text-align:center;padding:16px;color:var(--text-light);font-size:12px" data-en="No risk flags detected" data-ar="لم يتم رصد علامات خطر">${lang==='ar'?'لم يتم رصد علامات خطر':'No risk flags detected'}</div>`;
+    : `<div style="text-align:center;padding:16px;color:var(--text-light);font-size:12px">${lang==='ar'?'لم يتم رصد علامات خطر':'No risk flags detected'}</div>`;
+}
+
+// ── Channel Traffic ───────────────────────────────────────────────────────────
+function renderTraffic(traffic) {
+  const el = document.getElementById('trafficTable');
+  if (!traffic) { el.innerHTML=''; return; }
+  const pLabels = {today:{en:'Today',ar:'اليوم'},'2d':{en:'2 Days',ar:'يومان'},'7d':{en:'7 Days',ar:'7 أيام'}};
+  function trendArrow(todayV,ydayV) {
+    if(!ydayV) return['→','trend-flat'];
+    const r=todayV/ydayV;
+    return r>1.15?['↑','trend-up']:r<0.85?['↓','trend-dn']:['→','trend-flat'];
+  }
+  const rows=[
+    {ch:'whatsapp',icon:'💬',label:{en:'WA Leads',ar:'عملاء واتساب'},metric:'leads'},
+    {ch:'whatsapp',icon:'💬',label:{en:'WA Messages',ar:'رسائل واتساب'},metric:'messages'},
+    {ch:'maqsam',icon:'📞',label:{en:'Maqsam Leads',ar:'عملاء مقسم'},metric:'leads'},
+    {ch:'maqsam',icon:'📞',label:{en:'Maqsam Calls',ar:'مكالمات مقسم'},metric:'calls'},
+  ];
+  const periods=['today','2d','7d'];
+  const thead=`<tr><th>${lang==='ar'?'القناة':'Channel'}</th>${periods.map(p=>`<th style="text-align:right">${lang==='ar'?pLabels[p].ar:pLabels[p].en}</th>`).join('')}<th style="text-align:center">${lang==='ar'?'الاتجاه':'Trend'}</th></tr>`;
+  const tbody=rows.map(r=>{
+    const vals=periods.map(p=>traffic[p]?.[r.ch]?.[r.metric]||0);
+    const[arrow,cls]=trendArrow(vals[0],vals[1]-vals[0]);
+    return`<tr><td class="agent-name-cell">${r.icon} ${lang==='ar'?r.label.ar:r.label.en}</td>${vals.map(v=>`<td style="text-align:right;font-weight:700;color:var(--navy)">${fmt(v)}</td>`).join('')}<td style="text-align:center"><span class="trend-arrow ${cls}">${arrow}</span></td></tr>`;
+  }).join('');
+  el.innerHTML=`<table class="traffic-tbl"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+}
+
+// ── Quality & Risk Panel ──────────────────────────────────────────────────────
+function renderQualityRisk(quality, ov) {
+  const el  = document.getElementById('qualityRiskPanel');
+  const s   = quality?.sentiment||{};
+  const pos = s.positive||0, neu=s.neutral||0, neg=s.negative||0, tot=pos+neu+neg;
+  const overall = tot===0?(lang==='ar'?'لا بيانات':'No data')
+    :pos>neg&&pos>neu?(lang==='ar'?'إيجابي عام':'Generally Positive')
+    :neg>pos&&neg>neu?(lang==='ar'?'سلبي عام':'Generally Negative')
+    :(lang==='ar'?'مختلط':'Mixed');
+  const overallColor=pos>neg&&pos>neu?'var(--green)':neg>pos?'var(--red)':'var(--warn)';
+  const bySev=quality?.alerts?.by_severity||{};
+  const RECS={HIGH:{en:'Immediate action required — escalate to a senior agent or supervisor.',ar:'يتطلب تدخلاً فورياً — تصعيد إلى وكيل أقدم أو مشرف الآن.'},MED:{en:'Follow up within 24 hours to prevent escalation.',ar:'متابعة خلال 24 ساعة لتجنب التصعيد.'},LOW:{en:'Monitor and address during regular workflow.',ar:'راقب وعالج ضمن سير العمل المعتاد.'}};
+  const sevCards=['HIGH','MED','LOW'].map(sev=>{
+    const count=bySev[sev]||0;
+    const color=sev==='HIGH'?'var(--red)':sev==='MED'?'var(--warn)':'var(--blue)';
+    const pillCls=sev==='HIGH'?'pill-red':sev==='MED'?'pill-warn':'pill-blue';
+    return`<div style="border:1px solid var(--border);border-radius:12px;padding:16px;border-left:4px solid ${color}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span class="pill ${pillCls}">${sev}</span><span style="font-size:24px;font-weight:800;color:${color}">${count}</span></div>
+      <div style="font-size:12px;color:var(--text);line-height:1.5">${lang==='ar'?RECS[sev].ar:RECS[sev].en}</div>
+    </div>`;
+  }).join('');
+  el.innerHTML=`<div class="two-col" style="gap:16px">
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card" style="padding:20px">
+        <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">${lang==='ar'?'المشاعر العامة':'Overall Sentiment'}</div>
+        <div style="font-size:22px;font-weight:800;color:${overallColor};margin-bottom:12px">${overall}</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span class="kpi-badge badge-green">😊 ${fmt(pos)} ${lang==='ar'?'إيجابي':'positive'}</span>
+          <span class="kpi-badge badge-gray">😐 ${fmt(neu)} ${lang==='ar'?'محايد':'neutral'}</span>
+          <span class="kpi-badge badge-red">😞 ${fmt(neg)} ${lang==='ar'?'سلبي':'negative'}</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase;margin-bottom:8px">${lang==='ar'?'الشكاوى':'Complaints'}</div>
+          <div style="font-size:26px;font-weight:800;color:${(quality?.complaints_count??neg)>0?'var(--red)':'var(--navy)'}">${fmt(quality?.complaints_count??neg)}</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase;margin-bottom:8px">${lang==='ar'?'متوسط الرسائل':'Avg Msgs/Lead'}</div>
+          <div style="font-size:26px;font-weight:800;color:var(--navy)">${fmt(quality?.avg_messages_per_lead??0,1)}</div>
+        </div>
+        <div class="card" style="padding:16px;text-align:center">
+          <div style="font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase;margin-bottom:8px">${lang==='ar'?'معدل التحويل':'Conv. Rate'}</div>
+          <div style="font-size:26px;font-weight:800;color:var(--green)">${pct(ov?.leads?.conversion_rate??0)}</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">${lang==='ar'?'التنبيهات حسب الخطورة':'Alerts by Severity'}</div>
+      <div style="display:flex;flex-direction:column;gap:10px">${sevCards}</div>
+    </div>
+  </div>`;
+}
+
+// ── Recent Leads ──────────────────────────────────────────────────────────────
+function renderLeadsList(leadsData) {
+  const el   = document.getElementById('leadsList');
+  const list = (leadsData.leads||[]).slice(0,25);
+  const countEl = document.getElementById('leadsCount');
+  if (countEl) countEl.textContent=`(${lang==='ar'?'أحدث':'top'} ${list.length} ${lang==='ar'?'من':'of'} ${leadsData.total||0})`;
+  if (!list.length) {
+    el.innerHTML=`<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-text">${lang==='ar'?'لا توجد عملاء':'No leads'}</div></div>`;
+    return;
+  }
+  const statusPillCls={new:'pill-blue',engaged:'pill-warn',converted:'pill-green',lost:'pill-gray',callback:'pill-blue'};
+  const statusLabels={new:{en:'New',ar:'جديد'},engaged:{en:'Engaged',ar:'منخرط'},converted:{en:'Converted',ar:'محول'},lost:{en:'Lost',ar:'مفقود'},callback:{en:'Callback',ar:'معاودة'}};
+  const chIcon={whatsapp:'💬',maqsam:'📞'};
+  el.innerHTML=list.map(l=>{
+    const score=l.score;
+    const bc=score==null?'#9ca3af':score>=70?'#26CF4B':score>=40?'#FF8F3C':'#FF0003';
+    const sKey=l.status||'new';
+    const statusPill=`<span class="pill ${statusPillCls[sKey]||'pill-gray'}" style="font-size:10px">${lang==='ar'?(statusLabels[sKey]?.ar||sKey):(statusLabels[sKey]?.en||sKey)}</span>`;
+    const subPhone=l.name&&l.phone?`<span style="font-size:11px;color:var(--text-light)">${l.phone}</span>`:'';
+    const summary=l.summary?`<div class="lead-summary">${l.summary}</div>`:'';
+    return`<div class="lead-row">
+      <div class="score-badge" style="background:${bc}" title="AI Score">${score!=null?Math.round(score):'—'}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span class="agent-name-cell">${l.name||l.phone||'—'}</span>${subPhone}
+          <span>${chIcon[l.channel]||''}</span>${statusPill}
+        </div>${summary}
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        ${l.assigned_agent?`<div style="font-size:11px;color:var(--text-light)">👤 ${l.assigned_agent}</div>`:''}
+        ${l.last_message_at?`<div style="font-size:11px;color:var(--text-light);margin-top:2px">${ago(l.last_message_at)}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ── Agents table ──────────────────────────────────────────────────────────────
@@ -694,24 +868,26 @@ function renderAlerts(quality) {
 // ── Load all ──────────────────────────────────────────────────────────────────
 async function loadAll() {
   try {
-    const [ov, ch, leads, agents, quality] = await Promise.all([
+    const [ov, ch, leads, agents, quality, traffic] = await Promise.all([
       get('/api/overview'), get('/api/channels'), get('/api/leads'),
       get('/api/agents'),   get('/api/quality'),
+      fetch(`${API}/api/channels/traffic`).then(r=>r.json()),
     ]);
     allLeads = leads.leads || [];
 
     renderKPI(ov, ch);
     renderChannels(ch, quality);
+    renderTraffic(traffic);
     renderFunnel(leads);
     renderScoreDist(leads);
+    renderOutcomes(quality);
     renderSentiment(quality);
     renderTopics(quality);
+    renderQualityRisk(quality, ov);
+    renderLeadsList(leads);
     renderAgents(agents);
     renderAlerts(quality);
     renderGeo(allLeads);
-
-    // Call outcomes — build from /api/quality or skip if unavailable
-    renderOutcomes(quality);
 
     document.getElementById('lastUpd').textContent = (lang==='ar'?'تحديث: ':'Updated: ') + new Date().toLocaleTimeString();
     applyLang();

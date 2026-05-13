@@ -75,3 +75,51 @@ def channels(range: str = Query("7d", pattern="^(today|7d|30d)$")):
             "avg_call_duration_seconds": avg_call_dur,
         },
     }
+
+
+@router.get("/api/channels/traffic")
+def channels_traffic():
+    """Multi-period traffic breakdown: today / 2d / 7d for each channel."""
+    now = datetime.now(timezone.utc)
+    since_7d = (now - timedelta(days=7)).isoformat()
+
+    leads = (
+        supabase.table("leads")
+        .select("id,channel,created_at")
+        .gte("created_at", since_7d)
+        .execute()
+        .data
+    ) or []
+
+    wa_lead_ids = {l["id"] for l in leads if l.get("channel") == "whatsapp"}
+
+    messages = (
+        supabase.table("messages")
+        .select("lead_id,sent_at")
+        .gte("sent_at", since_7d)
+        .execute()
+        .data
+    ) or []
+
+    calls = (
+        supabase.table("calls")
+        .select("id,called_at")
+        .gte("called_at", since_7d)
+        .execute()
+        .data
+    ) or []
+
+    result: dict = {}
+    for label, delta in [("today", timedelta(days=1)), ("2d", timedelta(days=2)), ("7d", timedelta(days=7))]:
+        cutoff = (now - delta).isoformat()
+        p_leads = [l for l in leads if (l.get("created_at") or "") >= cutoff]
+        wa = sum(1 for l in p_leads if l.get("channel") == "whatsapp")
+        mq = sum(1 for l in p_leads if l.get("channel") == "maqsam")
+        msgs = sum(1 for m in messages if (m.get("sent_at") or "") >= cutoff and m.get("lead_id") in wa_lead_ids)
+        cls = sum(1 for c in calls if (c.get("called_at") or "") >= cutoff)
+        result[label] = {
+            "whatsapp": {"leads": wa, "messages": msgs},
+            "maqsam": {"leads": mq, "calls": cls},
+        }
+
+    return result

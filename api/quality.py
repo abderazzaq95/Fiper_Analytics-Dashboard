@@ -48,6 +48,14 @@ def quality(range: str = Query("7d", pattern="^(today|7d|30d)$")):
         .data
     ) or []
 
+    messages = (
+        supabase.table("messages")
+        .select("lead_id")
+        .gte("sent_at", since)
+        .execute()
+        .data
+    ) or []
+
     sentiments = [a["sentiment"] for a in analyses if a.get("sentiment")]
     all_topics = [t for a in analyses for t in (a.get("topics") or [])]
     all_risk_flags = [f for a in analyses for f in (a.get("risk_flags") or [])]
@@ -85,6 +93,10 @@ def quality(range: str = Query("7d", pattern="^(today|7d|30d)$")):
         "top_risk_flags": dict(Counter(all_risk_flags).most_common(10)),
         "avg_treatment_score": round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else 0,
         "call_outcomes": call_outcomes,
+        "complaints_count": sentiments.count("negative"),
+        "avg_messages_per_lead": round(
+            len(messages) / len({m["lead_id"] for m in messages if m.get("lead_id")}), 1
+        ) if messages and any(m.get("lead_id") for m in messages) else 0,
     }
 
 
