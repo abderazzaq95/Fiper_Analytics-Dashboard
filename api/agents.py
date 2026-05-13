@@ -39,10 +39,14 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
     for a in analyses:
         lead_analysis[a["lead_id"]].append(a)
 
+    lead_agent_map = {l["id"]: l.get("assigned_agent") for l in leads}
     agent_alerts: dict[str, list] = defaultdict(list)
     for a in alerts:
-        if a.get("agent_name"):
-            agent_alerts[a["agent_name"]].append(a)
+        agent = a.get("agent_name")
+        if not agent and a.get("lead_id"):
+            agent = lead_agent_map.get(a["lead_id"])
+        if agent:
+            agent_alerts[agent].append(a)
 
     result = []
     all_agents = set(agent_leads.keys()) | set(agent_msgs.keys())

@@ -1,511 +1,722 @@
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Fiper Intelligence Dashboard</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Fiper Intelligence Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root {
+  --blue:#0774FF; --blue-light:#EBF3FF; --blue-grad:linear-gradient(180deg,#308BFF 0%,#1262FF 100%);
+  --navy:#2D3C58; --text:#4C5671; --text-light:#8D9097;
+  --bg:#F6F9FF; --card:#FFFFFF; --border:#E9EDFF;
+  --green:#26CF4B; --green-light:#E8FAEd; --red:#FF0003; --red-light:#FFF0F0;
+  --warn:#FF8F3C; --warn-light:#FFF4EC;
+  --shadow:0 4px 16px rgba(0,0,0,.06); --shadow-md:0 8px 32px rgba(7,116,255,.12);
+  --r:16px; --r-sm:8px;
+  --font-en:'Plus Jakarta Sans',sans-serif; --font-ar:'Cairo',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{font-family:var(--font-en);background:var(--bg);color:var(--text);font-size:14px}
+html[dir=rtl]{font-family:var(--font-ar)}
+body{min-height:100vh}
 
-    body {
-      font-family: 'Segoe UI', Arial, sans-serif;
-      background: #0f1117;
-      color: #e2e8f0;
-      min-height: 100vh;
-    }
+/* ── Shimmer skeleton ── */
+@keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+.skeleton{background:linear-gradient(90deg,#e8edf5 25%,#f0f4fc 50%,#e8edf5 75%);background-size:800px 100%;animation:shimmer 1.4s infinite;border-radius:6px}
 
-    /* ── Header ── */
-    header {
-      background: #1a1d27;
-      border-bottom: 1px solid #2d3148;
-      padding: 16px 32px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 12px;
-    }
-    .logo { display: flex; align-items: center; gap: 12px; }
-    .logo-dot {
-      width: 36px; height: 36px; border-radius: 8px;
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 700; font-size: 18px;
-    }
-    .logo h1 { font-size: 20px; font-weight: 700; color: #fff; }
-    .logo span { font-size: 12px; color: #64748b; margin-top: 2px; display: block; }
+/* ── Fade in ── */
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeUp .4s ease both}
 
-    .header-right { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-    .last-updated { font-size: 12px; color: #64748b; }
+/* ── Header ── */
+header{
+  background:#fff;border-bottom:1px solid var(--border);
+  padding:14px 28px;display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:12px;position:sticky;top:0;z-index:100;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);
+}
+.logo-wrap{display:flex;align-items:center;gap:12px}
+.logo-wrap img{height:36px;object-fit:contain}
+.logo-wrap .subtitle{font-size:11px;color:var(--text-light);font-weight:500;margin-top:2px;letter-spacing:.03em}
+.header-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.last-upd{font-size:11px;color:var(--text-light)}
 
-    /* ── Range tabs ── */
-    .range-tabs { display: flex; background: #0f1117; border-radius: 8px; padding: 3px; gap: 2px; }
-    .range-tabs button {
-      background: transparent; border: none; color: #64748b;
-      padding: 6px 16px; border-radius: 6px; cursor: pointer;
-      font-size: 13px; font-weight: 500; transition: all .15s;
-    }
-    .range-tabs button.active { background: #6366f1; color: #fff; }
-    .range-tabs button:hover:not(.active) { color: #e2e8f0; background: #1e2235; }
+/* Range tabs */
+.tabs{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:3px;gap:2px}
+.tabs button{background:transparent;border:none;color:var(--text-light);padding:6px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;transition:all .15s}
+.tabs button.active{background:var(--blue);color:#fff;box-shadow:0 2px 8px rgba(7,116,255,.3)}
+.tabs button:hover:not(.active){color:var(--navy);background:var(--blue-light)}
 
-    /* ── Refresh btn ── */
-    .btn-refresh {
-      background: #1e2235; border: 1px solid #2d3148; color: #94a3b8;
-      padding: 6px 14px; border-radius: 8px; cursor: pointer;
-      font-size: 13px; transition: all .15s;
-    }
-    .btn-refresh:hover { background: #2d3148; color: #e2e8f0; }
+/* Icon buttons */
+.btn-icon{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:7px 14px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;transition:all .15s;display:flex;align-items:center;gap:6px}
+.btn-icon:hover{background:var(--blue-light);border-color:var(--blue);color:var(--blue)}
+.btn-lang{background:var(--blue);color:#fff;border:none;padding:7px 16px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit}
+.btn-lang:hover{opacity:.9}
 
-    /* ── Layout ── */
-    main { padding: 24px 32px; max-width: 1600px; margin: 0 auto; }
+/* ── Main layout ── */
+main{padding:24px 28px;max-width:1600px;margin:0 auto}
+.section-label{font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.1em;margin:28px 0 14px;display:flex;align-items:center;gap:8px}
+.section-label::after{content:'';flex:1;height:1px;background:var(--border)}
 
-    /* ── Section heading ── */
-    .section-title {
-      font-size: 13px; font-weight: 600; color: #64748b;
-      text-transform: uppercase; letter-spacing: .08em;
-      margin: 28px 0 14px;
-    }
+/* ── KPI grid ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}
+.kpi-card{background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:20px 22px;box-shadow:var(--shadow);transition:transform .2s,box-shadow .2s;position:relative;overflow:hidden}
+.kpi-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--blue-grad)}
+.kpi-card.green::before{background:linear-gradient(90deg,var(--green),#1aab3a)}
+.kpi-card.red::before{background:linear-gradient(90deg,var(--red),#cc0002)}
+.kpi-card.warn::before{background:linear-gradient(90deg,var(--warn),#e67a2a)}
+.kpi-label{font-size:11px;font-weight:600;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+.kpi-value{font-size:30px;font-weight:800;color:var(--navy);line-height:1;font-family:var(--font-en)}
+html[dir=rtl] .kpi-value{font-family:var(--font-ar)}
+.kpi-sub{font-size:11px;color:var(--text-light);margin-top:6px}
+.kpi-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:700;margin-top:8px}
+.badge-blue{background:var(--blue-light);color:var(--blue)}
+.badge-green{background:var(--green-light);color:#1aab3a}
+.badge-red{background:var(--red-light);color:var(--red)}
+.badge-warn{background:var(--warn-light);color:#c8601a}
+.badge-gray{background:#f1f3f9;color:var(--text-light)}
+.progress-bar-wrap{background:var(--bg);border-radius:4px;height:4px;margin-top:10px;overflow:hidden}
+.progress-bar-fill{height:100%;border-radius:4px;background:var(--blue-grad);transition:width .8s ease}
 
-    /* ── Stat cards ── */
-    .stat-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 16px;
-    }
-    .stat-card {
-      background: #1a1d27; border: 1px solid #2d3148;
-      border-radius: 12px; padding: 20px 22px;
-      transition: border-color .15s;
-    }
-    .stat-card:hover { border-color: #6366f1; }
-    .stat-label { font-size: 12px; color: #64748b; margin-bottom: 8px; font-weight: 500; }
-    .stat-value { font-size: 32px; font-weight: 700; color: #fff; line-height: 1; }
-    .stat-sub { font-size: 12px; color: #64748b; margin-top: 6px; }
-    .stat-badge {
-      display: inline-block; padding: 2px 8px; border-radius: 20px;
-      font-size: 11px; font-weight: 600; margin-top: 8px;
-    }
-    .badge-green { background: #14532d33; color: #4ade80; }
-    .badge-yellow { background: #7c3aed33; color: #a78bfa; }
-    .badge-red { background: #7f1d1d33; color: #f87171; }
-    .badge-blue { background: #1e3a5f33; color: #60a5fa; }
+/* ── 2-col / 3-col ── */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px}
+@media(max-width:1100px){.three-col{grid-template-columns:1fr 1fr}}
+@media(max-width:760px){.two-col,.three-col{grid-template-columns:1fr}}
 
-    /* ── 2-col grid ── */
-    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
-    @media (max-width: 1100px) { .three-col { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 760px) { .two-col, .three-col { grid-template-columns: 1fr; } }
+/* ── Cards ── */
+.card{background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:22px 24px;box-shadow:var(--shadow)}
+.card-head{font-size:13px;font-weight:700;color:var(--navy);margin-bottom:18px;display:flex;align-items:center;gap:8px}
+.card-head .ch-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.ch-green{background:#e8faed}
+.ch-blue{background:var(--blue-light)}
+.chart-wrap{position:relative;height:220px}
 
-    /* ── Chart card ── */
-    .chart-card {
-      background: #1a1d27; border: 1px solid #2d3148;
-      border-radius: 12px; padding: 22px 24px;
-    }
-    .chart-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 18px; color: #cbd5e1; }
-    .chart-wrap { position: relative; height: 230px; }
+/* Channel row items */
+.ch-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--border)}
+.ch-row:first-child{border-top:none;padding-top:0}
+.ch-row-label{font-size:12px;color:var(--text-light);font-weight:500}
+.ch-row-val{font-size:14px;font-weight:700;color:var(--navy)}
 
-    /* ── Table card ── */
-    .table-card {
-      background: #1a1d27; border: 1px solid #2d3148;
-      border-radius: 12px; overflow: hidden;
-    }
-    .table-card h3 {
-      font-size: 14px; font-weight: 600; color: #cbd5e1;
-      padding: 18px 22px 14px; border-bottom: 1px solid #2d3148;
-    }
-    table { width: 100%; border-collapse: collapse; }
-    th {
-      text-align: left; font-size: 11px; font-weight: 600;
-      color: #475569; text-transform: uppercase; letter-spacing: .06em;
-      padding: 10px 22px; background: #12141e;
-    }
-    td { padding: 12px 22px; font-size: 13px; border-top: 1px solid #1e2235; }
-    tr:hover td { background: #1e2235; }
-    .agent-name { font-weight: 600; color: #e2e8f0; }
-    .pill {
-      display: inline-block; padding: 2px 10px; border-radius: 20px;
-      font-size: 11px; font-weight: 600;
-    }
-    .pill-purple { background: #3730a333; color: #a5b4fc; }
-    .pill-green  { background: #14532d33; color: #4ade80; }
-    .pill-red    { background: #7f1d1d33; color: #f87171; }
-    .pill-yellow { background: #78350f33; color: #fbbf24; }
-    .pill-gray   { background: #1e2a3a;   color: #64748b; }
+/* ── Geo section ── */
+.geo-item{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)}
+.geo-item:last-child{border-bottom:none}
+.geo-flag{font-size:20px;width:28px;text-align:center}
+.geo-country{font-size:13px;font-weight:600;color:var(--navy);min-width:100px}
+.geo-bar-wrap{flex:1;background:var(--bg);border-radius:4px;height:8px;overflow:hidden}
+.geo-bar-fill{height:100%;border-radius:4px;background:var(--blue-grad)}
+.geo-count{font-size:12px;font-weight:700;color:var(--text);min-width:48px;text-align:right}
+.geo-pct{font-size:11px;color:var(--text-light);min-width:38px;text-align:right}
 
-    /* ── Alert list ── */
-    .alert-item {
-      display: flex; align-items: flex-start; gap: 14px;
-      padding: 16px 22px; border-top: 1px solid #1e2235;
-    }
-    .alert-item:first-child { border-top: none; }
-    .alert-dot {
-      width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0;
-    }
-    .dot-high { background: #ef4444; }
-    .dot-med  { background: #f59e0b; }
-    .dot-low  { background: #6366f1; }
-    .alert-msg { font-size: 13px; color: #cbd5e1; line-height: 1.5; }
-    .alert-meta { font-size: 11px; color: #475569; margin-top: 3px; }
+/* ── Agents table ── */
+.table-wrap{overflow-x:auto;border-radius:0 0 var(--r) var(--r)}
+table{width:100%;border-collapse:collapse;min-width:700px}
+thead tr{background:var(--bg)}
+th{padding:10px 16px;text-align:left;font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.07em;cursor:pointer;white-space:nowrap;border-bottom:1px solid var(--border);user-select:none}
+html[dir=rtl] th{text-align:right}
+th:hover{color:var(--blue)}
+th.sorted{color:var(--blue)}
+td{padding:11px 16px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
+html[dir=rtl] td{text-align:right}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafbff}
+.agent-name-cell{font-weight:700;color:var(--navy)}
+.pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.pill-green{background:var(--green-light);color:#1aab3a}
+.pill-warn{background:var(--warn-light);color:#c8601a}
+.pill-red{background:var(--red-light);color:var(--red)}
+.pill-blue{background:var(--blue-light);color:var(--blue)}
+.pill-gray{background:#f1f3f9;color:var(--text-light)}
+.alert-badge{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:10px;font-weight:800}
+.alert-badge.has-alerts{background:var(--red-light);color:var(--red)}
+.alert-badge.no-alerts{background:#f1f3f9;color:var(--text-light)}
 
-    /* ── Empty state ── */
-    .empty {
-      text-align: center; padding: 40px 20px;
-      color: #475569; font-size: 13px;
-    }
-    .empty .icon { font-size: 28px; margin-bottom: 8px; }
+/* ── Alert list ── */
+.alert-item{display:flex;align-items:flex-start;gap:14px;padding:14px 22px;border-bottom:1px solid var(--border);border-left:4px solid transparent;transition:background .15s}
+html[dir=rtl] .alert-item{border-left:none;border-right:4px solid transparent}
+.alert-item:last-child{border-bottom:none}
+.alert-item:hover{background:#fafbff}
+.alert-item.high{border-color:var(--red)}
+.alert-item.med{border-color:var(--warn)}
+.alert-item.low{border-color:var(--blue)}
+.alert-body{flex:1}
+.alert-msg{font-size:13px;color:var(--navy);font-weight:500;line-height:1.5}
+.alert-meta{font-size:11px;color:var(--text-light);margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.empty-state{text-align:center;padding:48px 24px;color:var(--text-light)}
+.empty-icon{font-size:36px;margin-bottom:12px}
+.empty-text{font-size:14px;font-weight:600;color:var(--navy)}
+.empty-sub{font-size:12px;margin-top:4px}
 
-    /* ── Channel compare ── */
-    .channel-row {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 14px 22px; border-top: 1px solid #1e2235;
-      font-size: 13px;
-    }
-    .channel-row:first-child { border-top: none; }
-    .channel-name { font-weight: 600; color: #e2e8f0; display: flex; align-items: center; gap: 8px; }
-    .ch-dot { width: 8px; height: 8px; border-radius: 50%; }
-    .ch-wa { background: #25d366; }
-    .ch-mq { background: #6366f1; }
-    .channel-stats { display: flex; gap: 24px; }
-    .ch-stat { text-align: right; }
-    .ch-stat-val { font-weight: 700; color: #e2e8f0; }
-    .ch-stat-lbl { font-size: 11px; color: #475569; }
+/* ── Treatment gauge ── */
+.gauge-wrap{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 0}
+.gauge-circle{position:relative;width:100px;height:100px}
+.gauge-circle svg{transform:rotate(-90deg)}
+.gauge-text{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gauge-num{font-size:22px;font-weight:800;color:var(--navy);font-family:var(--font-en)}
+.gauge-lbl{font-size:9px;color:var(--text-light);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
 
-    /* ── Loading spinner ── */
-    .spinner {
-      display: inline-block; width: 18px; height: 18px;
-      border: 2px solid #2d3148; border-top-color: #6366f1;
-      border-radius: 50%; animation: spin .7s linear infinite;
-      vertical-align: middle; margin-right: 6px;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
+/* ── Risk flags ── */
+.risk-item{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)}
+.risk-item:last-child{border-bottom:none}
+.risk-name{font-size:12px;color:var(--navy);font-weight:500}
+.risk-count{font-size:12px;font-weight:700;color:var(--red)}
 
-    /* ── Progress bar ── */
-    .progress-wrap { margin-top: 6px; background: #12141e; border-radius: 4px; height: 4px; }
-    .progress-bar { height: 4px; border-radius: 4px; background: linear-gradient(90deg, #6366f1, #8b5cf6); }
-  </style>
+/* ── Scroll to top ── */
+.scroll-top{position:fixed;bottom:24px;right:24px;background:var(--blue);color:#fff;border:none;width:40px;height:40px;border-radius:50%;cursor:pointer;font-size:18px;box-shadow:var(--shadow-md);opacity:0;transition:opacity .3s;display:flex;align-items:center;justify-content:center}
+.scroll-top.visible{opacity:1}
+html[dir=rtl] .scroll-top{right:auto;left:24px}
+
+/* ── Responsive ── */
+@media(max-width:600px){
+  header{padding:12px 16px}
+  main{padding:16px}
+  .kpi-grid{grid-template-columns:1fr 1fr}
+}
+</style>
 </head>
 <body>
 
+<!-- Header -->
 <header>
-  <div class="logo">
-    <div class="logo-dot">F</div>
+  <div class="logo-wrap">
+    <img src="https://fiper.me/assets/logo.png" alt="Fiper" onerror="this.style.display='none';document.getElementById('logoFallback').style.display='flex'"/>
+    <div id="logoFallback" style="display:none;width:36px;height:36px;background:var(--blue-grad);border-radius:8px;color:#fff;font-weight:800;font-size:16px;align-items:center;justify-content:center">F</div>
     <div>
-      <h1>Fiper Intelligence</h1>
-      <span>Analytics Dashboard</span>
+      <div style="font-weight:800;font-size:15px;color:var(--navy)" data-en="Intelligence Dashboard" data-ar="لوحة ذكاء الأعمال">Intelligence Dashboard</div>
+      <div class="subtitle" data-en="CRM Analytics Platform" data-ar="منصة تحليلات إدارة العملاء">CRM Analytics Platform</div>
     </div>
   </div>
+
+  <div class="tabs">
+    <button onclick="setRange('today')" data-en="Today" data-ar="اليوم">Today</button>
+    <button onclick="setRange('7d')" class="active" data-en="7 Days" data-ar="7 أيام">7 Days</button>
+    <button onclick="setRange('30d')" data-en="30 Days" data-ar="30 يوم">30 Days</button>
+  </div>
+
   <div class="header-right">
-    <div class="range-tabs">
-      <button onclick="setRange('today')">Today</button>
-      <button onclick="setRange('7d')" class="active">7 Days</button>
-      <button onclick="setRange('30d')">30 Days</button>
-    </div>
-    <button class="btn-refresh" onclick="loadAll()">&#8635; Refresh</button>
-    <div class="last-updated" id="lastUpdated">—</div>
+    <span class="last-upd" id="lastUpd">—</span>
+    <button class="btn-icon" onclick="loadAll()">↻ <span data-en="Refresh" data-ar="تحديث">Refresh</span></button>
+    <button class="btn-lang" onclick="toggleLang()" id="langBtn">العربية</button>
   </div>
 </header>
 
 <main>
 
-  <!-- Overview cards -->
-  <div class="section-title">Overview</div>
-  <div class="stat-grid" id="overviewCards">
-    <div class="stat-card"><div class="spinner"></div> Loading…</div>
+  <!-- KPI -->
+  <div class="section-label"><span data-en="Key Metrics" data-ar="المؤشرات الرئيسية">Key Metrics</span></div>
+  <div class="kpi-grid" id="kpiGrid">
+    <div class="kpi-card"><div class="skeleton" style="height:60px"></div></div>
+    <div class="kpi-card"><div class="skeleton" style="height:60px"></div></div>
+    <div class="kpi-card"><div class="skeleton" style="height:60px"></div></div>
+    <div class="kpi-card"><div class="skeleton" style="height:60px"></div></div>
+    <div class="kpi-card"><div class="skeleton" style="height:60px"></div></div>
+    <div class="kpi-card"><div class="skeleton" style="height:60px"></div></div>
   </div>
 
-  <!-- Charts row -->
-  <div class="section-title">Channels &amp; Leads</div>
-  <div class="three-col">
-    <div class="chart-card">
-      <h3>Leads by Channel</h3>
-      <div class="chart-wrap"><canvas id="channelPie"></canvas></div>
-    </div>
-    <div class="chart-card">
-      <h3>Lead Status Funnel</h3>
-      <div class="chart-wrap"><canvas id="funnelBar"></canvas></div>
-    </div>
-    <div class="table-card" style="border-radius:12px;">
-      <h3>Channel Breakdown</h3>
-      <div id="channelDetail"></div>
-    </div>
-  </div>
-
-  <!-- Agents table -->
-  <div class="section-title">Agent Performance</div>
-  <div class="table-card">
-    <h3>Agents <span id="agentCount" style="color:#475569;font-weight:400;font-size:12px;"></span></h3>
-    <div id="agentsTable"></div>
-  </div>
-
-  <!-- Bottom row: alerts + quality -->
-  <div class="section-title">Quality &amp; Alerts</div>
+  <!-- Channels -->
+  <div class="section-label"><span data-en="Channel Performance" data-ar="أداء القنوات">Channel Performance</span></div>
   <div class="two-col">
-    <div class="table-card">
-      <h3>Open Alerts</h3>
-      <div id="alertsList"></div>
+    <div class="card" id="waCard"><div class="skeleton" style="height:120px"></div></div>
+    <div class="card" id="mqCard"><div class="skeleton" style="height:120px"></div></div>
+  </div>
+
+  <!-- Charts -->
+  <div class="section-label"><span data-en="Lead Pipeline &amp; Call Analytics" data-ar="خط العملاء وتحليل المكالمات">Lead Pipeline &amp; Call Analytics</span></div>
+  <div class="three-col">
+    <div class="card"><div class="card-head" data-en="Lead Status Funnel" data-ar="مسار حالة العملاء">Lead Status Funnel</div><div class="chart-wrap"><canvas id="funnelChart"></canvas></div></div>
+    <div class="card"><div class="card-head" data-en="Call Outcomes" data-ar="نتائج المكالمات">Call Outcomes</div><div class="chart-wrap"><canvas id="outcomesChart"></canvas></div></div>
+    <div class="card"><div class="card-head" data-en="Lead Score Distribution" data-ar="توزيع نقاط العملاء">Lead Score Distribution</div><div class="chart-wrap"><canvas id="scoreChart"></canvas></div></div>
+  </div>
+
+  <!-- AI Insights -->
+  <div class="section-label"><span data-en="AI Insights" data-ar="رؤى الذكاء الاصطناعي">AI Insights</span></div>
+  <div class="two-col">
+    <div class="card">
+      <div class="card-head" data-en="Sentiment Analysis" data-ar="تحليل المشاعر">Sentiment Analysis</div>
+      <div class="two-col" style="gap:12px;align-items:center">
+        <div class="chart-wrap" style="height:180px"><canvas id="sentimentChart"></canvas></div>
+        <div class="gauge-wrap" id="treatGauge">
+          <div class="gauge-circle">
+            <svg width="100" height="100" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="40" fill="none" stroke="var(--border)" stroke-width="10"/>
+              <circle id="gaugeArc" cx="50" cy="50" r="40" fill="none" stroke="var(--blue)" stroke-width="10" stroke-linecap="round" stroke-dasharray="0 251.2" style="transition:stroke-dasharray 1s ease"/>
+            </svg>
+            <div class="gauge-text">
+              <div class="gauge-num" id="gaugeNum">—</div>
+              <div class="gauge-lbl" data-en="/100" data-ar="/100">/100</div>
+            </div>
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:12px;font-weight:700;color:var(--navy)" data-en="Avg Treatment Score" data-ar="متوسط نقاط المعاملة">Avg Treatment Score</div>
+            <div style="font-size:11px;color:var(--text-light);margin-top:2px" data-en="Agent interaction quality" data-ar="جودة تفاعل الوكيل">Agent interaction quality</div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="chart-card">
-      <h3>Sentiment Distribution</h3>
-      <div class="chart-wrap"><canvas id="sentimentChart"></canvas></div>
+    <div class="card">
+      <div class="card-head" data-en="Topics &amp; Risk Flags" data-ar="المواضيع وعلامات الخطر">Topics &amp; Risk Flags</div>
+      <div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px" data-en="TOP TOPICS" data-ar="أهم المواضيع">TOP TOPICS</div>
+        <div class="chart-wrap" style="height:130px"><canvas id="topicsChart"></canvas></div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px" data-en="RISK FLAGS" data-ar="علامات الخطر">RISK FLAGS</div>
+        <div id="riskList"><div class="skeleton" style="height:60px"></div></div>
+      </div>
     </div>
+  </div>
+
+  <!-- Geographic -->
+  <div class="section-label"><span data-en="Geographic Distribution" data-ar="التوزيع الجغرافي">Geographic Distribution</span></div>
+  <div class="card">
+    <div class="card-head" data-en="Leads by Country" data-ar="العملاء حسب الدولة">Leads by Country</div>
+    <div id="geoList"><div class="skeleton" style="height:120px"></div></div>
+  </div>
+
+  <!-- Agents -->
+  <div class="section-label"><span data-en="Agent Performance" data-ar="أداء الوكلاء">Agent Performance</span></div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="padding:18px 22px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div class="card-head" style="margin:0" data-en="Agent Leaderboard" data-ar="لوحة الوكلاء">Agent Leaderboard</div>
+      <span id="agentCount" style="font-size:11px;color:var(--text-light)"></span>
+    </div>
+    <div class="table-wrap"><div id="agentTable"><div class="skeleton" style="height:120px;margin:16px"></div></div></div>
+  </div>
+
+  <!-- Alerts -->
+  <div class="section-label"><span data-en="Active Alerts" data-ar="التنبيهات النشطة">Active Alerts</span></div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="padding:18px 22px 14px;border-bottom:1px solid var(--border)">
+      <div class="card-head" style="margin:0" data-en="Open Alerts" data-ar="التنبيهات المفتوحة">Open Alerts</div>
+    </div>
+    <div id="alertsList"><div class="skeleton" style="height:80px;margin:16px"></div></div>
   </div>
 
 </main>
 
+<button class="scroll-top" id="scrollTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
 <script>
-const API = '';   // same origin
-let currentRange = '7d';
+const API = '';
+let range = '7d';
+let lang  = localStorage.getItem('fiper_lang') || 'en';
+let charts = {};
+let allLeads = [];
 
-// ── chart instances (so we can destroy on re-render) ──
-let pieChart, funnelChart, sentimentChart;
-
-function setRange(r) {
-  currentRange = r;
-  document.querySelectorAll('.range-tabs button').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.range-tabs button').forEach(b => {
-    if (b.textContent.replace(' ','').toLowerCase() === r || (r==='7d'&&b.textContent==='7 Days') || (r==='30d'&&b.textContent==='30 Days') || (r==='today'&&b.textContent==='Today')) b.classList.add('active');
+// ── Language ──────────────────────────────────────────────────────────────────
+function applyLang() {
+  const isAr = lang === 'ar';
+  document.documentElement.lang = isAr ? 'ar' : 'en';
+  document.documentElement.dir  = isAr ? 'rtl' : 'ltr';
+  document.getElementById('langBtn').textContent = isAr ? 'English' : 'العربية';
+  document.querySelectorAll('[data-en]').forEach(el => {
+    el.textContent = isAr ? (el.dataset.ar || el.dataset.en) : el.dataset.en;
   });
+}
+function toggleLang() {
+  lang = lang === 'en' ? 'ar' : 'en';
+  localStorage.setItem('fiper_lang', lang);
+  applyLang();
+}
+
+// ── Range tabs ────────────────────────────────────────────────────────────────
+function setRange(r) {
+  range = r;
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
   loadAll();
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const fmt   = (n, d=0) => n == null ? '—' : Number(n).toLocaleString('en', {minimumFractionDigits:d, maximumFractionDigits:d});
+const pct   = n => fmt(n,1) + '%';
+const dur   = s => { if (!s) return '0s'; return s >= 60 ? fmt(s/60,1)+'m' : fmt(s,0)+'s'; };
+const ago   = ts => {
+  if (!ts) return '';
+  const diff = (Date.now() - new Date(ts).getTime()) / 1000;
+  if (diff < 60)   return lang==='ar' ? `منذ ${Math.round(diff)} ث` : `${Math.round(diff)}s ago`;
+  if (diff < 3600) return lang==='ar' ? `منذ ${Math.round(diff/60)} د` : `${Math.round(diff/60)}m ago`;
+  if (diff < 86400) return lang==='ar' ? `منذ ${Math.round(diff/3600)} س` : `${Math.round(diff/3600)}h ago`;
+  return lang==='ar' ? `منذ ${Math.round(diff/86400)} ي` : `${Math.round(diff/86400)}d ago`;
+};
 async function get(path) {
-  const r = await fetch(`${API}${path}?range=${currentRange}`);
+  const r = await fetch(`${API}${path}?range=${range}`);
   if (!r.ok) throw new Error(r.status);
   return r.json();
 }
-
-function fmt(n, decimals=0) {
-  if (n === null || n === undefined) return '—';
-  return Number(n).toLocaleString('en', {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
-}
-function pct(n) { return fmt(n, 1) + '%'; }
-function dur(s) {
-  if (!s) return '0s';
-  return s >= 60 ? fmt(s/60, 1) + 'm' : fmt(s, 0) + 's';
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
 }
 
-// ── Overview ──
-function renderOverview(d) {
-  const el = document.getElementById('overviewCards');
-  const leads = d.leads, calls = d.calls, alerts = d.alerts, msgs = d.messages;
-  el.innerHTML = `
-    <div class="stat-card">
-      <div class="stat-label">Total Leads</div>
-      <div class="stat-value">${fmt(leads.total)}</div>
-      <div class="stat-sub">${fmt(leads.converted)} converted</div>
-      <span class="stat-badge badge-yellow">${pct(leads.conversion_rate)} CVR</span>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Avg Lead Score</div>
-      <div class="stat-value">${fmt(leads.avg_score, 1)}</div>
-      <div class="stat-sub">out of 100</div>
-      <div class="progress-wrap" style="margin-top:12px"><div class="progress-bar" style="width:${leads.avg_score||0}%"></div></div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Total Calls</div>
-      <div class="stat-value">${fmt(calls.total)}</div>
-      <div class="stat-sub">Avg duration: ${dur(calls.avg_duration_seconds)}</div>
-      <span class="stat-badge badge-blue">Maqsam</span>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Messages</div>
-      <div class="stat-value">${fmt(msgs.total)}</div>
-      <div class="stat-sub">${fmt(msgs.inbound)} in · ${fmt(msgs.outbound)} out</div>
-      <span class="stat-badge badge-green">WhatsApp</span>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Open Alerts</div>
-      <div class="stat-value" style="color:${alerts.open>0?'#f87171':'#4ade80'}">${fmt(alerts.open)}</div>
-      <div class="stat-sub">${fmt(alerts.high)} high severity</div>
-      <span class="stat-badge ${alerts.high>0?'badge-red':'badge-green'}">${alerts.high>0?'Action needed':'All clear'}</span>
-    </div>
-  `;
+// ── Geography ─────────────────────────────────────────────────────────────────
+const GEO = [
+  {code:'+968',en:'Oman',      ar:'عمان',           flag:'🇴🇲'},
+  {code:'+964',en:'Iraq',      ar:'العراق',          flag:'🇮🇶'},
+  {code:'+966',en:'Saudi Arabia',ar:'السعودية',      flag:'🇸🇦'},
+  {code:'+971',en:'UAE',       ar:'الإمارات',        flag:'🇦🇪'},
+  {code:'+965',en:'Kuwait',    ar:'الكويت',          flag:'🇰🇼'},
+  {code:'+962',en:'Jordan',    ar:'الأردن',          flag:'🇯🇴'},
+  {code:'+212',en:'Morocco',   ar:'المغرب',          flag:'🇲🇦'},
+  {code:'+90', en:'Turkey',    ar:'تركيا',           flag:'🇹🇷'},
+  {code:'+7',  en:'Russia',    ar:'روسيا',           flag:'🇷🇺'},
+  {code:'+44', en:'UK',        ar:'المملكة المتحدة', flag:'🇬🇧'},
+  {code:'+1',  en:'USA/Canada',ar:'أمريكا/كندا',     flag:'🇺🇸'},
+];
+function detectCountry(phone) {
+  if (!phone) return null;
+  const p = phone.replace(/\s/g,'');
+  // Sort by code length desc to avoid +7 matching before +966
+  const sorted = [...GEO].sort((a,b)=>b.code.length-a.code.length);
+  for (const g of sorted) {
+    if (p.startsWith(g.code)) return g;
+  }
+  return {en:'Other',ar:'أخرى',flag:'🌐'};
+}
+function renderGeo(leads) {
+  const counts = {};
+  for (const l of leads) {
+    const g = detectCountry(l.phone);
+    if (!g) continue;
+    const key = g.en;
+    counts[key] = counts[key] || { ...g, count: 0 };
+    counts[key].count++;
+  }
+  const sorted = Object.values(counts).sort((a,b)=>b.count-a.count);
+  const total  = sorted.reduce((s,c)=>s+c.count, 0);
+  if (!sorted.length) {
+    document.getElementById('geoList').innerHTML = `<div class="empty-state"><div class="empty-icon">🌍</div><div class="empty-text" data-en="No location data" data-ar="لا توجد بيانات جغرافية">No location data</div></div>`;
+    return;
+  }
+  const max = sorted[0].count;
+  document.getElementById('geoList').innerHTML = sorted.map(g => `
+    <div class="geo-item">
+      <div class="geo-flag">${g.flag}</div>
+      <div class="geo-country">${lang==='ar'?g.ar:g.en}</div>
+      <div class="geo-bar-wrap"><div class="geo-bar-fill" style="width:${max?Math.round(g.count/max*100):0}%"></div></div>
+      <div class="geo-count">${fmt(g.count)}</div>
+      <div class="geo-pct">${total?pct(g.count/total*100):'—'}</div>
+    </div>`).join('');
 }
 
-// ── Channel pie ──
-function renderChannelPie(ch) {
-  if (pieChart) pieChart.destroy();
-  const ctx = document.getElementById('channelPie').getContext('2d');
-  const wa = ch.whatsapp.leads, mq = ch.maqsam.leads;
-  pieChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: ['WhatsApp', 'Maqsam (Calls)'],
-      datasets: [{ data: [wa, mq], backgroundColor: ['#25d366', '#6366f1'], borderWidth: 0, hoverOffset: 6 }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { labels: { color: '#94a3b8', font: { size: 12 }, boxWidth: 12 } }
-      }
-    }
+// ── KPI ───────────────────────────────────────────────────────────────────────
+function renderKPI(ov, ch) {
+  const answerRate = ch.maqsam.calls
+    ? Math.round(((ch.maqsam.calls - (ch.maqsam.calls * 0)) / ch.maqsam.calls) * 100)
+    : 0;
+  // We'll calculate answer rate properly from quality data; approximate here
+  const ar_color = answerRate > 50 ? 'green' : answerRate > 30 ? 'warn' : 'red';
+  const ar_badge = answerRate > 50 ? 'badge-green' : answerRate > 30 ? 'badge-warn' : 'badge-red';
+
+  document.getElementById('kpiGrid').innerHTML = `
+    <div class="kpi-card fade-in">
+      <div class="kpi-label" data-en="Total Leads" data-ar="إجمالي العملاء">${lang==='ar'?'إجمالي العملاء':'Total Leads'}</div>
+      <div class="kpi-value">${fmt(ov.leads.total)}</div>
+      <div class="kpi-sub">${fmt(ov.leads.converted)} ${lang==='ar'?'محول':'converted'}</div>
+      <span class="kpi-badge badge-blue">${pct(ov.leads.conversion_rate)} CVR</span>
+    </div>
+    <div class="kpi-card fade-in" style="animation-delay:.05s">
+      <div class="kpi-label" data-en="Total Calls" data-ar="إجمالي المكالمات">${lang==='ar'?'إجمالي المكالمات':'Total Calls'}</div>
+      <div class="kpi-value">${fmt(ov.calls.total)}</div>
+      <div class="kpi-sub">${lang==='ar'?'متوسط المدة':'Avg'}: ${dur(ov.calls.avg_duration_seconds)}</div>
+      <span class="kpi-badge badge-blue">${lang==='ar'?'مقصام':'Maqsam'}</span>
+    </div>
+    <div class="kpi-card ${ar_color} fade-in" style="animation-delay:.1s" id="kpiAnswerRate">
+      <div class="kpi-label" data-en="Call Answer Rate" data-ar="معدل الرد على المكالمات">${lang==='ar'?'معدل الرد على المكالمات':'Call Answer Rate'}</div>
+      <div class="kpi-value" id="answerRateVal">—</div>
+      <div class="kpi-sub">${lang==='ar'?'من إجمالي المكالمات':'of total calls'}</div>
+    </div>
+    <div class="kpi-card fade-in" style="animation-delay:.15s">
+      <div class="kpi-label" data-en="WhatsApp Messages" data-ar="رسائل واتساب">${lang==='ar'?'رسائل واتساب':'WhatsApp Messages'}</div>
+      <div class="kpi-value">${fmt(ov.messages.total)}</div>
+      <div class="kpi-sub">${fmt(ov.messages.inbound)} ${lang==='ar'?'وارد':'in'} · ${fmt(ov.messages.outbound)} ${lang==='ar'?'صادر':'out'}</div>
+      <span class="kpi-badge badge-green">WhatsApp</span>
+    </div>
+    <div class="kpi-card ${ov.alerts.open>0?'red':''} fade-in" style="animation-delay:.2s">
+      <div class="kpi-label" data-en="Open Alerts" data-ar="التنبيهات المفتوحة">${lang==='ar'?'التنبيهات المفتوحة':'Open Alerts'}</div>
+      <div class="kpi-value" style="color:${ov.alerts.open>0?'var(--red)':'var(--navy)'}">${fmt(ov.alerts.open)}</div>
+      <div class="kpi-sub">${fmt(ov.alerts.high)} ${lang==='ar'?'عالية الخطورة':'high severity'}</div>
+      <span class="kpi-badge ${ov.alerts.open>0?'badge-red':'badge-green'}">${ov.alerts.open>0?(lang==='ar'?'يحتاج إجراء':'Action needed'):(lang==='ar'?'بخير':'All clear')}</span>
+    </div>
+    <div class="kpi-card fade-in" style="animation-delay:.25s">
+      <div class="kpi-label" data-en="Avg Lead Score" data-ar="متوسط نقاط العميل">${lang==='ar'?'متوسط نقاط العميل':'Avg Lead Score'}</div>
+      <div class="kpi-value">${fmt(ov.leads.avg_score,1)}</div>
+      <div class="kpi-sub">${lang==='ar'?'من 100':'out of 100'}</div>
+      <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${ov.leads.avg_score||0}%"></div></div>
+    </div>`;
+}
+
+// ── Channels ──────────────────────────────────────────────────────────────────
+function renderChannels(ch, quality) {
+  // Compute answer rate from quality call outcomes
+  const outcomes = quality?.call_outcomes || {};
+  const completed = outcomes.completed || 0;
+  const total_calls = ch.maqsam.calls || 1;
+  const answerRate = ch.maqsam.calls ? Math.round(completed / ch.maqsam.calls * 100) : 0;
+  const ar_color = answerRate > 50 ? 'var(--green)' : answerRate > 30 ? 'var(--warn)' : 'var(--red)';
+
+  // Update answer rate card
+  const arEl = document.getElementById('answerRateVal');
+  if (arEl) { arEl.textContent = pct(answerRate); arEl.style.color = ar_color; }
+
+  document.getElementById('waCard').innerHTML = `
+    <div class="card-head">
+      <div class="ch-icon ch-green">💬</div>
+      <div>
+        <div style="font-weight:700;color:var(--navy)" data-en="WhatsApp" data-ar="واتساب">${lang==='ar'?'واتساب':'WhatsApp'}</div>
+        <div style="font-size:11px;color:var(--text-light)">ManyContacts</div>
+      </div>
+    </div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Total Leads" data-ar="إجمالي العملاء">${lang==='ar'?'إجمالي العملاء':'Total Leads'}</span><span class="ch-row-val">${fmt(ch.whatsapp.leads)}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Messages" data-ar="الرسائل">${lang==='ar'?'الرسائل':'Messages'}</span><span class="ch-row-val">${fmt(ch.whatsapp.messages)}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Avg Response Time" data-ar="متوسط وقت الرد">${lang==='ar'?'متوسط وقت الرد':'Avg Response Time'}</span><span class="ch-row-val">${ch.whatsapp.avg_response_time_min ? fmt(ch.whatsapp.avg_response_time_min,1)+'m' : '—'}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Conversion Rate" data-ar="معدل التحويل">${lang==='ar'?'معدل التحويل':'Conversion Rate'}</span><span class="ch-row-val"><span class="pill ${ch.whatsapp.conversion_rate>0?'pill-green':'pill-gray'}">${pct(ch.whatsapp.conversion_rate)}</span></span></div>`;
+
+  document.getElementById('mqCard').innerHTML = `
+    <div class="card-head">
+      <div class="ch-icon ch-blue">📞</div>
+      <div>
+        <div style="font-weight:700;color:var(--navy)" data-en="Maqsam Calls" data-ar="مكالمات مقسم">${lang==='ar'?'مكالمات مقسم':'Maqsam Calls'}</div>
+        <div style="font-size:11px;color:var(--text-light)">Call Center</div>
+      </div>
+    </div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Total Leads" data-ar="إجمالي العملاء">${lang==='ar'?'إجمالي العملاء':'Total Leads'}</span><span class="ch-row-val">${fmt(ch.maqsam.leads)}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Total Calls" data-ar="إجمالي المكالمات">${lang==='ar'?'إجمالي المكالمات':'Total Calls'}</span><span class="ch-row-val">${fmt(ch.maqsam.calls)}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Avg Call Duration" data-ar="متوسط مدة المكالمة">${lang==='ar'?'متوسط مدة المكالمة':'Avg Call Duration'}</span><span class="ch-row-val">${dur(ch.maqsam.avg_call_duration_seconds)}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Conversion Rate" data-ar="معدل التحويل">${lang==='ar'?'معدل التحويل':'Conversion Rate'}</span><span class="ch-row-val"><span class="pill ${ch.maqsam.conversion_rate>0?'pill-green':'pill-gray'}">${pct(ch.maqsam.conversion_rate)}</span></span></div>`;
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+const CHART_OPTS = {
+  responsive:true, maintainAspectRatio:false,
+  plugins:{legend:{labels:{color:'#4C5671',font:{family:'Plus Jakarta Sans',size:11},boxWidth:10,padding:10}}},
+};
+
+function renderFunnel(leadsData) {
+  destroyChart('funnel');
+  const f = leadsData.funnel || {};
+  const labels = Object.keys(f).map(l => lang==='ar' ? ({new:'جديد',engaged:'منخرط',converted:'محول',lost:'مفقود',callback:'متابعة'}[l]||l) : l.charAt(0).toUpperCase()+l.slice(1));
+  const values = Object.values(f);
+  const colors = {new:'#0774FF',engaged:'#8B5CF6',converted:'#26CF4B',lost:'#FF0003',callback:'#FF8F3C'};
+  charts.funnel = new Chart(document.getElementById('funnelChart').getContext('2d'), {
+    type:'bar',
+    data:{ labels, datasets:[{ data:values, backgroundColor:Object.keys(f).map(k=>colors[k]||'#0774FF'), borderRadius:6, borderWidth:0 }] },
+    options:{...CHART_OPTS, indexAxis:'y', plugins:{...CHART_OPTS.plugins,legend:{display:false}}, scales:{x:{ticks:{color:'#8D9097'},grid:{color:'#E9EDFF'}}, y:{ticks:{color:'#4C5671',font:{weight:'600'}},grid:{display:false}}}}
   });
 }
 
-// ── Funnel bar ──
-function renderFunnelBar(leads) {
-  if (funnelChart) funnelChart.destroy();
-  const ctx = document.getElementById('funnelBar').getContext('2d');
-  const funnel = leads.funnel || {};
-  const labels = Object.keys(funnel);
-  const values = Object.values(funnel);
-  const colors = { new:'#6366f1', engaged:'#8b5cf6', converted:'#4ade80', lost:'#f87171', callback:'#fbbf24' };
-  funnelChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: labels.map(l => l.charAt(0).toUpperCase()+l.slice(1)),
-      datasets: [{ data: values, backgroundColor: labels.map(l=>colors[l]||'#6366f1'), borderRadius: 6, borderWidth: 0 }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { color: '#64748b', font: { size: 12 } }, grid: { display: false } },
-        y: { ticks: { color: '#64748b', font: { size: 11 } }, grid: { color: '#1e2235' } }
-      }
-    }
+function renderOutcomes(quality) {
+  destroyChart('outcomes');
+  const outcomes = quality?.call_outcomes || {};
+  if (!Object.keys(outcomes).length) {
+    // fallback placeholder
+    document.getElementById('outcomesChart').parentElement.innerHTML = `<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-text" data-en="No call outcome data" data-ar="لا توجد بيانات">${lang==='ar'?'لا توجد بيانات':'No call outcome data'}</div></div>`;
+    return;
+  }
+  const lmap = {completed:lang==='ar'?'مكتمل':'Completed',no_answer:lang==='ar'?'لا رد':'No Answer',busy:lang==='ar'?'مشغول':'Busy'};
+  charts.outcomes = new Chart(document.getElementById('outcomesChart')?.getContext('2d'), {
+    type:'doughnut',
+    data:{ labels:Object.keys(outcomes).map(k=>lmap[k]||k), datasets:[{ data:Object.values(outcomes), backgroundColor:['#26CF4B','#FF0003','#FF8F3C'], borderWidth:0, hoverOffset:6 }] },
+    options:{...CHART_OPTS, plugins:{...CHART_OPTS.plugins}}
   });
 }
 
-// ── Channel detail ──
-function renderChannelDetail(ch) {
-  const el = document.getElementById('channelDetail');
-  const wa = ch.whatsapp, mq = ch.maqsam;
-  el.innerHTML = `
-    <div class="channel-row">
-      <div class="channel-name"><span class="ch-dot ch-wa"></span>WhatsApp</div>
-      <div class="channel-stats">
-        <div class="ch-stat"><div class="ch-stat-val">${fmt(wa.leads)}</div><div class="ch-stat-lbl">Leads</div></div>
-        <div class="ch-stat"><div class="ch-stat-val">${fmt(wa.messages)}</div><div class="ch-stat-lbl">Messages</div></div>
-        <div class="ch-stat"><div class="ch-stat-val">${wa.avg_response_time_min ? fmt(wa.avg_response_time_min,1)+'m' : '—'}</div><div class="ch-stat-lbl">Avg Reply</div></div>
-      </div>
-    </div>
-    <div class="channel-row">
-      <div class="channel-name"><span class="ch-dot ch-mq"></span>Maqsam</div>
-      <div class="channel-stats">
-        <div class="ch-stat"><div class="ch-stat-val">${fmt(mq.leads)}</div><div class="ch-stat-lbl">Leads</div></div>
-        <div class="ch-stat"><div class="ch-stat-val">${fmt(mq.calls)}</div><div class="ch-stat-lbl">Calls</div></div>
-        <div class="ch-stat"><div class="ch-stat-val">${dur(mq.avg_call_duration_seconds)}</div><div class="ch-stat-lbl">Avg Call</div></div>
-      </div>
-    </div>
-  `;
+function renderScoreDist(leadsData) {
+  destroyChart('score');
+  const d = leadsData.score_distribution || {};
+  const vals = [d['0-25']||0, d['26-50']||0, d['51-75']||0, d['76-100']||0];
+  charts.score = new Chart(document.getElementById('scoreChart').getContext('2d'), {
+    type:'bar',
+    data:{ labels:['0–25','26–50','51–75','76–100'], datasets:[{ data:vals, backgroundColor:['#FF0003','#FF8F3C','#0774FF','#26CF4B'], borderRadius:6, borderWidth:0 }] },
+    options:{...CHART_OPTS, plugins:{...CHART_OPTS.plugins,legend:{display:false}}, scales:{x:{ticks:{color:'#8D9097'},grid:{display:false}}, y:{ticks:{color:'#8D9097'},grid:{color:'#E9EDFF'}}}}
+  });
 }
 
-// ── Agents table ──
+function renderSentiment(quality) {
+  destroyChart('sentiment');
+  const s = quality?.sentiment || {};
+  const pos=s.positive||0, neu=s.neutral||0, neg=s.negative||0, tot=pos+neu+neg;
+  if (!tot) {
+    document.getElementById('sentimentChart').parentElement.innerHTML = `<div class="empty-state" style="height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center"><div class="empty-icon">💬</div><div class="empty-text" style="font-size:12px" data-en="Pending webhook data" data-ar="في انتظار بيانات الويب هوك">${lang==='ar'?'في انتظار بيانات':'Pending webhook data'}</div></div>`;
+  } else {
+    charts.sentiment = new Chart(document.getElementById('sentimentChart').getContext('2d'), {
+      type:'doughnut',
+      data:{ labels:[lang==='ar'?'إيجابي':'Positive',lang==='ar'?'محايد':'Neutral',lang==='ar'?'سلبي':'Negative'], datasets:[{ data:[pos,neu,neg], backgroundColor:['#26CF4B','#0774FF','#FF0003'], borderWidth:0, hoverOffset:6 }] },
+      options:{...CHART_OPTS}
+    });
+  }
+  // Treatment gauge
+  const score = quality?.avg_treatment_score || 0;
+  document.getElementById('gaugeNum').textContent = fmt(score,1);
+  const circ = 2 * Math.PI * 40;
+  const fill = (score/100) * circ;
+  document.getElementById('gaugeArc').setAttribute('stroke-dasharray',`${fill} ${circ-fill}`);
+  const gaugeColor = score>=70?'var(--green)':score>=50?'var(--warn)':'var(--red)';
+  document.getElementById('gaugeArc').setAttribute('stroke', gaugeColor);
+}
+
+function renderTopics(quality) {
+  destroyChart('topics');
+  const topicsRaw = quality?.top_topics || {};
+  const riskRaw   = quality?.top_risk_flags || {};
+
+  const tKeys = Object.keys(topicsRaw).slice(0,6);
+  const tVals = tKeys.map(k=>topicsRaw[k]);
+  const topicLabels = {pricing:lang==='ar'?'التسعير':'Pricing',product_fit:lang==='ar'?'ملاءمة المنتج':'Product Fit',competitor:lang==='ar'?'منافس':'Competitor',follow_up:lang==='ar'?'متابعة':'Follow-up',trading_education:lang==='ar'?'تعليم تداول':'Trading Edu',profit_expectations:lang==='ar'?'توقعات ربح':'Profit Expect',greetings:lang==='ar'?'تحيات':'Greetings',account_info:lang==='ar'?'معلومات الحساب':'Account Info'};
+
+  if (!tKeys.length) {
+    document.getElementById('topicsChart').parentElement.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-light);font-size:12px" data-en="No topic data yet" data-ar="لا توجد بيانات بعد">${lang==='ar'?'لا توجد بيانات بعد':'No topic data yet'}</div>`;
+  } else {
+    charts.topics = new Chart(document.getElementById('topicsChart')?.getContext('2d'), {
+      type:'bar', indexAxis:'y',
+      data:{ labels:tKeys.map(k=>topicLabels[k]||k), datasets:[{ data:tVals, backgroundColor:'#0774FF', borderRadius:4, borderWidth:0 }] },
+      options:{...CHART_OPTS, plugins:{...CHART_OPTS.plugins,legend:{display:false}}, scales:{x:{ticks:{color:'#8D9097',font:{size:10}},grid:{color:'#E9EDFF'}}, y:{ticks:{color:'#4C5671',font:{size:10}},grid:{display:false}}}}
+    });
+  }
+
+  const riskKeys = Object.keys(riskRaw).slice(0,5);
+  const riskColors = {unanswered:'var(--blue)',profit_expectations:'var(--warn)',beginner_risk:'var(--red)',stale_callback:'var(--red)',negative_sentiment:'var(--red)',slow_response:'var(--warn)'};
+  const riskLabels  = {unanswered:lang==='ar'?'لا إجابة':'Unanswered',profit_expectations:lang==='ar'?'توقعات مفرطة':'Profit Expectations',beginner_risk:lang==='ar'?'خطر مبتدئ':'Beginner Risk',stale_callback:lang==='ar'?'معاودة متأخرة':'Stale Callback',negative_sentiment:lang==='ar'?'مشاعر سلبية':'Negative Sentiment',slow_response:lang==='ar'?'رد بطيء':'Slow Response'};
+
+  document.getElementById('riskList').innerHTML = riskKeys.length
+    ? riskKeys.map(k=>`<div class="risk-item"><span class="risk-name">${riskLabels[k]||k}</span><span class="risk-count" style="color:${riskColors[k]||'var(--red)'}">${riskRaw[k]}</span></div>`).join('')
+    : `<div style="text-align:center;padding:16px;color:var(--text-light);font-size:12px" data-en="No risk flags detected" data-ar="لم يتم رصد علامات خطر">${lang==='ar'?'لم يتم رصد علامات خطر':'No risk flags detected'}</div>`;
+}
+
+// ── Agents table ──────────────────────────────────────────────────────────────
+let agentSortKey = 'converted', agentSortAsc = false;
 function renderAgents(data) {
-  const agents = data.agents || [];
-  document.getElementById('agentCount').textContent = `(${agents.length} agents)`;
-  const el = document.getElementById('agentsTable');
-  if (!agents.length) { el.innerHTML = '<div class="empty"><div class="icon">👥</div>No agent data</div>'; return; }
-  const rows = agents.map(a => {
-    const sentTot = (a.sentiment.positive||0)+(a.sentiment.neutral||0)+(a.sentiment.negative||0);
-    const sentLabel = sentTot === 0 ? '<span class="pill pill-gray">No data</span>'
-      : a.sentiment.positive > a.sentiment.negative
-        ? `<span class="pill pill-green">Positive</span>`
-        : `<span class="pill pill-red">Negative</span>`;
-    const alertPill = a.open_alerts > 0
-      ? `<span class="pill pill-red">${a.open_alerts}</span>`
-      : `<span class="pill pill-gray">0</span>`;
+  const agents = (data.agents||[]).slice();
+  document.getElementById('agentCount').textContent = `(${agents.length} ${lang==='ar'?'وكيل':'agents'})`;
+
+  if (!agents.length) {
+    document.getElementById('agentTable').innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-text" data-en="No agent data" data-ar="لا توجد بيانات وكلاء">${lang==='ar'?'لا توجد بيانات':'No agent data'}</div></div>`;
+    return;
+  }
+  agents.sort((a,b)=>{
+    let va=a[agentSortKey]||0, vb=b[agentSortKey]||0;
+    return agentSortAsc ? (va>vb?1:-1) : (va<vb?1:-1);
+  });
+
+  const cols = [
+    {key:'agent',       en:'Agent',       ar:'الوكيل',         sort:false},
+    {key:'leads',       en:'Leads',       ar:'العملاء',        sort:true},
+    {key:'converted',   en:'Converted',   ar:'المحولون',       sort:true},
+    {key:'conversion_rate',en:'CVR',      ar:'معدل التحويل',   sort:true},
+    {key:'messages_sent',en:'Msgs Sent',  ar:'الرسائل',        sort:true},
+    {key:'avg_response_time_min',en:'Avg Reply',ar:'متوسط الرد',sort:true},
+    {key:'avg_treatment_score',en:'Treatment',ar:'المعاملة',   sort:true},
+    {key:'sentiment',   en:'Sentiment',   ar:'المشاعر',        sort:false},
+    {key:'open_alerts', en:'Alerts',      ar:'التنبيهات',      sort:true},
+  ];
+
+  const thead = cols.map(c=>`<th ${c.sort?`onclick="sortAgents('${c.key}')" `:''}class="${c.sort?'':'no-sort'}${agentSortKey===c.key?' sorted':''}">${lang==='ar'?c.ar:c.en}${agentSortKey===c.key?(agentSortAsc?' ↑':' ↓'):''}</th>`).join('');
+
+  const rows = agents.map(a=>{
+    const s = a.sentiment||{};
+    const tot = (s.positive||0)+(s.neutral||0)+(s.negative||0);
+    const sentPill = tot===0 ? `<span class="pill pill-gray">${lang==='ar'?'لا بيانات':'No data'}</span>`
+      : (s.positive||0)>(s.negative||0) ? `<span class="pill pill-green">${lang==='ar'?'إيجابي':'Positive'}</span>`
+      : (s.negative||0)>(s.positive||0) ? `<span class="pill pill-red">${lang==='ar'?'سلبي':'Negative'}</span>`
+      : `<span class="pill pill-blue">${lang==='ar'?'محايد':'Neutral'}</span>`;
+
+    const ts = a.avg_treatment_score||0;
+    const tPill = ts>=70?`<span class="pill pill-green">${fmt(ts)}</span>`
+      : ts>=50?`<span class="pill pill-warn">${fmt(ts)}</span>`
+      : `<span class="pill pill-red">${fmt(ts)}</span>`;
+
+    const alBadge = (a.open_alerts||0)>0
+      ? `<span class="alert-badge has-alerts">${a.open_alerts}</span>`
+      : `<span class="alert-badge no-alerts">0</span>`;
+
     return `<tr>
-      <td><span class="agent-name">${a.agent}</span></td>
+      <td class="agent-name-cell">${a.agent||'—'}</td>
       <td>${fmt(a.leads)}</td>
       <td>${fmt(a.converted)}</td>
       <td><span class="pill ${a.conversion_rate>0?'pill-green':'pill-gray'}">${pct(a.conversion_rate)}</span></td>
       <td>${fmt(a.messages_sent)}</td>
-      <td>${a.avg_response_time_min ? fmt(a.avg_response_time_min,1)+'m' : '—'}</td>
-      <td>${a.avg_treatment_score ? fmt(a.avg_treatment_score,1) : '—'}</td>
-      <td>${sentLabel}</td>
-      <td>${alertPill}</td>
+      <td>${a.avg_response_time_min?fmt(a.avg_response_time_min,1)+'m':'—'}</td>
+      <td>${tPill}</td>
+      <td>${sentPill}</td>
+      <td>${alBadge}</td>
     </tr>`;
   }).join('');
-  el.innerHTML = `<table>
-    <thead><tr>
-      <th>Agent</th><th>Leads</th><th>Converted</th><th>CVR</th>
-      <th>Msgs Sent</th><th>Avg Reply</th><th>Treatment</th><th>Sentiment</th><th>Alerts</th>
-    </tr></thead>
-    <tbody>${rows}</tbody>
-  </table>`;
+
+  document.getElementById('agentTable').innerHTML = `<table><thead><tr>${thead}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+function sortAgents(key) {
+  if (agentSortKey===key) agentSortAsc = !agentSortAsc;
+  else { agentSortKey=key; agentSortAsc=false; }
+  // re-render with cached data — triggers re-render on next load
+  loadAll();
 }
 
-// ── Alerts ──
-function renderAlerts(q) {
+// ── Alerts list ───────────────────────────────────────────────────────────────
+function renderAlerts(quality) {
+  const list = (quality?.alerts?.list||[]).filter(a=>!a.resolved);
   const el = document.getElementById('alertsList');
-  const list = (q.alerts && q.alerts.list) || [];
   if (!list.length) {
-    el.innerHTML = '<div class="empty"><div class="icon">✅</div>No open alerts</div>';
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text" data-en="All clear — no open alerts" data-ar="لا توجد تنبيهات مفتوحة">${lang==='ar'?'لا توجد تنبيهات مفتوحة':'All clear — no open alerts'}</div><div class="empty-sub" data-en="System is operating normally" data-ar="النظام يعمل بشكل طبيعي">${lang==='ar'?'النظام يعمل بشكل طبيعي':'System is operating normally'}</div></div>`;
     return;
   }
-  el.innerHTML = list.slice(0, 20).map(a => {
-    const dot = a.severity==='HIGH'?'dot-high':a.severity==='MED'?'dot-med':'dot-low';
-    const badge = a.severity==='HIGH'?'pill-red':a.severity==='MED'?'pill-yellow':'pill-purple';
-    const ts = a.created_at ? new Date(a.created_at).toLocaleDateString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
-    return `<div class="alert-item">
-      <div class="alert-dot ${dot}"></div>
-      <div>
-        <div class="alert-msg">${a.message}</div>
+  const typeLabels = {no_reply:lang==='ar'?'لا رد':'No Reply',weak_engagement:lang==='ar'?'تفاعل ضعيف':'Weak Engagement',negative_sentiment:lang==='ar'?'مشاعر سلبية':'Negative Sentiment',poor_treatment:lang==='ar'?'معاملة سيئة':'Poor Treatment',beginner_risk:lang==='ar'?'خطر مبتدئ':'Beginner Risk',slow_response:lang==='ar'?'رد بطيء':'Slow Response',stale_callback:lang==='ar'?'معاودة متأخرة':'Stale Callback',profit_expectations:lang==='ar'?'توقعات مفرطة':'Profit Expectations'};
+  el.innerHTML = list.slice(0,30).map(a=>`
+    <div class="alert-item ${(a.severity||'').toLowerCase()}">
+      <span class="pill ${a.severity==='HIGH'?'pill-red':a.severity==='MED'?'pill-warn':'pill-blue'}" style="flex-shrink:0;margin-top:1px">${a.severity}</span>
+      <div class="alert-body">
+        <div class="alert-msg">${typeLabels[a.type]||a.type} — ${a.message||''}</div>
         <div class="alert-meta">
-          <span class="pill ${badge}" style="margin-right:6px">${a.severity}</span>
-          ${a.type ? `<span style="color:#475569">${a.type}</span>` : ''}
-          ${a.agent_name ? ` · ${a.agent_name}` : ''}
-          ${ts ? ` · ${ts}` : ''}
+          ${a.agent_name?`<span>👤 ${a.agent_name}</span>`:''}
+          ${a.created_at?`<span>🕐 ${ago(a.created_at)}</span>`:''}
         </div>
       </div>
-    </div>`;
-  }).join('');
+    </div>`).join('');
 }
 
-// ── Sentiment donut ──
-function renderSentiment(q) {
-  if (sentimentChart) sentimentChart.destroy();
-  const ctx = document.getElementById('sentimentChart').getContext('2d');
-  const s = q.sentiment || {};
-  const pos = s.positive||0, neu = s.neutral||0, neg = s.negative||0;
-  const total = pos + neu + neg;
-  if (total === 0) {
-    ctx.canvas.parentElement.innerHTML = `<div class="empty" style="height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center"><div class="icon">💬</div><div>Sentiment data will appear<br>after WhatsApp webhook is connected</div></div>`;
-    return;
-  }
-  sentimentChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: ['Positive', 'Neutral', 'Negative'],
-      datasets: [{ data: [pos, neu, neg], backgroundColor: ['#4ade80','#6366f1','#f87171'], borderWidth: 0, hoverOffset: 6 }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#94a3b8', font: { size: 12 }, boxWidth: 12 } } }
-    }
-  });
-}
-
-// ── Load everything ──
+// ── Load all ──────────────────────────────────────────────────────────────────
 async function loadAll() {
   try {
-    const [overview, channels, leads, agents, quality] = await Promise.all([
-      get('/api/overview'),
-      get('/api/channels'),
-      get('/api/leads'),
-      get('/api/agents'),
-      get('/api/quality'),
+    const [ov, ch, leads, agents, quality] = await Promise.all([
+      get('/api/overview'), get('/api/channels'), get('/api/leads'),
+      get('/api/agents'),   get('/api/quality'),
     ]);
-    renderOverview(overview);
-    renderChannelPie(channels);
-    renderFunnelBar(leads);
-    renderChannelDetail(channels);
+    allLeads = leads.leads || [];
+
+    renderKPI(ov, ch);
+    renderChannels(ch, quality);
+    renderFunnel(leads);
+    renderScoreDist(leads);
+    renderSentiment(quality);
+    renderTopics(quality);
     renderAgents(agents);
     renderAlerts(quality);
-    renderSentiment(quality);
-    document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
-  } catch (e) {
+    renderGeo(allLeads);
+
+    // Call outcomes — build from /api/quality or skip if unavailable
+    if (quality?.call_outcomes) renderOutcomes(quality);
+    else document.getElementById('outcomesChart').parentElement.innerHTML=`<div class="empty-state"><div class="empty-icon">📞</div><div class="empty-text" style="font-size:12px">${lang==='ar'?'لا توجد بيانات نتائج':'No outcome breakdown yet'}</div></div>`;
+
+    document.getElementById('lastUpd').textContent = (lang==='ar'?'تحديث: ':'Updated: ') + new Date().toLocaleTimeString();
+    applyLang();
+  } catch(e) {
     console.error('Load failed:', e);
-    document.getElementById('overviewCards').innerHTML = `<div class="stat-card" style="grid-column:1/-1;color:#f87171">Failed to load data: ${e.message}</div>`;
+    document.getElementById('kpiGrid').innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:32px;color:var(--red)">${lang==='ar'?'فشل التحميل: ':'Load failed: '}${e.message}</div>`;
   }
 }
 
-// Auto-refresh every 5 minutes
-setInterval(loadAll, 5 * 60 * 1000);
+// ── Scroll to top button ───────────────────────────────────────────────────────
+window.addEventListener('scroll', () => {
+  document.getElementById('scrollTop').classList.toggle('visible', window.scrollY > 400);
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+applyLang();
 loadAll();
+setInterval(loadAll, 5 * 60 * 1000);
 </script>
 </body>
 </html>
