@@ -22,7 +22,7 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
 
     leads = supabase.table("leads").select("id,assigned_agent,status,score").execute().data
     messages = supabase.table("messages").select("agent_name,direction,sent_at,lead_id").gte("sent_at", since).execute().data
-    analyses = supabase.table("ai_analysis").select("lead_id,sentiment,treatment_score").execute().data
+    analyses = supabase.table("ai_analysis").select("lead_id,sentiment,treatment_score,source").execute().data
     alerts = supabase.table("alerts").select("agent_name,severity,resolved").eq("resolved", False).execute().data
 
     agent_leads: dict[str, list] = defaultdict(list)
@@ -85,7 +85,9 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
                 if a.get("sentiment"):
                     sentiments.append(a["sentiment"])
                 if a.get("treatment_score") is not None:
-                    treatment_scores.append(a["treatment_score"])
+                    # Skip maqsam entries with score=0 — these are no-answer call artifacts
+                    if not (a.get("source") == "maqsam" and a["treatment_score"] == 0):
+                        treatment_scores.append(a["treatment_score"])
 
         sentiment_summary = {
             "positive": sentiments.count("positive"),

@@ -32,7 +32,8 @@ def overview(range: str = Query("7d", pattern="^(today|7d|30d)$")):
     total_leads = len(leads)
     converted = sum(1 for l in leads if l.get("status") == "converted")
     conversion_rate = round((converted / total_leads * 100) if total_leads else 0, 1)
-    avg_score = round(sum(l.get("score") or 0 for l in leads) / total_leads, 1) if total_leads else 0
+    scored_leads = [l for l in leads if l.get("score") is not None]
+    avg_score = round(sum(l["score"] for l in scored_leads) / len(scored_leads), 1) if scored_leads else 0
 
     inbound = sum(1 for m in messages if m.get("direction") == "inbound")
     outbound = sum(1 for m in messages if m.get("direction") == "outbound")

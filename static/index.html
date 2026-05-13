@@ -369,8 +369,11 @@ const GEO = [
 ];
 function detectCountry(phone) {
   if (!phone) return null;
-  const p = phone.replace(/\s/g,'');
-  // Sort by code length desc to avoid +7 matching before +966
+  let p = phone.replace(/[\s\-().]/g, '');
+  // Normalize 00XX → +XX  and bare digits → +digits
+  if (p.startsWith('00')) p = '+' + p.slice(2);
+  else if (!p.startsWith('+') && /^\d{9,}$/.test(p)) p = '+' + p;
+  // Sort by code length desc so +966 matches before +7
   const sorted = [...GEO].sort((a,b)=>b.code.length-a.code.length);
   for (const g of sorted) {
     if (p.startsWith(g.code)) return g;

@@ -34,16 +34,35 @@ def quality(range: str = Query("7d", pattern="^(today|7d|30d)$")):
 
     analyses = (
         supabase.table("ai_analysis")
-        .select("sentiment,topics,treatment_score,risk_flags,analyzed_at")
+        .select("sentiment,topics,treatment_score,risk_flags,analyzed_at,source")
         .gte("analyzed_at", since)
         .execute()
         .data
     )
 
+    calls = (
+        supabase.table("calls")
+        .select("id,outcome")
+        .gte("called_at", since)
+        .execute()
+        .data
+    ) or []
+
     sentiments = [a["sentiment"] for a in analyses if a.get("sentiment")]
     all_topics = [t for a in analyses for t in (a.get("topics") or [])]
     all_risk_flags = [f for a in analyses for f in (a.get("risk_flags") or [])]
-    treatment_scores = [a["treatment_score"] for a in analyses if a.get("treatment_score") is not None]
+    # Exclude maqsam entries with treatment_score=0 (no-answer call artifacts)
+    treatment_scores = [
+        a["treatment_score"] for a in analyses
+        if a.get("treatment_score") is not None
+        and not (a.get("source") == "maqsam" and a["treatment_score"] == 0)
+    ]
+
+    # Call outcome breakdown for donut chart + answer rate
+    call_outcomes: dict = {}
+    for c in calls:
+        key = (c.get("outcome") or "unknown").lower()
+        call_outcomes[key] = call_outcomes.get(key, 0) + 1
 
     return {
         "range": range,
@@ -65,6 +84,7 @@ def quality(range: str = Query("7d", pattern="^(today|7d|30d)$")):
         "top_topics": dict(Counter(all_topics).most_common(10)),
         "top_risk_flags": dict(Counter(all_risk_flags).most_common(10)),
         "avg_treatment_score": round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else 0,
+        "call_outcomes": call_outcomes,
     }
 
 
