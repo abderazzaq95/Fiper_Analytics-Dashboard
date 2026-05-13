@@ -582,7 +582,7 @@ function renderOutcomes(quality) {
     unknown:     {en:'Unknown',    ar:'غير معروف', color:'#E9EDFF'},
   };
   const keys   = Object.keys(outcomes);
-  const labels = keys.map(k => (OUTCOME_META[k]?.(lang==='ar'?'ar':'en') || k));
+  const labels = keys.map(k => (OUTCOME_META[k]?.[lang==='ar'?'ar':'en'] || k));
   const colors = keys.map(k => OUTCOME_META[k]?.color || '#8D9097');
   charts.outcomes = new Chart(document.getElementById('outcomesChart').getContext('2d'), {
     type:'doughnut',

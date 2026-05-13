@@ -224,6 +224,17 @@ async def run_pipeline():
 # App lifecycle
 # ---------------------------------------------------------------------------
 
+def _ping_self():
+    """Hit /ping so Render free tier doesn't spin down between pipeline runs."""
+    import urllib.request
+    base = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000").rstrip("/")
+    try:
+        urllib.request.urlopen(f"{base}/ping", timeout=10)
+        log.debug("Self-ping OK")
+    except Exception as e:
+        log.warning(f"Self-ping failed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Warm agent cache on startup
@@ -233,8 +244,9 @@ async def lifespan(app: FastAPI):
         log.warning(f"Could not pre-load agent cache: {e}")
 
     scheduler.add_job(run_pipeline, "interval", hours=2, id="pipeline", replace_existing=True)
+    scheduler.add_job(_ping_self, "interval", minutes=10, id="keepalive", replace_existing=True)
     scheduler.start()
-    log.info("Scheduler started — pipeline runs every 2 hours")
+    log.info("Scheduler started — pipeline every 2 h, keep-alive ping every 10 min")
     yield
     scheduler.shutdown()
 
@@ -366,6 +378,11 @@ async def webhook_meta_verify(
 # ---------------------------------------------------------------------------
 # Utility endpoints
 # ---------------------------------------------------------------------------
+
+@app.get("/ping")
+def ping():
+    return {"status": "alive"}
+
 
 @app.get("/health")
 def health():
