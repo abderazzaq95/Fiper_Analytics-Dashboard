@@ -319,10 +319,11 @@ async def main():
         log.info(f"  {len(calls_by_lead)} unique leads with qualifying calls")
 
         # ── 6. Get leads already analyzed (window: last 7 days) ───────────────
-        since_iso = (now - timedelta(days=7)).isoformat()
+        # ai_analysis uses analyzed_at (not created_at); format as UTC Z string
+        since_iso = since_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
         already_done = await sb_fetch_all(c, "ai_analysis",
                                           {"select": "lead_id",
-                                           "created_at": f"gte.{since_iso}"})
+                                           "analyzed_at": f"gte.{since_iso}"})
         done_ids = {a["lead_id"] for a in already_done}
         log.info(f"  {len(done_ids)} leads already analyzed in this window")
 
