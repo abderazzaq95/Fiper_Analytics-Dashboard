@@ -16,12 +16,29 @@ def _since(range_: str) -> str:
     return (now - deltas.get(range_, timedelta(days=7))).isoformat()
 
 
+_NAME_ALIASES: dict[str, str] = {
+    # ManyContacts spelling → canonical (Maqsam spelling wins as it has full name)
+    "firas zabalwi":  "Feras Zabalawi",
+    "feras zabalwi":  "Feras Zabalawi",
+    "alaa al eish":   "Alaa Eddin Alesh",
+    "alaa eddin alesh": "Alaa Eddin Alesh",
+    "bashir":         "Basher Hallak",
+    "basher":         "Basher Hallak",
+    "fatima akel":    "Fatma Aqel",
+    "fatima aqel":    "Fatma Aqel",
+}
+
+
 def _norm(name: str | None) -> str | None:
-    """Normalize agent name: strip whitespace + Title Case.
-    Collapses duplicates caused by casing differences between ManyContacts
-    and Maqsam (e.g. 'Ali rizk' == 'Ali Rizk', 'Ayman delbani' == 'Ayman Delbani').
+    """Normalize agent name: strip + Title Case, then apply alias map.
+    Collapses cross-system duplicates (ManyContacts vs Maqsam spellings).
     """
-    return name.strip().title() if name else None
+    if not name:
+        return None
+    key = name.strip().lower()
+    if key in _NAME_ALIASES:
+        return _NAME_ALIASES[key]
+    return name.strip().title()
 
 
 @router.get("/api/agents")
