@@ -11,7 +11,10 @@ supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_
 
 def _since(range_: str) -> str:
     now = datetime.now(timezone.utc)
-    deltas = {"today": timedelta(days=1), "7d": timedelta(days=7), "30d": timedelta(days=30)}
+    if range_ == "today":
+        # Calendar day — since midnight UTC, not rolling 24h
+        return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    deltas = {"7d": timedelta(days=7), "30d": timedelta(days=30)}
     return (now - deltas.get(range_, timedelta(days=7))).isoformat()
 
 
@@ -31,26 +34,65 @@ def _paginate(build_query) -> list:
 def overview(range: str = Query("7d", pattern="^(today|7d|30d)$")):
     since = _since(range)
 
-    # Leads: paginate — need status + score for conversion rate and avg score
-    leads = _paginate(
-        lambda: supabase.table("leads").select("id,status,score,channel,created_at").gte("created_at", since)
+    # Messages: small dataset
+    messages = (
+        supabase.table("messages").select("id,direction,lead_id,sent_at")
+        .gte("sent_at", since).execute().data or []
     )
 
-    # Messages: small dataset, no pagination needed
-    messages = supabase.table("messages").select("id,direction,sent_at").gte("sent_at", since).execute().data or []
-
-    # Calls: use count="exact" for accurate total; keep first-page sample for avg duration
+    # Calls: paginate for accurate call-based lead count; count="exact" for total
     calls_res = (
         supabase.table("calls")
-        .select("id,duration_seconds,called_at", count="exact")
+        .select("id,duration_seconds,lead_id", count="exact")
         .gte("called_at", since)
         .execute()
     )
-    total_calls = calls_res.count if calls_res.count is not None else len(calls_res.data or [])
-    calls_sample = calls_res.data or []  # first 1000 — used only for avg duration
+    total_calls = calls_res.count if calls_res.count is not None else 0
+    calls_sample = calls_res.data or []  # first 1000 — used for avg duration
+
+    # ── Active leads in period ────────────────────────────────────────────────
+    # Derive from actual activity (calls + messages) rather than created_at.
+    # created_at is unreliable for backfilled leads (all set to insertion date).
+    call_lead_ids: set[str] = set()
+    for batch in [calls_sample]:  # first 1000 covers today/7d well; paginate for 30d
+        call_lead_ids.update(c["lead_id"] for c in batch if c.get("lead_id"))
+
+    # For 30d, paginate all call lead_ids (up to ~40k calls)
+    if range == "30d" and total_calls > 1000:
+        call_lead_ids = set(
+            c["lead_id"]
+            for c in _paginate(
+                lambda: supabase.table("calls")
+                .select("lead_id")
+                .gte("called_at", since)
+                .not_.is_("lead_id", "null")
+            )
+        )
+
+    msg_lead_ids = {m["lead_id"] for m in messages if m.get("lead_id")}
+    active_lead_ids = call_lead_ids | msg_lead_ids
+
+    # Fetch lead details (status, score) for active leads only
+    leads = []
+    if active_lead_ids:
+        id_list = list(active_lead_ids)
+        # Supabase IN clause max ~500 IDs per request; batch if needed
+        for i in range(0, len(id_list), 500):
+            batch_ids = id_list[i:i + 500]
+            chunk = (
+                supabase.table("leads")
+                .select("id,status,score")
+                .in_("id", batch_ids)
+                .execute()
+                .data or []
+            )
+            leads.extend(chunk)
 
     # Alerts: small dataset
-    alerts = supabase.table("alerts").select("id,severity,resolved,created_at").gte("created_at", since).execute().data or []
+    alerts = (
+        supabase.table("alerts").select("id,severity,resolved,created_at")
+        .gte("created_at", since).execute().data or []
+    )
 
     total_leads = len(leads)
     converted = sum(1 for l in leads if l.get("status") == "converted")

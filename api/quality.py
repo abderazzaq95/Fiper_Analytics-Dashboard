@@ -26,7 +26,9 @@ def _paginate(build_query) -> list:
 
 def _since(range_: str) -> str:
     now = datetime.now(timezone.utc)
-    deltas = {"today": timedelta(days=1), "7d": timedelta(days=7), "30d": timedelta(days=30)}
+    if range_ == "today":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    deltas = {"7d": timedelta(days=7), "30d": timedelta(days=30)}
     return (now - deltas.get(range_, timedelta(days=7))).isoformat()
 
 

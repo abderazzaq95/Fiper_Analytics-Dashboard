@@ -11,7 +11,9 @@ supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_
 
 def _since(range_: str) -> str:
     now = datetime.now(timezone.utc)
-    deltas = {"today": timedelta(days=1), "7d": timedelta(days=7), "30d": timedelta(days=30)}
+    if range_ == "today":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    deltas = {"7d": timedelta(days=7), "30d": timedelta(days=30)}
     return (now - deltas.get(range_, timedelta(days=7))).isoformat()
 
 
@@ -127,8 +129,11 @@ def channels_traffic():
 
     # Use count="exact" per period to avoid row cap
     result: dict = {}
-    for label, delta in [("today", timedelta(days=1)), ("2d", timedelta(days=2)), ("7d", timedelta(days=7))]:
-        cutoff = (now - delta).isoformat()
+    for label, delta in [("today", None), ("2d", timedelta(days=2)), ("7d", timedelta(days=7))]:
+        if delta is None:
+            cutoff = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        else:
+            cutoff = (now - delta).isoformat()
         p_leads = [l for l in leads if (l.get("created_at") or "") >= cutoff]
         wa = sum(1 for l in p_leads if l.get("channel") == "whatsapp")
         mq = sum(1 for l in p_leads if l.get("channel") == "maqsam")
