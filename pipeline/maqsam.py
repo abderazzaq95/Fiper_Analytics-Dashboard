@@ -32,20 +32,21 @@ def extract_agent_name(call: dict) -> str | None:
     return None
 
 
-async def fetch_calls(date_from: str, date_to: str, page: int = 1, max_pages: int = 10) -> list[dict]:
+async def fetch_calls(date_from: str, date_to: str) -> list[dict]:
     """
-    Fetch call logs for a date range. date_from/date_to: 'YYYY-MM-DD'.
-    Page size is 100 (fixed by API). max_pages caps total fetched per run.
+    Fetch all call logs for a date range. date_from/date_to: 'YYYY-MM-DD'.
+    Page size is 100 (fixed by Maqsam API). Paginates until the API returns
+    fewer than 100 results (last page) — no hard page cap.
     """
     calls: list[dict] = []
-    current_page = page
+    page = 1
 
     async with httpx.AsyncClient(timeout=30) as client:
-        while current_page <= page + max_pages - 1:
+        while True:
             resp = await client.get(
                 f"{BASE_URL}/calls",
                 headers=HEADERS,
-                params={"date_from": date_from, "date_to": date_to, "page": current_page},
+                params={"date_from": date_from, "date_to": date_to, "page": page},
             )
             resp.raise_for_status()
             batch = _extract_calls(resp.json())
@@ -54,7 +55,7 @@ async def fetch_calls(date_from: str, date_to: str, page: int = 1, max_pages: in
             calls.extend(batch)
             if len(batch) < 100:
                 break
-            current_page += 1
+            page += 1
 
     return calls
 

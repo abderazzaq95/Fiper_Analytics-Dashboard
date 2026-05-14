@@ -16,6 +16,14 @@ def _since(range_: str) -> str:
     return (now - deltas.get(range_, timedelta(days=7))).isoformat()
 
 
+def _norm(name: str | None) -> str | None:
+    """Normalize agent name: strip whitespace + Title Case.
+    Collapses duplicates caused by casing differences between ManyContacts
+    and Maqsam (e.g. 'Ali rizk' == 'Ali Rizk', 'Ayman delbani' == 'Ayman Delbani').
+    """
+    return name.strip().title() if name else None
+
+
 @router.get("/api/agents")
 def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
     since = _since(range)
@@ -26,25 +34,27 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
     analyses = supabase.table("ai_analysis").select("lead_id,sentiment,treatment_score,source").execute().data or []
     alerts   = supabase.table("alerts").select("agent_name,lead_id,severity,resolved").eq("resolved", False).execute().data or []
 
-    # ── Build lookup dicts ────────────────────────────────────────────────────
+    # ── Build lookup dicts (all agent keys normalized to Title Case) ──────────
 
     # leads grouped by assigned_agent (WhatsApp path)
     agent_leads: dict[str, list] = defaultdict(list)
     for l in leads:
-        if l.get("assigned_agent"):
-            agent_leads[l["assigned_agent"]].append(l)
+        ag = _norm(l.get("assigned_agent"))
+        if ag:
+            agent_leads[ag].append(l)
 
     # WhatsApp messages grouped by agent
     agent_msgs: dict[str, list] = defaultdict(list)
     for m in messages:
-        if m.get("agent_name"):
-            agent_msgs[m["agent_name"]].append(m)
+        ag = _norm(m.get("agent_name"))
+        if ag:
+            agent_msgs[ag].append(m)
 
     # Maqsam calls grouped by agent + their lead_ids
     agent_calls: dict[str, list] = defaultdict(list)
     call_lead_ids_by_agent: dict[str, set] = defaultdict(set)
     for c in calls:
-        ag = c.get("agent_name")
+        ag = _norm(c.get("agent_name"))
         if ag:
             agent_calls[ag].append(c)
             if c.get("lead_id"):
@@ -55,29 +65,32 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
     for a in analyses:
         lead_analysis[a["lead_id"]].append(a)
 
-    # Alert attribution: agent_name → list of alerts
-    lead_agent_map = {l["id"]: l.get("assigned_agent") for l in leads}
+    # Alert attribution: normalized agent_name → list of alerts
+    lead_agent_map = {l["id"]: _norm(l.get("assigned_agent")) for l in leads}
 
     # Fallback: find agent from outbound messages or calls when lead has no assigned_agent
     lead_to_agent_fallback: dict[str, str] = {}
     for m in messages:
         lid = m.get("lead_id")
-        if lid and m.get("direction") == "outbound" and m.get("agent_name"):
-            lead_to_agent_fallback.setdefault(lid, m["agent_name"])
+        ag = _norm(m.get("agent_name"))
+        if lid and m.get("direction") == "outbound" and ag:
+            lead_to_agent_fallback.setdefault(lid, ag)
     for c in calls:
         lid = c.get("lead_id")
-        if lid and c.get("agent_name"):
-            lead_to_agent_fallback.setdefault(lid, c["agent_name"])
+        ag = _norm(c.get("agent_name"))
+        if lid and ag:
+            lead_to_agent_fallback.setdefault(lid, ag)
 
     agent_alerts: dict[str, list] = defaultdict(list)
     for a in alerts:
         lid = a.get("lead_id")
         agent = (
-            a.get("agent_name")
+            _norm(a.get("agent_name"))
             or (lead_agent_map.get(lid) if lid else None)
             or (lead_to_agent_fallback.get(lid) if lid else None)
         )
-        if agent:
+        # Skip team-level alerts (weak_engagement) — not attributed to a specific agent
+        if agent and agent.lower() != "team":
             agent_alerts[agent].append(a)
 
     # All agents: WhatsApp (leads + messages) + Maqsam (calls)

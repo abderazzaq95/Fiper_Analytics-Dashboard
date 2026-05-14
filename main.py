@@ -75,10 +75,12 @@ async def ingest_manycontacts(hours_back: int = 2):
     log.info(f"ManyContacts ingestion done — {len(contacts)} contacts synced")
 
 
-async def ingest_maqsam():
+async def ingest_maqsam(days_back: int = 3):
+    """Fetch Maqsam calls for the last N days. Defaults to 3 to cover timezone gaps
+    between pipeline runs and to not miss calls from the previous calendar day."""
     log.info("Maqsam ingestion started")
     now = datetime.now(timezone.utc)
-    date_from = (now - timedelta(hours=2)).strftime("%Y-%m-%d")
+    date_from = (now - timedelta(days=days_back)).strftime("%Y-%m-%d")
     date_to = now.strftime("%Y-%m-%d")
 
     try:
