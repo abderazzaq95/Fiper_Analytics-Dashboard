@@ -62,8 +62,10 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
     leads    = _paginate(lambda: supabase.table("leads").select("id,assigned_agent,status,score"))
     messages = _paginate(lambda: supabase.table("messages").select("agent_name,direction,sent_at,lead_id").gte("sent_at", since))
     calls    = _paginate(lambda: supabase.table("calls").select("agent_name,lead_id,duration_seconds,called_at").gte("called_at", since))
-    analyses = _paginate(lambda: supabase.table("ai_analysis").select("lead_id,sentiment,treatment_score,source,analyzed_at"))
+    analyses = _paginate(lambda: supabase.table("ai_analysis").select("lead_id,sentiment,treatment_score,source,analyzed_at,outcome"))
     alerts   = supabase.table("alerts").select("agent_name,lead_id,severity,resolved").eq("resolved", False).execute().data or []
+    # All-time call→lead→agent map for alert attribution (unfiltered by date)
+    all_calls_for_alerts = _paginate(lambda: supabase.table("calls").select("agent_name,lead_id"))
 
     # ── Build lookup dicts (all agent keys normalized to Title Case) ──────────
 
@@ -99,14 +101,14 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
     # Alert attribution: normalized agent_name → list of alerts
     lead_agent_map = {l["id"]: _norm(l.get("assigned_agent")) for l in leads}
 
-    # Fallback: find agent from outbound messages or calls when lead has no assigned_agent
+    # All-time lead → agent fallback (uses unfiltered calls so old leads are covered)
     lead_to_agent_fallback: dict[str, str] = {}
     for m in messages:
         lid = m.get("lead_id")
         ag = _norm(m.get("agent_name"))
         if lid and m.get("direction") == "outbound" and ag:
             lead_to_agent_fallback.setdefault(lid, ag)
-    for c in calls:
+    for c in all_calls_for_alerts:
         lid = c.get("lead_id")
         ag = _norm(c.get("agent_name"))
         if lid and ag:
@@ -115,13 +117,16 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
     agent_alerts: dict[str, list] = defaultdict(list)
     for a in alerts:
         lid = a.get("lead_id")
+        # 'unknown' / None agent names are meaningless — treat as missing so fallback fires
+        raw_alert_agent = _norm(a.get("agent_name"))
+        if raw_alert_agent and raw_alert_agent.lower() in ("unknown", "team", "n/a"):
+            raw_alert_agent = None
         agent = (
-            _norm(a.get("agent_name"))
+            raw_alert_agent
             or (lead_agent_map.get(lid) if lid else None)
             or (lead_to_agent_fallback.get(lid) if lid else None)
         )
-        # Skip team-level alerts (weak_engagement) — not attributed to a specific agent
-        if agent and agent.lower() != "team":
+        if agent and agent.lower() not in ("team", "unknown"):
             agent_alerts[agent].append(a)
 
     # All agents: WhatsApp (leads + messages) + Maqsam (calls)
@@ -133,10 +138,26 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
         am = agent_msgs.get(agent, [])
         ac = agent_calls.get(agent, [])
 
-        converted = sum(1 for l in al if l.get("status") == "converted")
-        outbound_msgs = [m for m in am if m["direction"] == "outbound"]
+        # ── Lead IDs this agent is responsible for ────────────────────────────
+        # Union of: leads with assigned_agent + all leads from their calls
+        analysis_lead_ids = {l["id"] for l in al} | call_lead_ids_by_agent.get(agent, set())
+        total_leads = len(analysis_lead_ids)
 
-        # Response times (WhatsApp)
+        # Fix 1: converted = leads where ai_analysis.outcome == 'converted'
+        # leads.status never contains 'converted' — outcome lives in ai_analysis
+        converted = sum(
+            1 for lid in analysis_lead_ids
+            if any(a.get("outcome") == "converted" for a in lead_analysis.get(lid, []))
+        )
+
+        outbound_msgs  = [m for m in am if m["direction"] == "outbound"]
+        calls_answered = len([c for c in ac if (c.get("duration_seconds") or 0) > 0])
+
+        # Fix 3: msgs_sent — WhatsApp outbound when available, else calls_handled
+        # Outbound messages are 0 for Maqsam agents (phone-only); show calls instead
+        messages_sent = len(outbound_msgs) if outbound_msgs else calls_answered
+
+        # Response times (WhatsApp inbound → outbound gap)
         by_lead: dict[str, list] = defaultdict(list)
         for m in am:
             by_lead[m["lead_id"]].append(m)
@@ -155,9 +176,6 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
                     last_in = None
 
         # ── Collect ai_analysis for this agent ───────────────────────────────
-        # Lead IDs via: assigned_agent on leads + calls handled in this period
-        analysis_lead_ids = {l["id"] for l in al} | call_lead_ids_by_agent.get(agent, set())
-
         sentiments: list[str] = []
         treatment_scores: list[float] = []
         for lid in analysis_lead_ids:
@@ -192,11 +210,12 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
 
         result.append({
             "agent":                  agent,
-            "leads":                  len(al),
+            "leads":                  total_leads,
             "converted":              converted,
-            "conversion_rate":        round(converted / len(al) * 100, 1) if al else 0,
-            "messages_sent":          len(outbound_msgs),
-            "calls_handled":          len([c for c in ac if (c.get("duration_seconds") or 0) > 0]),
+            # Fix 2: CVR denominator = total_leads (all leads touched, not just assigned)
+            "conversion_rate":        round(converted / total_leads * 100, 1) if total_leads else 0,
+            "messages_sent":          messages_sent,
+            "calls_handled":          calls_answered,
             "avg_response_time_min":  round(sum(response_times) / len(response_times), 1) if response_times else 0,
             "avg_treatment_score":    round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else 0,
             "sentiment":              sentiment_summary,
