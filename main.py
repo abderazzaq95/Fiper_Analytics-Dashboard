@@ -287,6 +287,194 @@ async def webhook_manycontacts_verify():
     return {"status": "ok"}
 
 
+def _ts_to_iso(raw_ts, fallback: str) -> str:
+    if raw_ts:
+        try:
+            return datetime.fromtimestamp(int(raw_ts), tz=timezone.utc).isoformat()
+        except (ValueError, TypeError):
+            pass
+    return fallback
+
+
+def _extract_mc_outbound(body: dict) -> tuple[str | None, str | None, str, str, str | None]:
+    """Parse ManyContacts native outbound webhook payload.
+
+    Returns (phone, agent_name, body_text, sent_at, msg_id).
+    Handles multiple known field-name patterns defensively.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # ── Agent name ───────────────────────────────────────────────────────────
+    agent_obj = body.get("agent") or body.get("user") or {}
+    if isinstance(agent_obj, dict):
+        agent_name = (agent_obj.get("name") or agent_obj.get("fullName")
+                      or agent_obj.get("username") or agent_obj.get("email"))
+    else:
+        agent_name = str(agent_obj) if agent_obj else None
+
+    # ── Contact phone ────────────────────────────────────────────────────────
+    contact_obj = body.get("contact") or {}
+    if isinstance(contact_obj, dict):
+        phone = (contact_obj.get("number") or contact_obj.get("phone")
+                 or contact_obj.get("wa_id") or contact_obj.get("id"))
+    else:
+        phone = str(contact_obj) if contact_obj else None
+    phone = phone or body.get("number") or body.get("phone") or body.get("contact_number")
+
+    # ── Message body ─────────────────────────────────────────────────────────
+    msg_obj = body.get("message") or {}
+    if isinstance(msg_obj, dict):
+        body_text = (msg_obj.get("body") or msg_obj.get("text") or msg_obj.get("content")
+                     or f"[{msg_obj.get('type', 'message')}]")
+    else:
+        body_text = str(msg_obj) if msg_obj else "[outbound]"
+    body_text = body_text or body.get("body") or body.get("text") or "[outbound]"
+
+    # ── Message ID (for dedup) ───────────────────────────────────────────────
+    if isinstance(msg_obj, dict):
+        msg_id = msg_obj.get("id") or msg_obj.get("wamid")
+    else:
+        msg_id = None
+    msg_id = msg_id or body.get("message_id") or body.get("id")
+    # Generate a synthetic stable ID if none provided
+    if not msg_id and phone:
+        ts_raw = body.get("timestamp") or body.get("createdAt") or body.get("created_at")
+        msg_id = f"mc_out_{phone}_{ts_raw or now_iso}"
+
+    # ── Timestamp ────────────────────────────────────────────────────────────
+    ts_raw = (body.get("timestamp") or body.get("createdAt") or body.get("created_at")
+              or body.get("time"))
+    if isinstance(msg_obj, dict):
+        ts_raw = ts_raw or msg_obj.get("timestamp") or msg_obj.get("createdAt")
+    sent_at = _ts_to_iso(ts_raw, now_iso)
+
+    return phone, agent_name, body_text, sent_at, msg_id
+
+
+async def _handle_meta_format(body: dict, now_iso: str) -> None:
+    """Process Meta WhatsApp Cloud API webhook payload."""
+    for entry in (body.get("entry") or []):
+        for change in (entry.get("changes") or []):
+            value = change.get("value") or {}
+
+            statuses = value.get("statuses")
+            if statuses:
+                for s in statuses:
+                    log.info(f"[webhook/mc] status | id={s.get('id')!r} status={s.get('status')!r}")
+                continue
+
+            messages = value.get("messages")
+            if not messages:
+                continue
+
+            contacts_meta = value.get("contacts") or []
+            contact_profile = contacts_meta[0] if contacts_meta else {}
+
+            for msg in messages:
+                msg_id = msg.get("id")
+                phone = msg.get("from", "")
+                name = contact_profile.get("profile", {}).get("name")
+                msg_type = (msg.get("type") or "text").lower()
+
+                if msg_type == "text":
+                    body_text = (msg.get("text") or {}).get("body") or "[text]"
+                elif msg_type in ("image", "audio", "video", "document", "sticker"):
+                    body_text = f"[{msg_type}]"
+                else:
+                    body_text = f"[{msg_type}]"
+
+                sent_at = _ts_to_iso(msg.get("timestamp"), now_iso)
+
+                log.info(
+                    f"[webhook/mc] inbound | from={phone!r} msg_id={msg_id!r} "
+                    f"type={msg_type!r} body={body_text[:80]!r}"
+                )
+
+                if not phone:
+                    continue
+
+                lead_result = supabase.table("leads").upsert({
+                    "wa_contact_id": phone,
+                    "phone": phone,
+                    "name": name or None,
+                    "channel": "whatsapp",
+                    "last_message_at": sent_at,
+                    "updated_at": now_iso,
+                }, on_conflict="wa_contact_id").execute()
+                lead_id = lead_result.data[0]["id"] if lead_result.data else None
+
+                if msg_id and lead_id:
+                    supabase.table("messages").upsert({
+                        "wa_message_id": msg_id,
+                        "lead_id": lead_id,
+                        "direction": "inbound",
+                        "body": body_text,
+                        "sent_at": sent_at,
+                    }, on_conflict="wa_message_id").execute()
+
+                    try:
+                        alert_engine.check_no_reply()
+                    except Exception as e:
+                        log.error(f"no_reply check error: {e}")
+
+
+async def _handle_mc_outbound(body: dict, now_iso: str) -> None:
+    """Process ManyContacts native outbound (agent-reply) webhook payload."""
+    phone, agent_name, body_text, sent_at, msg_id = _extract_mc_outbound(body)
+
+    log.info(
+        f"[webhook/mc] outbound | phone={phone!r} agent={agent_name!r} "
+        f"msg_id={msg_id!r} body={body_text[:80]!r}"
+    )
+
+    if not phone:
+        log.warning(f"[webhook/mc] outbound: no phone found — keys={list(body.keys())}")
+        return
+
+    # Upsert lead (may already exist from inbound messages)
+    lead_result = supabase.table("leads").upsert({
+        "wa_contact_id": phone,
+        "phone": phone,
+        "channel": "whatsapp",
+        "last_message_at": sent_at,
+        "updated_at": now_iso,
+        **({"assigned_agent": agent_name} if agent_name else {}),
+    }, on_conflict="wa_contact_id").execute()
+    lead_id = lead_result.data[0]["id"] if lead_result.data else None
+
+    if not (msg_id and lead_id):
+        return
+
+    # Store outbound message
+    supabase.table("messages").upsert({
+        "wa_message_id": msg_id,
+        "lead_id": lead_id,
+        "direction": "outbound",
+        "body": body_text,
+        "sent_at": sent_at,
+        **({"agent_name": agent_name} if agent_name else {}),
+    }, on_conflict="wa_message_id").execute()
+
+    # Compute and log response time (time since last inbound from this lead)
+    try:
+        last_in = (
+            supabase.table("messages")
+            .select("sent_at")
+            .eq("lead_id", lead_id)
+            .eq("direction", "inbound")
+            .order("sent_at", desc=True)
+            .limit(1)
+            .execute()
+        ).data
+        if last_in:
+            last_in_dt = datetime.fromisoformat(last_in[0]["sent_at"].replace("Z", "+00:00"))
+            out_dt = datetime.fromisoformat(sent_at.replace("Z", "+00:00"))
+            gap_min = round((out_dt - last_in_dt).total_seconds() / 60, 1)
+            log.info(f"[webhook/mc] response_time={gap_min}m for lead {lead_id} by {agent_name!r}")
+    except Exception as e:
+        log.warning(f"[webhook/mc] response_time calc failed: {e}")
+
+
 @app.post("/webhook/manycontacts")
 async def webhook_manycontacts(request: Request):
     raw = await request.body()
@@ -301,96 +489,19 @@ async def webhook_manycontacts(request: Request):
         log.warning(f"[webhook/mc] non-JSON body: {raw[:300]!r}")
         return {"status": "ok"}
 
-    # Meta WhatsApp Cloud API format
+    now_iso = datetime.now(timezone.utc).isoformat()
+
     try:
-        entries = body.get("entry") or []
-        for entry in entries:
-            for change in (entry.get("changes") or []):
-                value = change.get("value") or {}
-
-                # Status updates (delivered, read) — log and skip
-                statuses = value.get("statuses")
-                if statuses:
-                    for s in statuses:
-                        log.info(f"[webhook/mc] status update | id={s.get('id')!r} status={s.get('status')!r}")
-                    continue
-
-                messages = value.get("messages")
-                if not messages:
-                    log.info(f"[webhook/mc] no messages in change value — skipping")
-                    continue
-
-                contacts_meta = value.get("contacts") or []
-                contact_profile = contacts_meta[0] if contacts_meta else {}
-                now_iso = datetime.now(timezone.utc).isoformat()
-
-                for msg in messages:
-                    msg_id = msg.get("id")
-                    phone = msg.get("from", "")
-                    name = contact_profile.get("profile", {}).get("name")
-                    msg_type = (msg.get("type") or "text").lower()
-
-                    # Extract message body based on type
-                    if msg_type == "text":
-                        body_text = (msg.get("text") or {}).get("body") or "[text]"
-                    elif msg_type == "image":
-                        body_text = "[image]"
-                    elif msg_type == "audio":
-                        body_text = "[audio]"
-                    elif msg_type == "video":
-                        body_text = "[video]"
-                    elif msg_type == "document":
-                        body_text = "[document]"
-                    else:
-                        body_text = f"[{msg_type}]"
-
-                    raw_ts = msg.get("timestamp")
-                    if raw_ts:
-                        try:
-                            sent_at = datetime.fromtimestamp(int(raw_ts), tz=timezone.utc).isoformat()
-                        except (ValueError, TypeError):
-                            sent_at = now_iso
-                    else:
-                        sent_at = now_iso
-
-                    log.info(
-                        f"[webhook/mc] inbound msg | from={phone!r} | "
-                        f"msg_id={msg_id!r} | type={msg_type!r} | "
-                        f"body={body_text[:80]!r}"
-                    )
-
-                    # Upsert lead (wa_contact_id = phone number)
-                    wa_contact_id = phone
-                    if wa_contact_id:
-                        lead_result = supabase.table("leads").upsert({
-                            "wa_contact_id": wa_contact_id,
-                            "phone": phone,
-                            "name": name or None,
-                            "channel": "whatsapp",
-                            "last_message_at": sent_at,
-                            "updated_at": now_iso,
-                        }, on_conflict="wa_contact_id").execute()
-                        lead_id = lead_result.data[0]["id"] if lead_result.data else None
-                    else:
-                        lead_id = None
-
-                    # Store message
-                    if msg_id and lead_id:
-                        supabase.table("messages").upsert({
-                            "wa_message_id": msg_id,
-                            "lead_id": lead_id,
-                            "direction": "inbound",
-                            "body": body_text,
-                            "sent_at": sent_at,
-                        }, on_conflict="wa_message_id").execute()
-
-                        try:
-                            alert_engine.check_no_reply()
-                        except Exception as e:
-                            log.error(f"no_reply check error: {e}")
-
+        if "entry" in body:
+            # Meta WhatsApp Cloud API format
+            await _handle_meta_format(body, now_iso)
+        elif "agent" in body or "user" in body:
+            # ManyContacts native outbound (agent reply) format
+            await _handle_mc_outbound(body, now_iso)
+        else:
+            log.info(f"[webhook/mc] unrecognised format — keys={list(body.keys())} preview={str(body)[:200]}")
     except Exception as e:
-        log.error(f"[webhook/mc] parse error: {e}")
+        log.error(f"[webhook/mc] handler error: {e}")
 
     return {"status": "ok"}
 
