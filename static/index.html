@@ -356,6 +356,7 @@ let range = '7d';
 let lang  = localStorage.getItem('fiper_lang') || 'en';
 let charts = {};
 let allLeads = [];
+let _cache = null; // last fetched API data — used to re-render on language toggle
 
 // ── Language ──────────────────────────────────────────────────────────────────
 function applyLang() {
@@ -370,7 +371,8 @@ function applyLang() {
 function toggleLang() {
   lang = lang === 'en' ? 'ar' : 'en';
   localStorage.setItem('fiper_lang', lang);
-  applyLang();
+  if (_cache) renderAll(..._cache);
+  else applyLang();
 }
 
 // ── Range tabs ────────────────────────────────────────────────────────────────
@@ -638,8 +640,13 @@ const TOPIC_LABELS = {
   profit_expectations:{en:'Profit Expectations', ar:'توقعات الربح'},
   greetings:          {en:'Greetings',           ar:'تحيات'},
   account_info:       {en:'Account Info',        ar:'معلومات الحساب'},
-  risk_management:    {en:'Risk Management',     ar:'إدارة المخاطر'},
-  withdrawal:         {en:'Withdrawal',           ar:'السحب'},
+  risk_management:       {en:'Risk Management',     ar:'إدارة المخاطر'},
+  withdrawal:            {en:'Withdrawal',           ar:'السحب'},
+  not_decision_maker:    {en:'Not Decision Maker',   ar:'ليس صانع قرار'},
+  no_answer:             {en:'No Answer',             ar:'لا إجابة'},
+  objection_handling:    {en:'Objection Handling',   ar:'معالجة الاعتراضات'},
+  deposit:               {en:'Deposit',               ar:'الإيداع'},
+  leverage:              {en:'Leverage',              ar:'الرافعة المالية'},
 };
 
 function renderTopics(quality) {
@@ -850,8 +857,8 @@ function renderAgents(data) {
 function sortAgents(key) {
   if (agentSortKey===key) agentSortAsc = !agentSortAsc;
   else { agentSortKey=key; agentSortAsc=false; }
-  // re-render with cached data — triggers re-render on next load
-  loadAll();
+  if (_cache) renderAgents(_cache[3]); // agents is index 3
+  else loadAll();
 }
 
 // ── Alerts list ───────────────────────────────────────────────────────────────
@@ -876,32 +883,36 @@ function renderAlerts(quality) {
     </div>`).join('');
 }
 
+// ── Render all sections from cached data ─────────────────────────────────────
+function renderAll(ov, ch, leads, agents, quality, traffic) {
+  allLeads = leads.leads || [];
+  renderKPI(ov, ch);
+  renderChannels(ch, quality);
+  renderTraffic(traffic);
+  renderFunnel(leads);
+  renderScoreDist(leads);
+  renderOutcomes(quality);
+  renderSentiment(quality);
+  renderTopics(quality);
+  renderQualityRisk(quality, ov);
+  renderLeadsList(leads);
+  renderAgents(agents);
+  renderAlerts(quality);
+  renderGeo(allLeads);
+  document.getElementById('lastUpd').textContent = (lang==='ar'?'تحديث: ':'Updated: ') + new Date().toLocaleTimeString();
+  applyLang();
+}
+
 // ── Load all ──────────────────────────────────────────────────────────────────
 async function loadAll() {
   try {
-    const [ov, ch, leads, agents, quality, traffic] = await Promise.all([
+    const data = await Promise.all([
       get('/api/overview'), get('/api/channels'), get('/api/leads'),
       get('/api/agents'),   get('/api/quality'),
       fetch(`${API}/api/channels/traffic`).then(r=>r.json()),
     ]);
-    allLeads = leads.leads || [];
-
-    renderKPI(ov, ch);
-    renderChannels(ch, quality);
-    renderTraffic(traffic);
-    renderFunnel(leads);
-    renderScoreDist(leads);
-    renderOutcomes(quality);
-    renderSentiment(quality);
-    renderTopics(quality);
-    renderQualityRisk(quality, ov);
-    renderLeadsList(leads);
-    renderAgents(agents);
-    renderAlerts(quality);
-    renderGeo(allLeads);
-
-    document.getElementById('lastUpd').textContent = (lang==='ar'?'تحديث: ':'Updated: ') + new Date().toLocaleTimeString();
-    applyLang();
+    _cache = data;
+    renderAll(...data);
   } catch(e) {
     console.error('Load failed:', e);
     document.getElementById('kpiGrid').innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:32px;color:var(--red)">${lang==='ar'?'فشل التحميل: ':'Load failed: '}${e.message}</div>`;

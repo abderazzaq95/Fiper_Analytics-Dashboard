@@ -1,4 +1,5 @@
 import os
+import json
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
@@ -278,21 +279,30 @@ def dashboard():
 # ManyContacts webhook (real-time messages)
 # ---------------------------------------------------------------------------
 
+@app.get("/webhook/manycontacts")
+async def webhook_manycontacts_verify():
+    """Handles GET verification pings some webhook platforms send before activating."""
+    log.info("[webhook/mc] GET verification hit")
+    return {"status": "ok"}
+
+
 @app.post("/webhook/manycontacts")
 async def webhook_manycontacts(request: Request):
-    """
-    Receives real-time message events from ManyContacts.
-    Expected payload shape (ManyContacts sends these on new messages):
-      {
-        "event": "new_message" | "contact_updated" | ...,
-        "contact": { "id": ..., "number": ..., "name": ..., "last_user_id": ... },
-        "message": { "id": ..., "text": ..., "type": "INBOUND"|"OUTBOUND",
-                     "timestamp": ..., "user_id": ... }
-      }
-    """
+    raw = await request.body()
+    log.info(
+        f"[webhook/mc] POST | size={len(raw)} | "
+        f"ct={request.headers.get('content-type', '')!r} | "
+        f"preview={raw[:200]!r}"
+    )
     try:
-        body = await request.json()
+        body = json.loads(raw)
+        log.info(
+            f"[webhook/mc] event={body.get('event')!r} | "
+            f"contact={body.get('contact', {}).get('id')!r} | "
+            f"msg_id={body.get('message', {}).get('id')!r}"
+        )
     except Exception:
+        log.warning(f"[webhook/mc] non-JSON body: {raw[:300]!r}")
         return {"status": "ok"}
 
     try:
