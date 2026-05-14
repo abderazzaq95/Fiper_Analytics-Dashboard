@@ -30,14 +30,20 @@ scheduler = AsyncIOScheduler()
 # Ingestion pipeline
 # ---------------------------------------------------------------------------
 
-async def ingest_manycontacts(hours_back: int = 2):
-    """Poll ManyContacts for contacts updated in the last N hours, including full message history."""
-    log.info("ManyContacts ingestion started")
+async def ingest_manycontacts(hours_back: int = 2) -> dict:
+    """Poll ManyContacts for contacts updated in the last N hours.
+
+    Saves all messages (inbound + outbound) to the messages table.
+    Returns stats dict: {contacts, messages_total, messages_outbound}.
+    """
+    log.info(f"ManyContacts ingestion started (hours_back={hours_back})")
     now = datetime.now(timezone.utc)
     date_from = (now - timedelta(hours=hours_back)).strftime("%Y-%m-%d")
     date_to = now.strftime("%Y-%m-%d")
+    # Message cutoff: only save messages newer than this (generous window for backfill)
+    msg_cutoff = (now - timedelta(hours=max(hours_back * 4, 48))).isoformat()
+    now_iso = now.isoformat()
 
-    # Refresh agent name cache first
     try:
         await whatsapp.fetch_users()
     except Exception as e:
@@ -47,7 +53,10 @@ async def ingest_manycontacts(hours_back: int = 2):
         contacts = await whatsapp.fetch_contacts(date_from=date_from, date_to=date_to)
     except Exception as e:
         log.error(f"ManyContacts fetch_contacts failed: {e}")
-        return
+        return {"contacts": 0, "messages_total": 0, "messages_outbound": 0}
+
+    msg_total = 0
+    msg_outbound = 0
 
     for contact in contacts:
         mc_id = contact.get("id")
@@ -57,11 +66,9 @@ async def ingest_manycontacts(hours_back: int = 2):
         last_user_id = contact.get("last_user_id")
         agent_name = whatsapp.resolve_agent_name(last_user_id)
         updated_at = contact.get("updatedAt")
-
-        # Map ManyContacts open field to our status
         status = "engaged" if open_status == 1 else "lost"
 
-        supabase.table("leads").upsert({
+        lead_res = supabase.table("leads").upsert({
             "wa_contact_id": mc_id,
             "phone": phone,
             "name": name,
@@ -69,10 +76,68 @@ async def ingest_manycontacts(hours_back: int = 2):
             "status": status,
             "assigned_agent": agent_name,
             "last_message_at": updated_at,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": now_iso,
         }, on_conflict="wa_contact_id").execute()
+        lead_id = lead_res.data[0]["id"] if lead_res.data else None
 
-    log.info(f"ManyContacts ingestion done — {len(contacts)} contacts synced")
+        if not (lead_id and mc_id):
+            continue
+
+        # ── Fetch + save full message history ────────────────────────────────
+        raw_msgs = await whatsapp.fetch_contact_messages(mc_id)
+        msg_rows = []
+        for msg in raw_msgs:
+            sent_at = _parse_mc_ts(
+                msg.get("timestamp") or msg.get("createdAt") or msg.get("created_at")
+            )
+            if not sent_at:
+                continue
+            # Skip messages older than msg_cutoff
+            if sent_at < msg_cutoff:
+                continue
+
+            direction = (
+                "outbound"
+                if (msg.get("type") or msg.get("direction") or "").upper() in ("OUTBOUND", "OUT")
+                else "inbound"
+            )
+            body_text = (
+                msg.get("text") or msg.get("message") or msg.get("body")
+                or msg.get("content") or f"[{(msg.get('type') or 'message').lower()}]"
+            )
+            msg_id = str(msg.get("id") or msg.get("wamid") or "")
+            if not msg_id:
+                continue
+
+            # For outbound: agent comes from message's user_id, fall back to contact's assigned agent
+            msg_agent = None
+            if direction == "outbound":
+                msg_agent = whatsapp.resolve_agent_name(msg.get("user_id")) or agent_name
+                msg_outbound += 1
+
+            row = {
+                "wa_message_id": msg_id,
+                "lead_id": lead_id,
+                "direction": direction,
+                "body": str(body_text)[:2000],
+                "sent_at": sent_at,
+            }
+            if msg_agent:
+                row["agent_name"] = msg_agent
+            msg_rows.append(row)
+            msg_total += 1
+
+        # Upsert in chunks of 100 to stay within Supabase request limits
+        for i in range(0, len(msg_rows), 100):
+            supabase.table("messages").upsert(
+                msg_rows[i:i + 100], on_conflict="wa_message_id"
+            ).execute()
+
+    log.info(
+        f"ManyContacts ingestion done — {len(contacts)} contacts | "
+        f"{msg_total} messages ({msg_outbound} outbound)"
+    )
+    return {"contacts": len(contacts), "messages_total": msg_total, "messages_outbound": msg_outbound}
 
 
 async def ingest_maqsam(days_back: int = 3):
@@ -222,6 +287,19 @@ async def run_pipeline():
         log.error(f"Alert engine error: {e}")
 
 
+async def _ingest_mc_with_stats(hours_back: int) -> dict:
+    """Wrapper that runs ingest_manycontacts and counts pre/post message rows."""
+    before = (supabase.table("messages").select("id", count="exact")
+              .eq("direction", "outbound").execute().count or 0)
+    stats = await ingest_manycontacts(hours_back=hours_back)
+    after = (supabase.table("messages").select("id", count="exact")
+             .eq("direction", "outbound").execute().count or 0)
+    stats["outbound_in_db_before"] = before
+    stats["outbound_in_db_after"] = after
+    stats["new_outbound_saved"] = after - before
+    return stats
+
+
 # ---------------------------------------------------------------------------
 # App lifecycle
 # ---------------------------------------------------------------------------
@@ -294,6 +372,29 @@ def _ts_to_iso(raw_ts, fallback: str) -> str:
         except (ValueError, TypeError):
             pass
     return fallback
+
+
+def _parse_mc_ts(ts) -> str | None:
+    """Convert a ManyContacts message timestamp to ISO string.
+
+    MC sends either a unix int/string or an ISO datetime string.
+    Returns None if unparseable.
+    """
+    if not ts:
+        return None
+    # Try unix timestamp (int or numeric string)
+    try:
+        return datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
+    except (ValueError, TypeError):
+        pass
+    # Try ISO string as-is
+    if isinstance(ts, str):
+        try:
+            datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            return ts
+        except (ValueError, TypeError):
+            pass
+    return None
 
 
 def _is_outbound_mc(body: dict) -> bool:
@@ -599,6 +700,17 @@ def health():
 async def trigger_pipeline():
     asyncio.create_task(run_pipeline())
     return {"status": "pipeline triggered"}
+
+
+@app.post("/api/trigger-ingest-mc")
+async def trigger_ingest_mc(hours_back: int = Query(48)):
+    """Run ManyContacts ingestion right now and return message counts.
+
+    hours_back: how far back to fetch contacts (default 48h).
+    Message cutoff is 4× hours_back (min 48h) so recent conversations are fully captured.
+    """
+    stats = await _ingest_mc_with_stats(hours_back)
+    return {"status": "done", **stats}
 
 
 if __name__ == "__main__":
