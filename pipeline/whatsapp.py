@@ -1,15 +1,19 @@
 """
 ManyContacts API client.
-ManyContacts is Fiper's WhatsApp CRM inbox — it replaced the raw Meta WhatsApp
+ManyContacts is Fiper's WhatsApp CRM inbox — it proxies the Meta WhatsApp
 Business API. Auth header: apikey.
 
-Confirmed working endpoints (probed against live API):
-  GET /v1/contacts          — paginated contact list, supports date_from/date_to
-  GET /v1/contact/{id}      — single contact detail
-  GET /v1/users             — agent list
+Fiper WhatsApp display number: +96897245526
+ManyContacts account: fadad3c2-617e-43fb-85eb-a53e93f44fc2
 
-Messages are NOT available via REST; they arrive through the ManyContacts webhook
-(POST /webhook/manycontacts) in real-time.
+Confirmed working endpoints:
+  GET /v1/contacts                     — paginated contact list, supports date_from/date_to
+  GET /v1/contact/{id}                 — single contact detail
+  GET /v1/contact/{id}/messages        — full conversation history (inbound + outbound)
+  GET /v1/users                        — agent list
+
+Inbound messages also arrive in real-time via the Meta WhatsApp Cloud API webhook
+format at POST /webhook/manycontacts.
 """
 
 import os
@@ -76,3 +80,30 @@ async def fetch_contact(contact_id: str) -> dict:
         )
         resp.raise_for_status()
         return resp.json()
+
+
+async def fetch_contact_messages(contact_id: str) -> list[dict]:
+    """
+    Fetch full conversation history for a contact (both inbound and outbound).
+    Returns a list of message dicts. Empty list on 404 or error.
+
+    Expected response fields per message:
+      id        — unique message ID
+      type      — "INBOUND" | "OUTBOUND"
+      text      — message body text (may also be under 'message' or 'body')
+      timestamp — unix timestamp (int or string) or ISO datetime string
+      user_id   — agent user_id for outbound messages
+    """
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            resp = await client.get(
+                f"{BASE_URL}/contact/{contact_id}/messages",
+                headers=HEADERS,
+            )
+            if resp.status_code == 404:
+                return []
+            resp.raise_for_status()
+            data = resp.json()
+            return data if isinstance(data, list) else []
+        except Exception:
+            return []

@@ -31,7 +31,7 @@ scheduler = AsyncIOScheduler()
 # ---------------------------------------------------------------------------
 
 async def ingest_manycontacts(hours_back: int = 2):
-    """Poll ManyContacts for contacts updated in the last N hours."""
+    """Poll ManyContacts for contacts updated in the last N hours, including full message history."""
     log.info("ManyContacts ingestion started")
     now = datetime.now(timezone.utc)
     date_from = (now - timedelta(hours=hours_back)).strftime("%Y-%m-%d")
@@ -57,7 +57,6 @@ async def ingest_manycontacts(hours_back: int = 2):
         last_user_id = contact.get("last_user_id")
         agent_name = whatsapp.resolve_agent_name(last_user_id)
         updated_at = contact.get("updatedAt")
-        created_at = contact.get("createdAt")
 
         # Map ManyContacts open field to our status
         status = "engaged" if open_status == 1 else "lost"
