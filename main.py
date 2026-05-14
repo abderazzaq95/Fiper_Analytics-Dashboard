@@ -296,6 +296,23 @@ def _ts_to_iso(raw_ts, fallback: str) -> str:
     return fallback
 
 
+def _is_outbound_mc(body: dict) -> bool:
+    """Return True if the payload looks like a ManyContacts outbound/agent message."""
+    if body.get("direction") == "outbound":
+        return True
+    if body.get("type") == "agent_message":
+        return True
+    if body.get("fromMe") is True:
+        return True
+    sender = body.get("sender")
+    if isinstance(sender, dict) and sender.get("type") == "agent":
+        return True
+    # Legacy explicit keys
+    if "agent" in body or "user" in body:
+        return True
+    return False
+
+
 def _extract_mc_outbound(body: dict) -> tuple[str | None, str | None, str, str, str | None]:
     """Parse ManyContacts native outbound webhook payload.
 
@@ -305,21 +322,28 @@ def _extract_mc_outbound(body: dict) -> tuple[str | None, str | None, str, str, 
     now_iso = datetime.now(timezone.utc).isoformat()
 
     # ── Agent name ───────────────────────────────────────────────────────────
-    agent_obj = body.get("agent") or body.get("user") or {}
+    # Try: agent / user / sender (newer MC format)
+    agent_obj = body.get("agent") or body.get("user") or body.get("sender") or {}
     if isinstance(agent_obj, dict):
         agent_name = (agent_obj.get("name") or agent_obj.get("fullName")
-                      or agent_obj.get("username") or agent_obj.get("email"))
+                      or agent_obj.get("displayName") or agent_obj.get("username")
+                      or agent_obj.get("email"))
     else:
         agent_name = str(agent_obj) if agent_obj else None
 
     # ── Contact phone ────────────────────────────────────────────────────────
-    contact_obj = body.get("contact") or {}
+    contact_obj = body.get("contact") or body.get("chat") or {}
     if isinstance(contact_obj, dict):
         phone = (contact_obj.get("number") or contact_obj.get("phone")
-                 or contact_obj.get("wa_id") or contact_obj.get("id"))
+                 or contact_obj.get("wa_id") or contact_obj.get("id")
+                 or contact_obj.get("jid", "").split("@")[0])  # WhatsApp JID format
     else:
         phone = str(contact_obj) if contact_obj else None
-    phone = phone or body.get("number") or body.get("phone") or body.get("contact_number")
+    # Fallback: top-level fields, or strip @s.whatsapp.net from "to" field
+    to_raw = body.get("to") or body.get("recipient") or ""
+    if isinstance(to_raw, str):
+        to_raw = to_raw.split("@")[0]
+    phone = phone or body.get("number") or body.get("phone") or body.get("contact_number") or to_raw or None
 
     # ── Message body ─────────────────────────────────────────────────────────
     msg_obj = body.get("message") or {}
@@ -328,14 +352,14 @@ def _extract_mc_outbound(body: dict) -> tuple[str | None, str | None, str, str, 
                      or f"[{msg_obj.get('type', 'message')}]")
     else:
         body_text = str(msg_obj) if msg_obj else "[outbound]"
-    body_text = body_text or body.get("body") or body.get("text") or "[outbound]"
+    body_text = body_text or body.get("body") or body.get("text") or body.get("content") or "[outbound]"
 
     # ── Message ID (for dedup) ───────────────────────────────────────────────
     if isinstance(msg_obj, dict):
         msg_id = msg_obj.get("id") or msg_obj.get("wamid")
     else:
         msg_id = None
-    msg_id = msg_id or body.get("message_id") or body.get("id")
+    msg_id = msg_id or body.get("message_id") or body.get("id") or body.get("wamid")
     # Generate a synthetic stable ID if none provided
     if not msg_id and phone:
         ts_raw = body.get("timestamp") or body.get("createdAt") or body.get("created_at")
@@ -343,7 +367,7 @@ def _extract_mc_outbound(body: dict) -> tuple[str | None, str | None, str, str, 
 
     # ── Timestamp ────────────────────────────────────────────────────────────
     ts_raw = (body.get("timestamp") or body.get("createdAt") or body.get("created_at")
-              or body.get("time"))
+              or body.get("time") or body.get("sentAt"))
     if isinstance(msg_obj, dict):
         ts_raw = ts_raw or msg_obj.get("timestamp") or msg_obj.get("createdAt")
     sent_at = _ts_to_iso(ts_raw, now_iso)
@@ -478,30 +502,38 @@ async def _handle_mc_outbound(body: dict, now_iso: str) -> None:
 @app.post("/webhook/manycontacts")
 async def webhook_manycontacts(request: Request):
     raw = await request.body()
-    log.info(
-        f"[webhook/mc] POST | size={len(raw)} | "
-        f"ct={request.headers.get('content-type', '')!r} | "
-        f"preview={raw[:300]!r}"
-    )
+    ct = request.headers.get("content-type", "")
+    log.info(f"[webhook/mc] POST | size={len(raw)} | ct={ct!r}")
+
     try:
         body = json.loads(raw)
     except Exception:
-        log.warning(f"[webhook/mc] non-JSON body: {raw[:300]!r}")
+        log.warning(f"[webhook/mc] non-JSON body: {raw[:500]!r}")
         return {"status": "ok"}
+
+    # ── FULL PAYLOAD LOG — remove once outbound format is confirmed ──────────
+    log.info(f"[webhook/mc] FULL_PAYLOAD:\n{json.dumps(body, indent=2, ensure_ascii=False)}")
 
     now_iso = datetime.now(timezone.utc).isoformat()
 
     try:
         if "entry" in body:
-            # Meta WhatsApp Cloud API format
+            log.info("[webhook/mc] detected: Meta Cloud API format")
             await _handle_meta_format(body, now_iso)
-        elif "agent" in body or "user" in body:
-            # ManyContacts native outbound (agent reply) format
+        elif _is_outbound_mc(body):
+            log.info(
+                f"[webhook/mc] detected: outbound/agent format "
+                f"(direction={body.get('direction')!r} fromMe={body.get('fromMe')!r} "
+                f"type={body.get('type')!r} keys={list(body.keys())})"
+            )
             await _handle_mc_outbound(body, now_iso)
         else:
-            log.info(f"[webhook/mc] unrecognised format — keys={list(body.keys())} preview={str(body)[:200]}")
+            log.info(
+                f"[webhook/mc] unrecognised format — keys={list(body.keys())} "
+                f"preview={str(body)[:300]}"
+            )
     except Exception as e:
-        log.error(f"[webhook/mc] handler error: {e}")
+        log.error(f"[webhook/mc] handler error: {e}", exc_info=True)
 
     return {"status": "ok"}
 
