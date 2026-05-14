@@ -65,20 +65,21 @@ def overview(range: str = Query("7d", pattern="^(today|7d|30d)$")):
                 lambda: supabase.table("calls")
                 .select("lead_id")
                 .gte("called_at", since)
-                .not_.is_("lead_id", "null")
             )
+            if c.get("lead_id")
         )
 
     msg_lead_ids = {m["lead_id"] for m in messages if m.get("lead_id")}
     active_lead_ids = call_lead_ids | msg_lead_ids
 
     # Fetch lead details (status, score) for active leads only
+    # Use a while loop — 'range' is shadowed by the function parameter name
     leads = []
     if active_lead_ids:
         id_list = list(active_lead_ids)
-        # Supabase IN clause max ~500 IDs per request; batch if needed
-        for i in range(0, len(id_list), 500):
-            batch_ids = id_list[i:i + 500]
+        idx = 0
+        while idx < len(id_list):
+            batch_ids = id_list[idx:idx + 500]
             chunk = (
                 supabase.table("leads")
                 .select("id,status,score")
@@ -87,6 +88,7 @@ def overview(range: str = Query("7d", pattern="^(today|7d|30d)$")):
                 .data or []
             )
             leads.extend(chunk)
+            idx += 500
 
     # Alerts: small dataset
     alerts = (
