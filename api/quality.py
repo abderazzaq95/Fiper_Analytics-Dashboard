@@ -13,6 +13,17 @@ ai_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 MODEL = "claude-sonnet-4-20250514"
 
 
+def _paginate(build_query) -> list:
+    rows, offset = [], 0
+    while True:
+        batch = build_query().range(offset, offset + 999).execute().data or []
+        rows.extend(batch)
+        if len(batch) < 1000:
+            break
+        offset += 1000
+    return rows
+
+
 def _since(range_: str) -> str:
     now = datetime.now(timezone.utc)
     deltas = {"today": timedelta(days=1), "7d": timedelta(days=7), "30d": timedelta(days=30)}
@@ -58,13 +69,9 @@ def quality(range: str = Query("7d", pattern="^(today|7d|30d)$")):
         .data
     )
 
-    calls = (
-        supabase.table("calls")
-        .select("id,outcome")
-        .gte("called_at", since)
-        .execute()
-        .data
-    ) or []
+    calls = _paginate(
+        lambda: supabase.table("calls").select("id,outcome").gte("called_at", since)
+    )
 
     messages = (
         supabase.table("messages")

@@ -15,13 +15,38 @@ def _since(range_: str) -> str:
     return (now - deltas.get(range_, timedelta(days=7))).isoformat()
 
 
+def _paginate(build_query) -> list:
+    rows, offset = [], 0
+    while True:
+        batch = build_query().range(offset, offset + 999).execute().data or []
+        rows.extend(batch)
+        if len(batch) < 1000:
+            break
+        offset += 1000
+    return rows
+
+
 @router.get("/api/channels")
 def channels(range: str = Query("7d", pattern="^(today|7d|30d)$")):
     since = _since(range)
 
-    leads = supabase.table("leads").select("id,channel,status").execute().data
-    messages = supabase.table("messages").select("lead_id,direction,sent_at").gte("sent_at", since).execute().data
-    calls = supabase.table("calls").select("id,duration_seconds,called_at").gte("called_at", since).execute().data
+    # Leads: paginate — no date filter intentional (show channel totals all-time)
+    leads = _paginate(lambda: supabase.table("leads").select("id,channel,status"))
+
+    # Messages: small dataset
+    messages = (
+        supabase.table("messages").select("lead_id,direction,sent_at").gte("sent_at", since).execute().data or []
+    )
+
+    # Calls: use count="exact" for accurate total; sample for avg duration
+    calls_res = (
+        supabase.table("calls")
+        .select("id,duration_seconds,called_at", count="exact")
+        .gte("called_at", since)
+        .execute()
+    )
+    total_calls_maqsam = calls_res.count if calls_res.count is not None else len(calls_res.data or [])
+    calls_sample = calls_res.data or []
 
     wa_leads = [l for l in leads if l.get("channel") == "whatsapp"]
     mq_leads = [l for l in leads if l.get("channel") == "maqsam"]
@@ -31,7 +56,6 @@ def channels(range: str = Query("7d", pattern="^(today|7d|30d)$")):
 
     lead_ids_by_channel = {
         "whatsapp": {l["id"] for l in wa_leads},
-        "maqsam": {l["id"] for l in mq_leads},
     }
 
     wa_msgs = [m for m in messages if m.get("lead_id") in lead_ids_by_channel["whatsapp"]]
@@ -55,8 +79,8 @@ def channels(range: str = Query("7d", pattern="^(today|7d|30d)$")):
 
     avg_response = round(sum(response_times) / len(response_times), 1) if response_times else 0
     avg_call_dur = round(
-        sum(c.get("duration_seconds") or 0 for c in calls) / len(calls), 1
-    ) if calls else 0
+        sum(c.get("duration_seconds") or 0 for c in calls_sample) / len(calls_sample), 1
+    ) if calls_sample else 0
 
     return {
         "range": range,
@@ -71,7 +95,7 @@ def channels(range: str = Query("7d", pattern="^(today|7d|30d)$")):
             "leads": len(mq_leads),
             "converted": mq_converted,
             "conversion_rate": round(mq_converted / len(mq_leads) * 100, 1) if mq_leads else 0,
-            "calls": len(calls),
+            "calls": total_calls_maqsam,
             "avg_call_duration_seconds": avg_call_dur,
         },
     }
@@ -101,14 +125,7 @@ def channels_traffic():
         .data
     ) or []
 
-    calls = (
-        supabase.table("calls")
-        .select("id,called_at")
-        .gte("called_at", since_7d)
-        .execute()
-        .data
-    ) or []
-
+    # Use count="exact" per period to avoid row cap
     result: dict = {}
     for label, delta in [("today", timedelta(days=1)), ("2d", timedelta(days=2)), ("7d", timedelta(days=7))]:
         cutoff = (now - delta).isoformat()
@@ -116,7 +133,15 @@ def channels_traffic():
         wa = sum(1 for l in p_leads if l.get("channel") == "whatsapp")
         mq = sum(1 for l in p_leads if l.get("channel") == "maqsam")
         msgs = sum(1 for m in messages if (m.get("sent_at") or "") >= cutoff and m.get("lead_id") in wa_lead_ids)
-        cls = sum(1 for c in calls if (c.get("called_at") or "") >= cutoff)
+
+        calls_count_res = (
+            supabase.table("calls")
+            .select("id", count="exact")
+            .gte("called_at", cutoff)
+            .execute()
+        )
+        cls = calls_count_res.count or 0
+
         result[label] = {
             "whatsapp": {"leads": wa, "messages": msgs},
             "maqsam": {"leads": mq, "calls": cls},

@@ -10,6 +10,18 @@ router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 
 
+def _paginate(build_query) -> list:
+    """Exhaust Supabase pagination — calls build_query() fresh each page."""
+    rows, offset = [], 0
+    while True:
+        batch = build_query().range(offset, offset + 999).execute().data or []
+        rows.extend(batch)
+        if len(batch) < 1000:
+            break
+        offset += 1000
+    return rows
+
+
 def _since(range_: str) -> str:
     now = datetime.now(timezone.utc)
     deltas = {"today": timedelta(days=1), "7d": timedelta(days=7), "30d": timedelta(days=30)}
@@ -45,10 +57,10 @@ def _norm(name: str | None) -> str | None:
 def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
     since = _since(range)
 
-    leads    = supabase.table("leads").select("id,assigned_agent,status,score").execute().data or []
-    messages = supabase.table("messages").select("agent_name,direction,sent_at,lead_id").gte("sent_at", since).execute().data or []
-    calls    = supabase.table("calls").select("agent_name,lead_id,duration_seconds,called_at").gte("called_at", since).execute().data or []
-    analyses = supabase.table("ai_analysis").select("lead_id,sentiment,treatment_score,source").execute().data or []
+    leads    = _paginate(lambda: supabase.table("leads").select("id,assigned_agent,status,score"))
+    messages = _paginate(lambda: supabase.table("messages").select("agent_name,direction,sent_at,lead_id").gte("sent_at", since))
+    calls    = _paginate(lambda: supabase.table("calls").select("agent_name,lead_id,duration_seconds,called_at").gte("called_at", since))
+    analyses = _paginate(lambda: supabase.table("ai_analysis").select("lead_id,sentiment,treatment_score,source"))
     alerts   = supabase.table("alerts").select("agent_name,lead_id,severity,resolved").eq("resolved", False).execute().data or []
 
     # ── Build lookup dicts (all agent keys normalized to Title Case) ──────────
