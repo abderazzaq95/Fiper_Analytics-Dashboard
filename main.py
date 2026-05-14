@@ -189,15 +189,30 @@ async def ingest_maqsam(days_back: int = 3):
         phone = call.get("calleeNumber") if direction == "outbound" else call.get("callerNumber")
         ts = call.get("timestamp")
         called_at = datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat() if ts else None
-        call_rows.append({
-            "maqsam_id": str(call.get("id")),
-            "lead_id": phone_to_lead.get(phone or ""),
-            "agent_name": maqsam.extract_agent_name(call),
+
+        # Maqsam built-in AI fields (populated when transcription is enabled on account)
+        summary_obj = call.get("summary") or {}
+        call_summary = summary_obj.get("en") or summary_obj.get("ar")
+        transcription = call.get("callTranscription")  # list of {speaker, text} dicts
+        mq_sentiment  = call.get("sentiment")          # string if Maqsam AI enabled
+
+        row = {
+            "maqsam_id":        str(call.get("id")),
+            "lead_id":          phone_to_lead.get(phone or ""),
+            "agent_name":       maqsam.extract_agent_name(call),
             "duration_seconds": call.get("duration"),
-            "outcome": call.get("state"),
-            "recording_url": call.get("recording_url"),
-            "called_at": called_at,
-        })
+            "outcome":          call.get("state"),
+            "called_at":        called_at,
+        }
+        # Store Maqsam AI data when present
+        if call_summary:
+            row["call_summary"] = call_summary
+        if transcription:
+            row["call_transcript"] = json.dumps(transcription, ensure_ascii=False)
+        if mq_sentiment:
+            row["maqsam_sentiment"] = mq_sentiment
+
+        call_rows.append(row)
 
     chunk_size = 200
     for i in range(0, len(call_rows), chunk_size):
