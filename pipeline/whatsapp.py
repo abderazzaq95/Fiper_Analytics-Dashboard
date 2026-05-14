@@ -85,6 +85,7 @@ async def fetch_contact(contact_id: str) -> dict:
 async def fetch_contact_messages(contact_id: str) -> list[dict]:
     """
     Fetch full conversation history for a contact (both inbound and outbound).
+    Endpoint: GET /v1/contacts/{id}/messages  (note: 'contacts' plural)
     Returns a list of message dicts. Empty list on 404 or error.
 
     Expected response fields per message:
@@ -97,7 +98,7 @@ async def fetch_contact_messages(contact_id: str) -> list[dict]:
     async with httpx.AsyncClient(timeout=30) as client:
         try:
             resp = await client.get(
-                f"{BASE_URL}/contact/{contact_id}/messages",
+                f"{BASE_URL}/contacts/{contact_id}/messages",
                 headers=HEADERS,
             )
             if resp.status_code == 404:
