@@ -190,11 +190,21 @@ async def ingest_maqsam(days_back: int = 3):
         ts = call.get("timestamp")
         called_at = datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat() if ts else None
 
-        # Maqsam built-in AI fields (populated when transcription is enabled on account)
+        # Maqsam built-in AI fields
         summary_obj = call.get("summary") or {}
-        call_summary = summary_obj.get("en") or summary_obj.get("ar")
-        transcription = call.get("callTranscription")  # list of {speaker, text} dicts
-        mq_sentiment  = call.get("sentiment")          # string if Maqsam AI enabled
+        summary_en  = summary_obj.get("en") or ""
+        summary_ar  = summary_obj.get("ar") or ""
+        mq_sentiment = call.get("sentiment")
+        auto_tags    = call.get("callAutoTags") or []
+        # Build formatted transcript text from callTranscription segments
+        raw_transcript = call.get("callTranscription") or []
+        transcript_lines = []
+        for seg in raw_transcript:
+            party   = "Agent" if seg.get("party") == "agent" else "Customer"
+            content = (seg.get("content") or "").strip()
+            if content:
+                transcript_lines.append(f"{party}: {content}")
+        transcript_text = "\n".join(transcript_lines)
 
         row = {
             "maqsam_id":        str(call.get("id")),
@@ -204,13 +214,17 @@ async def ingest_maqsam(days_back: int = 3):
             "outcome":          call.get("state"),
             "called_at":        called_at,
         }
-        # Store Maqsam AI data when present
-        if call_summary:
-            row["call_summary"] = call_summary
-        if transcription:
-            row["call_transcript"] = json.dumps(transcription, ensure_ascii=False)
+        # Store Maqsam AI data when present (new columns added via migration)
+        if transcript_text:
+            row["transcript"] = transcript_text
+        if summary_en:
+            row["summary_en"] = summary_en
+        if summary_ar:
+            row["summary_ar"] = summary_ar
         if mq_sentiment:
             row["maqsam_sentiment"] = mq_sentiment
+        if auto_tags:
+            row["auto_tags"] = auto_tags
 
         call_rows.append(row)
 
