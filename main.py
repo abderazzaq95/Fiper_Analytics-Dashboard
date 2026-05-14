@@ -442,6 +442,38 @@ async def _handle_meta_format(body: dict, now_iso: str) -> None:
                         log.error(f"no_reply check error: {e}")
 
 
+async def _handle_mc_contact_created(body: dict, now_iso: str) -> None:
+    """ManyContacts native event: new contact created.
+
+    Payload: {'event': 'contact_created', 'contact': {id, name, number, last_user_id, open, ...}}
+    Upserts the lead immediately — faster than waiting for the 2h polling cycle.
+    """
+    contact = body.get("contact") or {}
+    mc_id = contact.get("id")
+    phone = contact.get("number") or contact.get("phone")
+    name = contact.get("name")
+    last_user_id = contact.get("last_user_id")
+    agent_name = whatsapp.resolve_agent_name(last_user_id) if last_user_id else None
+    open_status = contact.get("open", 1)
+    status = "engaged" if open_status == 1 else "lost"
+
+    if not phone:
+        log.warning(f"[webhook/mc] contact_created: no phone — contact={contact}")
+        return
+
+    supabase.table("leads").upsert({
+        "wa_contact_id": mc_id or phone,
+        "phone": phone,
+        "name": name or None,
+        "channel": "whatsapp",
+        "status": status,
+        **({"assigned_agent": agent_name} if agent_name else {}),
+        "updated_at": now_iso,
+    }, on_conflict="wa_contact_id").execute()
+
+    log.info(f"[webhook/mc] contact_created | phone={phone!r} name={name!r} agent={agent_name!r}")
+
+
 async def _handle_mc_outbound(body: dict, now_iso: str) -> None:
     """Process ManyContacts native outbound (agent-reply) webhook payload."""
     phone, agent_name, body_text, sent_at, msg_id = _extract_mc_outbound(body)
@@ -511,26 +543,22 @@ async def webhook_manycontacts(request: Request):
         log.warning(f"[webhook/mc] non-JSON body: {raw[:500]!r}")
         return {"status": "ok"}
 
-    # ── FULL PAYLOAD LOG — remove once outbound format is confirmed ──────────
-    log.info(f"[webhook/mc] FULL_PAYLOAD:\n{json.dumps(body, indent=2, ensure_ascii=False)}")
-
     now_iso = datetime.now(timezone.utc).isoformat()
 
     try:
         if "entry" in body:
-            log.info("[webhook/mc] detected: Meta Cloud API format")
+            # Meta WhatsApp Cloud API — inbound messages + delivery statuses
             await _handle_meta_format(body, now_iso)
+        elif body.get("event") == "contact_created":
+            # ManyContacts native: new contact/lead notification
+            await _handle_mc_contact_created(body, now_iso)
         elif _is_outbound_mc(body):
-            log.info(
-                f"[webhook/mc] detected: outbound/agent format "
-                f"(direction={body.get('direction')!r} fromMe={body.get('fromMe')!r} "
-                f"type={body.get('type')!r} keys={list(body.keys())})"
-            )
+            # ManyContacts native outbound (agent reply) — if ever enabled
             await _handle_mc_outbound(body, now_iso)
         else:
             log.info(
-                f"[webhook/mc] unrecognised format — keys={list(body.keys())} "
-                f"preview={str(body)[:300]}"
+                f"[webhook/mc] unrecognised format — event={body.get('event')!r} "
+                f"keys={list(body.keys())} preview={str(body)[:200]}"
             )
     except Exception as e:
         log.error(f"[webhook/mc] handler error: {e}", exc_info=True)
