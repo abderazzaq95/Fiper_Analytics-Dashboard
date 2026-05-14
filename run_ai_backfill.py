@@ -96,20 +96,36 @@ async def sb_fetch_all(c: httpx.AsyncClient, path: str, params: dict) -> list:
     return rows
 
 
-async def mq_fetch_calls(c: httpx.AsyncClient, date_from: str, date_to: str) -> list[dict]:
-    """Fetch all Maqsam calls for a date range (paginated, 100/page)."""
+async def mq_fetch_calls(c: httpx.AsyncClient, since_ts: int) -> list[dict]:
+    """
+    Fetch Maqsam calls newer than since_ts (unix timestamp).
+    Maqsam returns calls newest-first; we stop paginating as soon as we
+    see a call older than the cutoff — the date_from/date_to params are
+    ignored by the API and all historical data is returned otherwise.
+    """
     calls, page = [], 1
     while True:
         r = await c.get(f"{MQ_BASE}/calls", headers=MQ_HEADERS,
-                        params={"date_from": date_from, "date_to": date_to, "page": page},
+                        params={"page": page},
                         timeout=30)
         r.raise_for_status()
         data = r.json()
         batch = data.get("message", []) if isinstance(data, dict) else data
         if not batch:
             break
-        calls.extend(batch)
-        log.info(f"  Maqsam page {page}: {len(batch)} calls (total so far: {len(calls)})")
+
+        # Filter to calls within window; stop when page goes past cutoff
+        in_window = [c2 for c2 in batch if int(c2.get("timestamp") or 0) >= since_ts]
+        calls.extend(in_window)
+        oldest_ts = min((int(c2.get("timestamp") or 0) for c2 in batch), default=0)
+        log.info(f"  Maqsam page {page}: {len(batch)} calls, {len(in_window)} in window "
+                 f"(total so far: {len(calls)})")
+
+        # All calls on this page are older than our window — done
+        if oldest_ts < since_ts:
+            log.info(f"  Reached calls older than cutoff on page {page}, stopping.")
+            break
+
         if len(batch) < 100:
             break
         page += 1
@@ -207,15 +223,16 @@ def call_claude(prompt: str, maqsam_sentiment: str | None) -> dict:
 async def main():
     # ── Date range: last 7 days ───────────────────────────────────────────────
     now = datetime.now(timezone.utc)
-    date_from = (now - timedelta(days=7)).strftime("%Y-%m-%d")
-    date_to   = now.strftime("%Y-%m-%d")
-    log.info(f"Backfill window: {date_from} → {date_to}")
+    since_dt = now - timedelta(days=7)
+    since_ts = int(since_dt.timestamp())
+    log.info(f"Backfill window: {since_dt.strftime('%Y-%m-%d %H:%M UTC')} → now "
+             f"(unix cutoff: {since_ts})")
 
     async with httpx.AsyncClient(timeout=60) as c:
 
         # ── 1. Fetch 7-day calls from Maqsam API ──────────────────────────────
-        log.info("Fetching calls from Maqsam API...")
-        mq_calls = await mq_fetch_calls(c, date_from, date_to)
+        log.info("Fetching calls from Maqsam API (stopping when timestamps go past 7 days)...")
+        mq_calls = await mq_fetch_calls(c, since_ts)
         log.info(f"  {len(mq_calls)} total Maqsam calls in window")
 
         # Filter to calls with duration >= 30s
