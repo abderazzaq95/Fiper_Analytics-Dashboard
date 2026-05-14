@@ -968,13 +968,13 @@ function sparkline(trend) {
 }
 
 // ── Agents table ──────────────────────────────────────────────────────────────
-let agentSortKey = 'converted', agentSortAsc = false;
+let agentSortKey = 'calls_handled', agentSortAsc = false;
 function renderAgents(data) {
   const agents = (data.agents||[]).slice();
   document.getElementById('agentCount').textContent = `(${agents.length} ${lang==='ar'?'وكيل':'agents'})`;
 
   if (!agents.length) {
-    document.getElementById('agentTable').innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-text" data-en="No agent data" data-ar="لا توجد بيانات وكلاء">${lang==='ar'?'لا توجد بيانات':'No agent data'}</div></div>`;
+    document.getElementById('agentTable').innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-text">${lang==='ar'?'لا توجد بيانات':'No agent data'}</div></div>`;
     return;
   }
   agents.sort((a,b)=>{
@@ -983,15 +983,13 @@ function renderAgents(data) {
   });
 
   const cols = [
-    {key:'agent',       en:'Agent',       ar:'الوكيل',         sort:false},
-    {key:'leads',       en:'Leads',       ar:'العملاء',        sort:true},
-    {key:'converted',   en:'Converted',   ar:'المحولون',       sort:true},
-    {key:'conversion_rate',en:'CVR',      ar:'معدل التحويل',   sort:true},
-    {key:'messages_sent',en:'Msgs Sent',  ar:'الرسائل',        sort:true},
-    {key:'avg_response_time_min',en:'Avg Reply',ar:'متوسط الرد',sort:true},
-    {key:'avg_treatment_score',en:'Treatment',ar:'المعاملة',   sort:true},
-    {key:'sentiment',   en:'Sentiment',   ar:'المشاعر',        sort:false},
-    {key:'open_alerts', en:'Alerts',      ar:'التنبيهات',      sort:true},
+    {key:'agent',                   en:'Agent',          ar:'الوكيل',             sort:false},
+    {key:'leads',                   en:'Leads',          ar:'العملاء',            sort:true},
+    {key:'calls_handled',           en:'Calls',          ar:'المكالمات',          sort:true},
+    {key:'avg_call_duration_seconds',en:'Avg Duration',  ar:'متوسط المدة',        sort:true},
+    {key:'avg_treatment_score',     en:'Treatment',      ar:'جودة المعاملة',      sort:true},
+    {key:'sentiment',               en:'Sentiment',      ar:'المشاعر',            sort:false},
+    {key:'open_alerts',             en:'Alerts',         ar:'التنبيهات',          sort:true},
   ];
 
   const thead = cols.map(c=>`<th ${c.sort?`onclick="sortAgents('${c.key}')" `:''}class="${c.sort?'':'no-sort'}${agentSortKey===c.key?' sorted':''}">${lang==='ar'?c.ar:c.en}${agentSortKey===c.key?(agentSortAsc?' ↑':' ↓'):''}</th>`).join('');
@@ -1000,39 +998,42 @@ function renderAgents(data) {
     const s = a.sentiment||{};
     const tot = (s.positive||0)+(s.neutral||0)+(s.negative||0);
     const sentPill = tot===0 ? `<span class="pill pill-gray">${lang==='ar'?'لا بيانات':'No data'}</span>`
-      : (s.positive||0)>(s.negative||0) ? `<span class="pill pill-green">${lang==='ar'?'إيجابي':'Positive'}</span>`
-      : (s.negative||0)>(s.positive||0) ? `<span class="pill pill-red">${lang==='ar'?'سلبي':'Negative'}</span>`
-      : `<span class="pill pill-blue">${lang==='ar'?'محايد':'Neutral'}</span>`;
+      : (s.positive||0)>(s.negative||0) ? `<span class="pill pill-green">${lang==='ar'?'إيجابي':'Positive'} ${s.positive||0}</span>`
+      : (s.negative||0)>(s.positive||0) ? `<span class="pill pill-red">${lang==='ar'?'سلبي':'Negative'} ${s.negative||0}</span>`
+      : `<span class="pill pill-blue">${lang==='ar'?'محايد':'Neutral'} ${s.neutral||0}</span>`;
 
     const ts = a.avg_treatment_score||0;
-    const tPill = ts>=70?`<span class="pill pill-green">${fmt(ts)}</span>`
-      : ts>=50?`<span class="pill pill-warn">${fmt(ts)}</span>`
+    const tPill = ts===0 ? `<span class="pill pill-gray">—</span>`
+      : ts>=70 ? `<span class="pill pill-green">${fmt(ts)}</span>`
+      : ts>=50 ? `<span class="pill pill-warn">${fmt(ts)}</span>`
       : `<span class="pill pill-red">${fmt(ts)}</span>`;
 
     const alBadge = (a.open_alerts||0)>0
       ? `<span class="alert-badge has-alerts">${a.open_alerts}</span>`
       : `<span class="alert-badge no-alerts">0</span>`;
 
-    const rt = a.avg_response_time_min || 0;
-    const rtColor = rt > 0 && rt < 15 ? 'var(--green)' : rt > 0 && rt < 60 ? 'var(--warn)' : rt > 0 ? 'var(--red)' : 'var(--text-light)';
-    const rtDisplay = rt > 0 ? `<span style="font-weight:700;color:${rtColor}">${fmt(rt,1)}m</span>` : '—';
+    const avgDur = a.avg_call_duration_seconds||0;
+    const durDisplay = avgDur>0 ? dur(avgDur) : '—';
 
     const spark = sparkline(a.quality_trend || []);
 
     return `<tr>
       <td><div class="sparkline-cell"><span class="agent-name-cell">${a.agent||'—'}</span>${spark}</div></td>
       <td>${fmt(a.leads)}</td>
-      <td>${fmt(a.converted)}</td>
-      <td><span class="pill ${a.conversion_rate>0?'pill-green':'pill-gray'}">${pct(a.conversion_rate)}</span></td>
-      <td>${fmt(a.messages_sent)}</td>
-      <td>${rtDisplay}</td>
+      <td><strong>${fmt(a.calls_handled||0)}</strong></td>
+      <td>${durDisplay}</td>
       <td>${tPill}</td>
       <td>${sentPill}</td>
       <td>${alBadge}</td>
     </tr>`;
   }).join('');
 
-  document.getElementById('agentTable').innerHTML = `<table><thead><tr>${thead}</tr></thead><tbody>${rows}</tbody></table>`;
+  const crmNote = `<div style="font-size:11px;color:var(--text-light);padding:6px 4px 10px;display:flex;align-items:center;gap:6px">
+    <span style="color:var(--warn)">⚠</span>
+    <span>${lang==='ar'?'تتطلب بيانات التحويل تكاملاً مع نظام CRM — قريباً':'Conversion tracking requires CRM integration — coming soon'}</span>
+  </div>`;
+
+  document.getElementById('agentTable').innerHTML = crmNote + `<table><thead><tr>${thead}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 function sortAgents(key) {
   if (agentSortKey===key) agentSortAsc = !agentSortAsc;

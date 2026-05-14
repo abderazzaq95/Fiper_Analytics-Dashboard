@@ -150,12 +150,12 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
             if any(a.get("outcome") == "converted" for a in lead_analysis.get(lid, []))
         )
 
-        outbound_msgs  = [m for m in am if m["direction"] == "outbound"]
-        calls_answered = len([c for c in ac if (c.get("duration_seconds") or 0) > 0])
-
-        # Fix 3: msgs_sent — WhatsApp outbound when available, else calls_handled
-        # Outbound messages are 0 for Maqsam agents (phone-only); show calls instead
-        messages_sent = len(outbound_msgs) if outbound_msgs else calls_answered
+        completed_calls = [c for c in ac if (c.get("duration_seconds") or 0) > 0]
+        calls_answered  = len(completed_calls)
+        avg_call_dur    = (
+            round(sum(c["duration_seconds"] for c in completed_calls) / calls_answered)
+            if calls_answered else 0
+        )
 
         # Response times (WhatsApp inbound → outbound gap)
         by_lead: dict[str, list] = defaultdict(list)
@@ -209,19 +209,17 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
         )
 
         result.append({
-            "agent":                  agent,
-            "leads":                  total_leads,
-            "converted":              converted,
-            # Fix 2: CVR denominator = total_leads (all leads touched, not just assigned)
-            "conversion_rate":        round(converted / total_leads * 100, 1) if total_leads else 0,
-            "messages_sent":          messages_sent,
-            "calls_handled":          calls_answered,
-            "avg_response_time_min":  round(sum(response_times) / len(response_times), 1) if response_times else 0,
-            "avg_treatment_score":    round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else 0,
-            "sentiment":              sentiment_summary,
-            "open_alerts":            len(agent_alerts.get(agent, [])),
-            "quality_trend":          quality_trend,
+            "agent":                    agent,
+            "leads":                    total_leads,
+            "calls_handled":            calls_answered,
+            "avg_call_duration_seconds": avg_call_dur,
+            "avg_response_time_min":    round(sum(response_times) / len(response_times), 1) if response_times else 0,
+            "avg_treatment_score":      round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else 0,
+            "sentiment":                sentiment_summary,
+            "open_alerts":              len(agent_alerts.get(agent, [])),
+            "quality_trend":            quality_trend,
+            # Conversion data intentionally omitted — requires CRM integration
         })
 
-    result.sort(key=lambda x: x["converted"], reverse=True)
+    result.sort(key=lambda x: x["calls_handled"], reverse=True)
     return {"range": range, "agents": result}
