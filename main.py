@@ -292,80 +292,104 @@ async def webhook_manycontacts(request: Request):
     log.info(
         f"[webhook/mc] POST | size={len(raw)} | "
         f"ct={request.headers.get('content-type', '')!r} | "
-        f"preview={raw[:200]!r}"
+        f"preview={raw[:300]!r}"
     )
     try:
         body = json.loads(raw)
-        log.info(
-            f"[webhook/mc] event={body.get('event')!r} | "
-            f"contact={body.get('contact', {}).get('id')!r} | "
-            f"msg_id={body.get('message', {}).get('id')!r}"
-        )
     except Exception:
         log.warning(f"[webhook/mc] non-JSON body: {raw[:300]!r}")
         return {"status": "ok"}
 
+    # Meta WhatsApp Cloud API format
     try:
-        event = body.get("event", "")
-        contact_data = body.get("contact", {})
-        message_data = body.get("message", {})
+        entries = body.get("entry") or []
+        for entry in entries:
+            for change in (entry.get("changes") or []):
+                value = change.get("value") or {}
 
-        mc_id = contact_data.get("id")
-        phone = contact_data.get("number", "")
-        name = contact_data.get("name")
-        last_user_id = contact_data.get("last_user_id")
-        agent_name = whatsapp.resolve_agent_name(last_user_id)
-        now_iso = datetime.now(timezone.utc).isoformat()
+                # Status updates (delivered, read) — log and skip
+                statuses = value.get("statuses")
+                if statuses:
+                    for s in statuses:
+                        log.info(f"[webhook/mc] status update | id={s.get('id')!r} status={s.get('status')!r}")
+                    continue
 
-        if mc_id:
-            lead_result = supabase.table("leads").upsert({
-                "wa_contact_id": mc_id,
-                "phone": phone,
-                "name": name or None,
-                "channel": "whatsapp",
-                "assigned_agent": agent_name,
-                "last_message_at": now_iso,
-                "updated_at": now_iso,
-            }, on_conflict="wa_contact_id").execute()
-            lead_id = lead_result.data[0]["id"] if lead_result.data else None
-        else:
-            lead_id = None
+                messages = value.get("messages")
+                if not messages:
+                    log.info(f"[webhook/mc] no messages in change value — skipping")
+                    continue
 
-        if message_data and lead_id:
-            msg_id = message_data.get("id")
-            msg_type = message_data.get("type", "INBOUND").upper()
-            direction = "inbound" if msg_type == "INBOUND" else "outbound"
-            body_text = message_data.get("text") or message_data.get("body") or f"[{message_data.get('type', 'media')}]"
-            msg_agent = whatsapp.resolve_agent_name(message_data.get("user_id")) or agent_name
+                contacts_meta = value.get("contacts") or []
+                contact_profile = contacts_meta[0] if contacts_meta else {}
+                now_iso = datetime.now(timezone.utc).isoformat()
 
-            raw_ts = message_data.get("timestamp")
-            if raw_ts:
-                try:
-                    sent_at = datetime.fromtimestamp(int(raw_ts), tz=timezone.utc).isoformat()
-                except (ValueError, TypeError):
-                    sent_at = now_iso
-            else:
-                sent_at = now_iso
+                for msg in messages:
+                    msg_id = msg.get("id")
+                    phone = msg.get("from", "")
+                    name = contact_profile.get("profile", {}).get("name")
+                    msg_type = (msg.get("type") or "text").lower()
 
-            if msg_id:
-                supabase.table("messages").upsert({
-                    "wa_message_id": msg_id,
-                    "lead_id": lead_id,
-                    "direction": direction,
-                    "body": body_text,
-                    "agent_name": msg_agent,
-                    "sent_at": sent_at,
-                }, on_conflict="wa_message_id").execute()
+                    # Extract message body based on type
+                    if msg_type == "text":
+                        body_text = (msg.get("text") or {}).get("body") or "[text]"
+                    elif msg_type == "image":
+                        body_text = "[image]"
+                    elif msg_type == "audio":
+                        body_text = "[audio]"
+                    elif msg_type == "video":
+                        body_text = "[video]"
+                    elif msg_type == "document":
+                        body_text = "[document]"
+                    else:
+                        body_text = f"[{msg_type}]"
 
-            # Immediately check no_reply alert on inbound messages
-            if direction == "inbound":
-                try:
-                    alert_engine.check_no_reply()
-                except Exception as e:
-                    log.error(f"no_reply check error: {e}")
+                    raw_ts = msg.get("timestamp")
+                    if raw_ts:
+                        try:
+                            sent_at = datetime.fromtimestamp(int(raw_ts), tz=timezone.utc).isoformat()
+                        except (ValueError, TypeError):
+                            sent_at = now_iso
+                    else:
+                        sent_at = now_iso
+
+                    log.info(
+                        f"[webhook/mc] inbound msg | from={phone!r} | "
+                        f"msg_id={msg_id!r} | type={msg_type!r} | "
+                        f"body={body_text[:80]!r}"
+                    )
+
+                    # Upsert lead (wa_contact_id = phone number)
+                    wa_contact_id = phone
+                    if wa_contact_id:
+                        lead_result = supabase.table("leads").upsert({
+                            "wa_contact_id": wa_contact_id,
+                            "phone": phone,
+                            "name": name or None,
+                            "channel": "whatsapp",
+                            "last_message_at": sent_at,
+                            "updated_at": now_iso,
+                        }, on_conflict="wa_contact_id").execute()
+                        lead_id = lead_result.data[0]["id"] if lead_result.data else None
+                    else:
+                        lead_id = None
+
+                    # Store message
+                    if msg_id and lead_id:
+                        supabase.table("messages").upsert({
+                            "wa_message_id": msg_id,
+                            "lead_id": lead_id,
+                            "direction": "inbound",
+                            "body": body_text,
+                            "sent_at": sent_at,
+                        }, on_conflict="wa_message_id").execute()
+
+                        try:
+                            alert_engine.check_no_reply()
+                        except Exception as e:
+                            log.error(f"no_reply check error: {e}")
 
     except Exception as e:
-        log.error(f"ManyContacts webhook error: {e}")
+        log.error(f"[webhook/mc] parse error: {e}")
 
     return {"status": "ok"}
 
