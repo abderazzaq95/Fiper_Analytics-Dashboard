@@ -112,6 +112,24 @@ def overview(range: str = Query("7d", pattern="^(today|7d|30d)$")):
     open_alerts = sum(1 for a in alerts if not a.get("resolved"))
     high_alerts = sum(1 for a in alerts if a.get("severity") == "HIGH" and not a.get("resolved"))
 
+    # Hourly distribution: bucket all calls by hour of day (0–23)
+    all_called_at = _paginate(
+        lambda: supabase.table("calls").select("called_at").gte("called_at", since)
+    )
+    hourly_counts = [0] * 24
+    for c in all_called_at:
+        ts = c.get("called_at")
+        if ts:
+            try:
+                dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                hourly_counts[dt.hour] += 1
+            except (ValueError, TypeError):
+                pass
+    hourly_distribution = [
+        {"hour": i, "calls": count}
+        for i, count in enumerate(hourly_counts)
+    ]
+
     return {
         "range": range,
         "leads": {
@@ -133,4 +151,5 @@ def overview(range: str = Query("7d", pattern="^(today|7d|30d)$")):
             "open": open_alerts,
             "high": high_alerts,
         },
+        "hourly_distribution": hourly_distribution,
     }

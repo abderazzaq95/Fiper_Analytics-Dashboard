@@ -199,6 +199,24 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 .topic-bar-track{background:var(--bg);border-radius:4px;height:8px;overflow:hidden}
 .topic-bar-fill{height:100%;border-radius:4px;background:var(--blue-grad);transition:width .8s ease}
 
+/* ── Hot leads ── */
+.hot-lead-row{display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--border);transition:background .15s}
+.hot-lead-row:last-child{border-bottom:none}
+.hot-lead-row:hover{background:#fff5f5}
+.hot-score-badge{width:40px;height:40px;border-radius:50%;background:var(--red);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0}
+.hot-pulse{animation:hotPulse 2s ease-in-out infinite}
+@keyframes hotPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,0,3,.4)}50%{box-shadow:0 0 0 8px rgba(255,0,3,0)}}
+
+/* ── Sparkline ── */
+.sparkline-cell{display:flex;align-items:center;gap:4px}
+
+/* ── Hourly chart ── */
+#hourlySection .card-head{margin-bottom:8px}
+
+/* ── FAQ bars ── */
+.faq-bar-row{margin-bottom:12px}
+.faq-bar-row:last-child{margin-bottom:0}
+
 /* ── Responsive ── */
 @media(max-width:600px){
   header{padding:12px 16px}
@@ -235,6 +253,14 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 
 <main>
 
+  <!-- Hot Leads Alert -->
+  <div id="hotLeadsSection" style="display:none;margin-bottom:24px">
+    <div class="section-label" style="color:var(--red)"><span data-en="🔥 Hot Leads — Immediate Attention" data-ar="🔥 عملاء ساخنون — تحتاج اهتمام فوري">🔥 Hot Leads — Immediate Attention</span></div>
+    <div class="card" style="border:2px solid var(--red);padding:0;overflow:hidden">
+      <div id="hotLeadsList"></div>
+    </div>
+  </div>
+
   <!-- KPI -->
   <div class="section-label"><span data-en="Key Metrics" data-ar="المؤشرات الرئيسية">Key Metrics</span></div>
   <div class="kpi-grid" id="kpiGrid">
@@ -259,6 +285,15 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
       <div class="card-head" style="margin:0" data-en="Channel Traffic — Today / 2d / 7d" data-ar="حركة القنوات — اليوم / يومان / 7 أيام">Channel Traffic — Today / 2d / 7d</div>
     </div>
     <div id="trafficTable"><div class="skeleton" style="height:80px;margin:16px;border-radius:6px"></div></div>
+  </div>
+
+  <!-- Peak Hours -->
+  <div id="hourlySection" style="display:none;margin-top:18px">
+    <div class="section-label"><span data-en="Peak Call Hours" data-ar="ساعات الذروة للمكالمات">Peak Call Hours</span></div>
+    <div class="card">
+      <div class="card-head" data-en="Calls by Hour of Day (UTC)" data-ar="المكالمات حسب ساعة اليوم (UTC)">Calls by Hour of Day (UTC)</div>
+      <div class="chart-wrap" style="height:180px"><canvas id="hourlyChart"></canvas></div>
+    </div>
   </div>
 
   <!-- Charts -->
@@ -304,6 +339,15 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
         <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px" data-en="RISK FLAGS" data-ar="علامات الخطر">RISK FLAGS</div>
         <div id="riskList"><div class="skeleton" style="height:60px"></div></div>
       </div>
+    </div>
+  </div>
+
+  <!-- FAQ Analytics -->
+  <div id="faqSection" style="display:none;margin-top:4px">
+    <div class="section-label"><span data-en="FAQ Analytics — Top Conversation Topics" data-ar="تحليل الأسئلة الشائعة — أهم موضوعات المحادثة">FAQ Analytics — Top Conversation Topics</span></div>
+    <div class="card">
+      <div class="card-head" data-en="Ranked by frequency across all analyzed conversations" data-ar="مرتبة حسب التكرار عبر جميع المحادثات المحللة">Ranked by frequency across all analyzed conversations</div>
+      <div id="faqList"></div>
     </div>
   </div>
 
@@ -409,30 +453,33 @@ function destroyChart(id) {
 
 // ── Geography ─────────────────────────────────────────────────────────────────
 const GEO = [
-  {code:'+968',en:'Oman',      ar:'عمان',           flag:'🇴🇲'},
-  {code:'+964',en:'Iraq',      ar:'العراق',          flag:'🇮🇶'},
-  {code:'+966',en:'Saudi Arabia',ar:'السعودية',      flag:'🇸🇦'},
-  {code:'+971',en:'UAE',       ar:'الإمارات',        flag:'🇦🇪'},
-  {code:'+965',en:'Kuwait',    ar:'الكويت',          flag:'🇰🇼'},
-  {code:'+962',en:'Jordan',    ar:'الأردن',          flag:'🇯🇴'},
-  {code:'+212',en:'Morocco',   ar:'المغرب',          flag:'🇲🇦'},
-  {code:'+90', en:'Turkey',    ar:'تركيا',           flag:'🇹🇷'},
-  {code:'+7',  en:'Russia',    ar:'روسيا',           flag:'🇷🇺'},
-  {code:'+44', en:'UK',        ar:'المملكة المتحدة', flag:'🇬🇧'},
-  {code:'+1',  en:'USA/Canada',ar:'أمريكا/كندا',     flag:'🇺🇸'},
+  {prefix:'968', en:'Oman',         ar:'عمان',           flag:'🇴🇲'},
+  {prefix:'964', en:'Iraq',         ar:'العراق',          flag:'🇮🇶'},
+  {prefix:'9665',en:'Saudi Arabia', ar:'السعودية',        flag:'🇸🇦'},
+  {prefix:'966', en:'Saudi Arabia', ar:'السعودية',        flag:'🇸🇦'},
+  {prefix:'971', en:'UAE',          ar:'الإمارات',        flag:'🇦🇪'},
+  {prefix:'965', en:'Kuwait',       ar:'الكويت',          flag:'🇰🇼'},
+  {prefix:'962', en:'Jordan',       ar:'الأردن',          flag:'🇯🇴'},
+  {prefix:'212', en:'Morocco',      ar:'المغرب',          flag:'🇲🇦'},
+  {prefix:'249', en:'Sudan',        ar:'السودان',         flag:'🇸🇩'},
+  {prefix:'20',  en:'Egypt',        ar:'مصر',             flag:'🇪🇬'},
+  {prefix:'90',  en:'Turkey',       ar:'تركيا',           flag:'🇹🇷'},
+  {prefix:'44',  en:'UK',           ar:'المملكة المتحدة', flag:'🇬🇧'},
+  {prefix:'7',   en:'Russia',       ar:'روسيا',           flag:'🇷🇺'},
+  {prefix:'1',   en:'USA/Canada',   ar:'أمريكا/كندا',     flag:'🇺🇸'},
 ];
 function detectCountry(phone) {
   if (!phone) return null;
-  let p = phone.replace(/[\s\-().]/g, '');
-  // Normalize 00XX → +XX  and bare digits → +digits
-  if (p.startsWith('00')) p = '+' + p.slice(2);
-  else if (!p.startsWith('+') && /^\d{9,}$/.test(p)) p = '+' + p;
-  // Sort by code length desc so +966 matches before +7
-  const sorted = [...GEO].sort((a,b)=>b.code.length-a.code.length);
+  // Strip all non-digits
+  let p = phone.replace(/\D/g, '');
+  // Remove leading 00 (international dialling prefix)
+  if (p.startsWith('00')) p = p.slice(2);
+  // Sort by prefix length desc so '968' matches before '9' etc.
+  const sorted = [...GEO].sort((a,b) => b.prefix.length - a.prefix.length);
   for (const g of sorted) {
-    if (p.startsWith(g.code)) return g;
+    if (p.startsWith(g.prefix)) return g;
   }
-  return {en:'Other',ar:'أخرى',flag:'🌐'};
+  return {en:'Other', ar:'أخرى', flag:'🌐'};
 }
 function renderGeo(leads) {
   const counts = {};
@@ -440,7 +487,7 @@ function renderGeo(leads) {
     const g = detectCountry(l.phone);
     if (!g) continue;
     const key = g.en;
-    counts[key] = counts[key] || { ...g, count: 0 };
+    if (!counts[key]) counts[key] = { en: g.en, ar: g.ar, flag: g.flag, count: 0 };
     counts[key].count++;
   }
   const sorted = Object.values(counts).sort((a,b)=>b.count-a.count);
@@ -831,6 +878,95 @@ function _renderLeadsRows() {
   }
 }
 
+// ── Hot Leads ─────────────────────────────────────────────────────────────────
+function renderHotLeads(leadsData) {
+  const hot = leadsData.hot_leads || [];
+  const section = document.getElementById('hotLeadsSection');
+  if (!hot.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  const chIcon = {whatsapp:'💬', maqsam:'📞'};
+  document.getElementById('hotLeadsList').innerHTML = hot.slice(0, 15).map(l => `
+    <div class="hot-lead-row">
+      <div class="hot-score-badge hot-pulse">${Math.round(l.score)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;color:var(--navy)">${l.name || l.phone || '—'} ${chIcon[l.channel] || ''}</div>
+        <div style="font-size:11px;color:var(--text-light)">${l.phone || ''} · ${lang==='ar'?'الوكيل':'Agent'}: ${l.assigned_agent || '—'}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase">${lang==='ar'?'آخر تواصل':'Last contact'}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--red)">${ago(l.last_message_at || l.created_at)}</div>
+      </div>
+    </div>`).join('');
+}
+
+// ── Peak Hours ────────────────────────────────────────────────────────────────
+function renderHourlyChart(ov) {
+  const section = document.getElementById('hourlySection');
+  const dist = ov.hourly_distribution || [];
+  const hasData = dist.some(d => d.calls > 0);
+  if (!hasData) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  destroyChart('hourly');
+  const maxV = Math.max(...dist.map(d => d.calls)) || 1;
+  const colors = dist.map(d => {
+    const r = d.calls / maxV;
+    return r > 0.7 ? '#0774FF' : r > 0.3 ? '#308BFF' : '#B8D4FF';
+  });
+  charts.hourly = new Chart(document.getElementById('hourlyChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: dist.map(d => d.hour + ':00'),
+      datasets: [{ data: dist.map(d => d.calls), backgroundColor: colors, borderRadius: 4, borderWidth: 0 }]
+    },
+    options: {
+      ...CHART_OPTS,
+      plugins: { ...CHART_OPTS.plugins, legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#8D9097', font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { color: '#8D9097' }, grid: { color: '#E9EDFF' } }
+      }
+    }
+  });
+}
+
+// ── FAQ Analytics ─────────────────────────────────────────────────────────────
+function renderFAQ(quality) {
+  const faq = quality.faq_topics || [];
+  const section = document.getElementById('faqSection');
+  if (!faq.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  const maxCount = faq[0]?.count || 1;
+  document.getElementById('faqList').innerHTML = faq.map(t => `
+    <div class="faq-bar-row">
+      <div class="topic-bar-meta">
+        <span class="topic-bar-label">${lang === 'ar' ? t.ar : t.en}</span>
+        <span class="topic-bar-pct">${fmt(t.count)} · ${t.pct}%</span>
+      </div>
+      <div class="topic-bar-track"><div class="topic-bar-fill" style="width:${Math.round(t.count / maxCount * 100)}%"></div></div>
+    </div>`).join('');
+}
+
+// ── Sparkline ─────────────────────────────────────────────────────────────────
+function sparkline(trend) {
+  if (!trend || trend.length < 2) return '';
+  const W = 60, H = 22, PAD = 2;
+  const scores = trend.map(t => t.avg_score);
+  const min = Math.min(...scores), max = Math.max(...scores);
+  const rng = max - min || 1;
+  const pts = scores.map((s, i) => {
+    const x = PAD + (i / (scores.length - 1)) * (W - PAD * 2);
+    const y = H - PAD - ((s - min) / rng) * (H - PAD * 2);
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  });
+  const last = scores[scores.length - 1];
+  const col = last >= 70 ? '#26CF4B' : last >= 50 ? '#FF8F3C' : '#FF0003';
+  const [lx, ly] = pts[pts.length - 1].split(',');
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="vertical-align:middle;flex-shrink:0">
+    <polyline points="${pts.join(' ')}" fill="none" stroke="${col}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${lx}" cy="${ly}" r="2" fill="${col}"/>
+  </svg>`;
+}
+
 // ── Agents table ──────────────────────────────────────────────────────────────
 let agentSortKey = 'converted', agentSortAsc = false;
 function renderAgents(data) {
@@ -877,13 +1013,19 @@ function renderAgents(data) {
       ? `<span class="alert-badge has-alerts">${a.open_alerts}</span>`
       : `<span class="alert-badge no-alerts">0</span>`;
 
+    const rt = a.avg_response_time_min || 0;
+    const rtColor = rt > 0 && rt < 15 ? 'var(--green)' : rt > 0 && rt < 60 ? 'var(--warn)' : rt > 0 ? 'var(--red)' : 'var(--text-light)';
+    const rtDisplay = rt > 0 ? `<span style="font-weight:700;color:${rtColor}">${fmt(rt,1)}m</span>` : '—';
+
+    const spark = sparkline(a.quality_trend || []);
+
     return `<tr>
-      <td class="agent-name-cell">${a.agent||'—'}</td>
+      <td><div class="sparkline-cell"><span class="agent-name-cell">${a.agent||'—'}</span>${spark}</div></td>
       <td>${fmt(a.leads)}</td>
       <td>${fmt(a.converted)}</td>
       <td><span class="pill ${a.conversion_rate>0?'pill-green':'pill-gray'}">${pct(a.conversion_rate)}</span></td>
       <td>${fmt(a.messages_sent)}</td>
-      <td>${a.avg_response_time_min?fmt(a.avg_response_time_min,1)+'m':'—'}</td>
+      <td>${rtDisplay}</td>
       <td>${tPill}</td>
       <td>${sentPill}</td>
       <td>${alBadge}</td>
@@ -924,14 +1066,17 @@ function renderAlerts(quality) {
 // ── Render all sections from cached data ─────────────────────────────────────
 function renderAll(ov, ch, leads, agents, quality, traffic) {
   allLeads = leads.leads || [];
+  renderHotLeads(leads);
   renderKPI(ov, ch);
   renderChannels(ch, quality);
   renderTraffic(traffic);
+  renderHourlyChart(ov);
   renderFunnel(leads);
   renderScoreDist(leads);
   renderOutcomes(quality);
   renderSentiment(quality);
   renderTopics(quality);
+  renderFAQ(quality);
   renderQualityRisk(quality, ov);
   renderLeadsList(leads);
   renderAgents(agents);

@@ -62,7 +62,7 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
     leads    = _paginate(lambda: supabase.table("leads").select("id,assigned_agent,status,score"))
     messages = _paginate(lambda: supabase.table("messages").select("agent_name,direction,sent_at,lead_id").gte("sent_at", since))
     calls    = _paginate(lambda: supabase.table("calls").select("agent_name,lead_id,duration_seconds,called_at").gte("called_at", since))
-    analyses = _paginate(lambda: supabase.table("ai_analysis").select("lead_id,sentiment,treatment_score,source"))
+    analyses = _paginate(lambda: supabase.table("ai_analysis").select("lead_id,sentiment,treatment_score,source,analyzed_at"))
     alerts   = supabase.table("alerts").select("agent_name,lead_id,severity,resolved").eq("resolved", False).execute().data or []
 
     # ── Build lookup dicts (all agent keys normalized to Title Case) ──────────
@@ -175,6 +175,21 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
             "negative": sentiments.count("negative"),
         }
 
+        # Daily quality trend: last 7 days of treatment scores for this agent
+        seven_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        daily_scores: dict[str, list] = defaultdict(list)
+        for lid in analysis_lead_ids:
+            for a in lead_analysis.get(lid, []):
+                ts = a.get("analyzed_at")
+                score = a.get("treatment_score")
+                if (ts and score is not None and ts >= seven_ago
+                        and not (a.get("source") == "maqsam" and score == 0)):
+                    daily_scores[ts[:10]].append(score)
+        quality_trend = sorted(
+            [{"date": day, "avg_score": round(sum(s) / len(s), 1)} for day, s in daily_scores.items()],
+            key=lambda x: x["date"],
+        )
+
         result.append({
             "agent":                  agent,
             "leads":                  len(al),
@@ -186,6 +201,7 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
             "avg_treatment_score":    round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else 0,
             "sentiment":              sentiment_summary,
             "open_alerts":            len(agent_alerts.get(agent, [])),
+            "quality_trend":          quality_trend,
         })
 
     result.sort(key=lambda x: x["converted"], reverse=True)

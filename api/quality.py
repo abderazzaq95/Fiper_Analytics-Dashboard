@@ -99,6 +99,32 @@ def quality(range: str = Query("7d", pattern="^(today|7d|30d)$")):
         key = (c.get("outcome") or "unknown").lower()
         call_outcomes[key] = call_outcomes.get(key, 0) + 1
 
+    # FAQ topics: structured list with Arabic labels
+    _TOPIC_LABELS: dict[str, dict] = {
+        "pricing":            {"en": "Pricing",             "ar": "التسعير"},
+        "product_fit":        {"en": "Product Fit",         "ar": "ملاءمة المنتج"},
+        "trading_education":  {"en": "Trading Education",   "ar": "تعليم التداول"},
+        "competitor":         {"en": "Competitor",          "ar": "منافس"},
+        "follow_up":          {"en": "Follow Up",           "ar": "متابعة"},
+        "not_decision_maker": {"en": "Not Decision Maker",  "ar": "ليس صاحب القرار"},
+        "account_info":       {"en": "Account Info",        "ar": "معلومات الحساب"},
+        "greetings":          {"en": "Greetings",           "ar": "تحيات"},
+        "profit_expectations":{"en": "Profit Expectations", "ar": "توقعات الربح"},
+        "technical":          {"en": "Technical",           "ar": "تقني"},
+    }
+    topic_counter = Counter(all_topics)
+    total_topic_count = sum(topic_counter.values())
+    faq_topics = [
+        {
+            "key":   topic,
+            "count": count,
+            "pct":   round(count / total_topic_count * 100, 1) if total_topic_count else 0,
+            "en":    _TOPIC_LABELS.get(topic, {}).get("en", topic.replace("_", " ").title()),
+            "ar":    _TOPIC_LABELS.get(topic, {}).get("ar", topic),
+        }
+        for topic, count in topic_counter.most_common(10)
+    ]
+
     return {
         "range": range,
         "alerts": {
@@ -118,6 +144,7 @@ def quality(range: str = Query("7d", pattern="^(today|7d|30d)$")):
         },
         "top_topics": dict(Counter(all_topics).most_common(10)),
         "top_risk_flags": dict(Counter(all_risk_flags).most_common(10)),
+        "faq_topics": faq_topics,
         "avg_treatment_score": round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else 0,
         "call_outcomes": call_outcomes,
         "complaints_count": sentiments.count("negative"),

@@ -58,10 +58,23 @@ def leads(range: str = Query("7d", pattern="^(today|7d|30d)$")):
         else:
             score_buckets["76-100"] += 1
 
+    # Hot leads: score >= 80 AND status = 'new' (all-time, no date filter)
+    hot_leads_raw = (
+        supabase.table("leads")
+        .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at")
+        .gte("score", 80)
+        .eq("status", "new")
+        .order("score", desc=True)
+        .limit(50)
+        .execute()
+        .data
+    ) or []
+
     return {
         "range": range,
         "total": len(all_leads),
         "funnel": status_counts,
         "score_distribution": score_buckets,
         "leads": all_leads,
+        "hot_leads": hot_leads_raw,
     }
