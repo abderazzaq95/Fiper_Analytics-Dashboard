@@ -25,6 +25,29 @@ supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_
 WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "")
 scheduler = AsyncIOScheduler()
 
+_ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+_CLAUDE_MODEL  = "claude-haiku-4-5-20251001"
+
+_AI_SYSTEM_PROMPT = """You are a quality assurance analyst for Fiper, a trading broker in Arabic-speaking markets.
+Analyze the call transcript(s) between Fiper agents and leads.
+Maqsam has already determined the sentiment — do NOT re-evaluate it; it is passed to you separately.
+
+Respond ONLY in valid JSON. No explanation, no markdown, no extra text.
+
+{
+  "score": 0-100,
+  "topics": [],
+  "outcome": "converted"|"callback"|"not_interested"|"no_answer"|"ongoing",
+  "follow_up_needed": true|false,
+  "risk_flags": [],
+  "treatment_score": 0-100,
+  "summary": "Max 2 sentences. Arabic if the conversation is Arabic, English if English."
+}
+
+topics: pricing|product_fit|competitor|technical|follow_up|not_decision_maker|trading_education|account_info|greetings|profit_expectations
+risk_flags: unanswered|profit_expectations|beginner_risk|stale_callback|negative_sentiment|slow_response
+treatment_score: 90-100 excellent, 70-89 good, 50-69 average, 30-49 poor, 0-29 very poor"""
+
 
 # ---------------------------------------------------------------------------
 # Ingestion pipeline
@@ -235,85 +258,252 @@ async def ingest_maqsam(days_back: int = 3):
     log.info(f"Maqsam ingestion done — {len(calls)} calls")
 
 
-async def run_ai_on_new_leads():
-    """Run Claude analysis on leads that have new data but no ai_analysis yet.
+async def _call_claude_async(user_message: str) -> dict:
+    """Call Claude Haiku via async httpx. Returns parsed JSON result dict."""
+    import httpx as _httpx
+    import json as _json
 
-    WhatsApp leads: must have at least one message.
-    Maqsam leads:  must have at least one call with duration > 0 (skip pure no-answers).
-    Uses bulk fetches to avoid N+1 queries.
+    payload = {
+        "model": _CLAUDE_MODEL,
+        "max_tokens": 512,
+        "system": _AI_SYSTEM_PROMPT,
+        "messages": [{"role": "user", "content": user_message}],
+    }
+    async with _httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": _ANTHROPIC_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            content=_json.dumps(payload),
+        )
+        resp.raise_for_status()
+        raw = resp.json()["content"][0]["text"].strip()
+
+    try:
+        return _json.loads(raw)
+    except _json.JSONDecodeError:
+        start, end = raw.find("{"), raw.rfind("}") + 1
+        if start != -1:
+            return _json.loads(raw[start:end])
+        return {"score": 0, "topics": [], "outcome": "ongoing", "follow_up_needed": False,
+                "risk_flags": [], "treatment_score": 50, "summary": "Parse error."}
+
+
+async def run_ai_analysis():
+    """Analyze leads that have no ai_analysis in the last 6 hours.
+
+    Maqsam leads: uses transcript + maqsam_sentiment from calls table when available.
+    WhatsApp leads: uses message bodies as conversation text.
+    Skips leads with no transcript/messages or whose calls are all 0s duration.
     """
     from collections import defaultdict
 
-    # Bulk-fetch everything needed
-    all_leads = supabase.table("leads").select("id,channel").execute().data or []
-    analyzed_ids = {
+    now = datetime.now(timezone.utc)
+    # 7h window (1h buffer over the 6h schedule) to avoid edge-case gaps
+    cutoff_iso = (now - timedelta(hours=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # ── Leads already analyzed in this window ─────────────────────────────────
+    recently_analyzed = {
         r["lead_id"]
-        for r in (supabase.table("ai_analysis").select("lead_id").execute().data or [])
+        for r in (
+            supabase.table("ai_analysis")
+            .select("lead_id")
+            .gte("analyzed_at", cutoff_iso)
+            .execute().data or []
+        )
     }
 
-    all_msgs_raw = supabase.table("messages").select("lead_id,direction,body,sent_at").execute().data or []
-    msgs_by_lead: dict = defaultdict(list)
-    for m in all_msgs_raw:
-        msgs_by_lead[m["lead_id"]].append(m)
+    # ── Leads active in the window ────────────────────────────────────────────
+    all_leads = (
+        supabase.table("leads")
+        .select("id,channel")
+        .gte("last_message_at", cutoff_iso)
+        .execute().data or []
+    )
+    # Also include leads from recent calls
+    recent_call_lead_ids = {
+        r["lead_id"]
+        for r in (
+            supabase.table("calls")
+            .select("lead_id")
+            .gte("called_at", cutoff_iso)
+            .not_.is_("lead_id", "null")
+            .execute().data or []
+        )
+    }
+    all_lead_ids = {l["id"] for l in all_leads} | recent_call_lead_ids
+    to_analyze = all_lead_ids - recently_analyzed
 
-    all_calls_raw = supabase.table("calls").select("lead_id,duration_seconds,outcome,agent_name,called_at").execute().data or []
-    calls_by_lead: dict = defaultdict(list)
+    if not to_analyze:
+        log.info("AI analysis: no new leads to analyze")
+        return
+
+    log.info(f"AI analysis: {len(to_analyze)} leads to analyze")
+
+    # ── Bulk-fetch calls and messages for those leads ─────────────────────────
+    lead_ids_list = list(to_analyze)
+
+    # Fetch in chunks of 500 to stay within PostgREST IN() limits
+    all_calls_raw = []
+    all_msgs_raw  = []
+    chunk = 500
+    for i in range(0, len(lead_ids_list), chunk):
+        batch_ids = lead_ids_list[i:i + chunk]
+        all_calls_raw += (
+            supabase.table("calls")
+            .select("lead_id,duration_seconds,outcome,agent_name,called_at,"
+                    "transcript,maqsam_sentiment,summary_en")
+            .in_("lead_id", batch_ids)
+            .gt("duration_seconds", 0)
+            .execute().data or []
+        )
+        all_msgs_raw += (
+            supabase.table("messages")
+            .select("lead_id,direction,body,sent_at,agent_name")
+            .in_("lead_id", batch_ids)
+            .execute().data or []
+        )
+
+    # Also need channel per lead
+    lead_channel = {}
+    for batch_start in range(0, len(lead_ids_list), chunk):
+        batch_ids = lead_ids_list[batch_start:batch_start + chunk]
+        rows = (
+            supabase.table("leads")
+            .select("id,channel")
+            .in_("id", batch_ids)
+            .execute().data or []
+        )
+        for r in rows:
+            lead_channel[r["id"]] = r.get("channel", "")
+
+    calls_by_lead: dict[str, list] = defaultdict(list)
     for c in all_calls_raw:
         if c.get("lead_id"):
             calls_by_lead[c["lead_id"]].append(c)
 
-    for lead in all_leads:
-        lead_id = lead["id"]
-        channel = lead.get("channel", "")
+    msgs_by_lead: dict[str, list] = defaultdict(list)
+    for m in all_msgs_raw:
+        if m.get("lead_id"):
+            msgs_by_lead[m["lead_id"]].append(m)
 
-        if lead_id in analyzed_ids:
-            continue
+    # ── Analyze each lead ─────────────────────────────────────────────────────
+    ok = err = skipped = 0
 
-        if channel == "whatsapp":
-            msgs = sorted(msgs_by_lead.get(lead_id, []), key=lambda m: m.get("sent_at") or "")
-            if not msgs:
+    for lead_id in to_analyze:
+        channel = lead_channel.get(lead_id, "")
+
+        if channel == "maqsam":
+            calls = sorted(calls_by_lead.get(lead_id, []),
+                           key=lambda c: c.get("called_at") or "")
+            if not calls:
+                skipped += 1
                 continue
-            source = "whatsapp"
-            data_for_claude = msgs
 
-        elif channel == "maqsam":
-            calls = calls_by_lead.get(lead_id, [])
-            # Skip leads where every call was unanswered (duration = 0)
-            if not any((c.get("duration_seconds") or 0) > 0 for c in calls):
+            # Build prompt blocks from transcripts
+            blocks = []
+            sentiments = []
+            for i, call in enumerate(calls, 1):
+                transcript = (call.get("transcript") or "").strip()
+                sentiment  = call.get("maqsam_sentiment")
+                summary_en = call.get("summary_en") or ""
+                if sentiment:
+                    sentiments.append(sentiment)
+
+                block = (
+                    f"=== CALL {i} | Duration: {call.get('duration_seconds')}s | "
+                    f"State: {call.get('outcome')} | Agent: {call.get('agent_name') or 'unknown'} ==="
+                )
+                if sentiment:
+                    block += f"\nMaqsam Sentiment: {sentiment}"
+                if summary_en:
+                    block += f"\nSummary: {summary_en}"
+                if transcript:
+                    # Cap at 3000 chars to control token cost
+                    block += f"\n\nTranscript:\n{transcript[:3000]}"
+                blocks.append(block)
+
+            if not any(call.get("transcript") for call in calls):
+                skipped += 1
                 continue
+
+            mq_sentiment = (
+                "negative" if "negative" in sentiments else
+                "positive" if "positive" in sentiments else
+                (sentiments[0] if sentiments else None)
+            )
+            user_msg = (
+                f"Maqsam sentiment (pre-determined): {mq_sentiment or 'unknown'}\n\n"
+                f"Analyze these calls:\n\n" + "\n\n".join(blocks)
+            )
             source = "maqsam"
-            data_for_claude = [
-                {
-                    "direction": "outbound",
-                    "body": f"Phone call — Duration: {c.get('duration_seconds') or 0}s, "
-                            f"Outcome: {c.get('outcome') or 'unknown'}, "
-                            f"Agent: {c.get('agent_name') or 'agent'}",
-                    "sent_at": c.get("called_at") or "",
-                }
-                for c in sorted(calls, key=lambda c: c.get("called_at") or "")
-            ]
+
+        elif channel == "whatsapp":
+            msgs = sorted(msgs_by_lead.get(lead_id, []),
+                          key=lambda m: m.get("sent_at") or "")
+            if not msgs:
+                skipped += 1
+                continue
+
+            lines = []
+            for m in msgs:
+                role = "Agent" if m.get("direction") == "outbound" else "Customer"
+                lines.append(f"{role}: {(m.get('body') or '')[:300]}")
+            user_msg = (
+                "Maqsam sentiment (pre-determined): unknown\n\n"
+                "Analyze this WhatsApp conversation:\n\n" + "\n".join(lines)
+            )
+            mq_sentiment = None
+            source = "whatsapp"
+
         else:
+            skipped += 1
             continue
 
         try:
-            result = ai_analyzer.analyze_conversation(data_for_claude)
-            supabase.table("ai_analysis").insert({
-                "lead_id": lead_id,
-                "source": source,
-                **result,
-            }).execute()
+            result = await _call_claude_async(user_msg)
+            if mq_sentiment:
+                result["sentiment"] = mq_sentiment
+
+            # Upsert: update if exists, insert if not
+            existing = (
+                supabase.table("ai_analysis")
+                .select("id")
+                .eq("lead_id", lead_id)
+                .execute().data or []
+            )
+            if existing:
+                supabase.table("ai_analysis").update(result).eq("lead_id", lead_id).execute()
+            else:
+                supabase.table("ai_analysis").insert(
+                    {"lead_id": lead_id, "source": source, **result}
+                ).execute()
+
             supabase.table("leads").update({"score": result.get("score")}).eq("id", lead_id).execute()
+            ok += 1
+            await asyncio.sleep(0.3)  # stay within Claude rate limits
+
         except Exception as e:
             log.error(f"AI analysis failed for lead {lead_id}: {e}")
+            err += 1
+
+    log.info(f"AI analysis done — {ok} analyzed, {err} errors, {skipped} skipped (no data)")
 
 
 async def run_pipeline():
-    await asyncio.gather(ingest_manycontacts(), ingest_maqsam())
-    await run_ai_on_new_leads()
+    """Full pipeline: ingest → AI analysis → alerts. Runs every 6 hours."""
+    log.info("Pipeline started")
+    await ingest_manycontacts()
+    await ingest_maqsam()
+    await run_ai_analysis()
     try:
         alert_engine.run_all_checks()
     except Exception as e:
         log.error(f"Alert engine error: {e}")
+    log.info("Pipeline complete")
 
 
 async def _ingest_mc_with_stats(hours_back: int) -> dict:
@@ -352,10 +542,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.warning(f"Could not pre-load agent cache: {e}")
 
-    scheduler.add_job(run_pipeline, "interval", hours=2, id="pipeline", replace_existing=True)
+    scheduler.add_job(run_pipeline, "interval", hours=6, id="pipeline", replace_existing=True)
     scheduler.add_job(_ping_self, "interval", minutes=10, id="keepalive", replace_existing=True)
     scheduler.start()
-    log.info("Scheduler started — pipeline every 2 h, keep-alive ping every 10 min")
+    log.info("Scheduler started — pipeline every 6 h, keep-alive ping every 10 min")
     yield
     scheduler.shutdown()
 
@@ -725,10 +915,12 @@ def health():
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
+@app.post("/api/run-pipeline")
 @app.post("/api/trigger-pipeline")
 async def trigger_pipeline():
+    """Manually trigger the full pipeline (ingest → AI analysis → alerts)."""
     asyncio.create_task(run_pipeline())
-    return {"status": "pipeline triggered"}
+    return {"status": "pipeline triggered", "steps": ["ingest_manycontacts", "ingest_maqsam", "run_ai_analysis", "alert_engine"]}
 
 
 @app.post("/api/trigger-ingest-mc")
