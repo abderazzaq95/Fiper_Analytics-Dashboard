@@ -53,7 +53,7 @@ def check_no_reply():
             gap_min = (now - sent).total_seconds() / 60
             if gap_min > 60:
                 lead = supabase.table("leads").select("assigned_agent").eq("id", lead_id).single().execute().data
-                agent = lead.get("assigned_agent", "unknown") if lead else "unknown"
+                agent = (lead.get("assigned_agent") if lead else None) or "unknown"
                 _upsert_alert(
                     lead_id, agent, "HIGH", "no_reply",
                     f"Inbound message unanswered for {int(gap_min)} minutes."
@@ -94,7 +94,7 @@ def check_negative_sentiment(leads_with_msgs: set):
         if a["lead_id"] not in leads_with_msgs:
             continue
         lead = supabase.table("leads").select("assigned_agent").eq("id", a["lead_id"]).single().execute().data
-        agent = lead.get("assigned_agent", "unknown") if lead else "unknown"
+        agent = (lead.get("assigned_agent") if lead else None) or "unknown"
         _upsert_alert(
             a["lead_id"], agent, "MED", "negative_sentiment",
             "AI analysis detected negative sentiment in this conversation."
@@ -148,7 +148,7 @@ def check_profit_expectations(leads_with_msgs: set):
             continue
         if "profit_expectations" in (a.get("topics") or []):
             lead = supabase.table("leads").select("assigned_agent").eq("id", a["lead_id"]).single().execute().data
-            agent = lead.get("assigned_agent", "unknown") if lead else "unknown"
+            agent = (lead.get("assigned_agent") if lead else None) or "unknown"
             _upsert_alert(
                 a["lead_id"], agent, "MED", "profit_expectations",
                 "Lead raised unrealistic profit expectations. Training flag required."
@@ -196,7 +196,7 @@ def check_poor_treatment(leads_with_msgs: set):
         if a["lead_id"] not in leads_with_msgs:
             continue
         lead = supabase.table("leads").select("assigned_agent").eq("id", a["lead_id"]).single().execute().data
-        agent = lead.get("assigned_agent", "unknown") if lead else "unknown"
+        agent = (lead.get("assigned_agent") if lead else None) or "unknown"
         _upsert_alert(
             a["lead_id"], agent, "MED", "poor_treatment",
             f"Low treatment score ({a['treatment_score']}/100). Agent interaction quality needs review."

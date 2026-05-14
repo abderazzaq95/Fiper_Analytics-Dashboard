@@ -325,6 +325,9 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   </div>
   <div class="card" style="padding:0;overflow:hidden">
     <div id="leadsList"><div class="skeleton" style="height:160px;margin:16px;border-radius:6px"></div></div>
+    <div id="leadsToggleWrap" style="display:none;padding:12px 16px;border-top:1px solid var(--border);text-align:center">
+      <button id="leadsToggleBtn" onclick="toggleLeads()" style="background:none;border:none;color:var(--primary);font-size:13px;font-weight:600;cursor:pointer;padding:4px 12px;border-radius:6px;transition:background .15s" onmouseover="this.style.background='#f0f4ff'" onmouseout="this.style.background='none'"></button>
+    </div>
   </div>
 
   <!-- Agents -->
@@ -758,15 +761,37 @@ function renderQualityRisk(quality, ov) {
 }
 
 // ── Recent Leads ──────────────────────────────────────────────────────────────
+let _leadsExpanded = false;
+let _leadsData = null;
+const LEADS_DEFAULT = 5;
+
 function renderLeadsList(leadsData) {
+  _leadsData = leadsData;
+  _leadsExpanded = false;
+  _renderLeadsRows();
+}
+
+function toggleLeads() {
+  _leadsExpanded = !_leadsExpanded;
+  _renderLeadsRows();
+}
+
+function _renderLeadsRows() {
+  const leadsData = _leadsData;
+  if (!leadsData) return;
   const el   = document.getElementById('leadsList');
-  const list = (leadsData.leads||[]).slice(0,25);
+  const all  = (leadsData.leads||[]).slice(0,25);
+  const list = _leadsExpanded ? all : all.slice(0, LEADS_DEFAULT);
+
   const countEl = document.getElementById('leadsCount');
-  if (countEl) countEl.textContent=`(${lang==='ar'?'أحدث':'top'} ${list.length} ${lang==='ar'?'من':'of'} ${leadsData.total||0})`;
-  if (!list.length) {
+  if (countEl) countEl.textContent=`(${lang==='ar'?'أحدث':'top'} ${all.length} ${lang==='ar'?'من':'of'} ${leadsData.total||0})`;
+
+  if (!all.length) {
     el.innerHTML=`<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-text">${lang==='ar'?'لا توجد عملاء':'No leads'}</div></div>`;
+    document.getElementById('leadsToggleWrap').style.display='none';
     return;
   }
+
   const statusPillCls={new:'pill-blue',engaged:'pill-warn',converted:'pill-green',lost:'pill-gray',callback:'pill-blue'};
   const statusLabels={new:{en:'New',ar:'جديد'},engaged:{en:'Engaged',ar:'منخرط'},converted:{en:'Converted',ar:'محول'},lost:{en:'Lost',ar:'مفقود'},callback:{en:'Callback',ar:'معاودة'}};
   const chIcon={whatsapp:'💬',maqsam:'📞'};
@@ -791,6 +816,19 @@ function renderLeadsList(leadsData) {
       </div>
     </div>`;
   }).join('');
+
+  // Toggle button
+  const wrap = document.getElementById('leadsToggleWrap');
+  const btn  = document.getElementById('leadsToggleBtn');
+  if (all.length > LEADS_DEFAULT) {
+    wrap.style.display = 'block';
+    const remaining = all.length - LEADS_DEFAULT;
+    btn.textContent = _leadsExpanded
+      ? (lang==='ar' ? '↑ عرض أقل' : 'Show less ↑')
+      : (lang==='ar' ? `عرض جميع ${all.length} →` : `Show all ${all.length} →`);
+  } else {
+    wrap.style.display = 'none';
+  }
 }
 
 // ── Agents table ──────────────────────────────────────────────────────────────

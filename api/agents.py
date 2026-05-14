@@ -57,11 +57,26 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
 
     # Alert attribution: agent_name → list of alerts
     lead_agent_map = {l["id"]: l.get("assigned_agent") for l in leads}
+
+    # Fallback: find agent from outbound messages or calls when lead has no assigned_agent
+    lead_to_agent_fallback: dict[str, str] = {}
+    for m in messages:
+        lid = m.get("lead_id")
+        if lid and m.get("direction") == "outbound" and m.get("agent_name"):
+            lead_to_agent_fallback.setdefault(lid, m["agent_name"])
+    for c in calls:
+        lid = c.get("lead_id")
+        if lid and c.get("agent_name"):
+            lead_to_agent_fallback.setdefault(lid, c["agent_name"])
+
     agent_alerts: dict[str, list] = defaultdict(list)
     for a in alerts:
-        agent = a.get("agent_name")
-        if not agent and a.get("lead_id"):
-            agent = lead_agent_map.get(a["lead_id"])
+        lid = a.get("lead_id")
+        agent = (
+            a.get("agent_name")
+            or (lead_agent_map.get(lid) if lid else None)
+            or (lead_to_agent_fallback.get(lid) if lid else None)
+        )
         if agent:
             agent_alerts[agent].append(a)
 
