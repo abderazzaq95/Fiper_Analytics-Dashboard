@@ -728,6 +728,129 @@ async def trigger_ingest_mc(hours_back: int = Query(48)):
     return {"status": "done", **stats}
 
 
+# ---------------------------------------------------------------------------
+# n8n push endpoint — receives conversation batches from n8n workflow
+# ---------------------------------------------------------------------------
+
+@app.post("/webhook/n8n/messages")
+async def n8n_messages(request: Request):
+    """Receive a conversation batch POSTed by n8n every 2 hours.
+
+    Expected payload (one contact per request):
+    {
+      "contact_id": "mc-uuid",          // ManyContacts contact ID
+      "phone":      "96897245526",
+      "name":       "Ahmed Al-Sayed",   // optional
+      "agent":      "Feras Zabalawi",   // assigned agent, optional
+      "messages": [
+        {
+          "id":         "msg-123",
+          "direction":  "outbound",      // "inbound" | "outbound"
+          "body":       "Hello, how can I help?",
+          "timestamp":  1778774807,      // unix seconds OR ISO string
+          "agent_name": "Feras Zabalawi" // outbound only
+        }
+      ]
+    }
+
+    n8n can also POST an array of such objects in one call — both shapes accepted.
+    """
+    raw = await request.body()
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        log.warning(f"[n8n] non-JSON body: {raw[:200]!r}")
+        return {"status": "error", "detail": "invalid JSON"}
+
+    # Accept both a single object and a list
+    items = payload if isinstance(payload, list) else [payload]
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    contacts_seen = 0
+    msgs_saved = 0
+    msgs_outbound = 0
+
+    for item in items:
+        contact_id = item.get("contact_id") or item.get("id")
+        phone      = str(item.get("phone") or item.get("number") or "").strip()
+        name       = item.get("name")
+        agent      = item.get("agent") or item.get("assigned_agent")
+        messages   = item.get("messages") or []
+
+        if not phone and not contact_id:
+            log.warning(f"[n8n] skipping item — no phone or contact_id: {list(item.keys())}")
+            continue
+
+        # Upsert lead
+        lead_row = {
+            "phone":    phone,
+            "channel":  "whatsapp",
+            "updated_at": now_iso,
+        }
+        if contact_id:
+            lead_row["wa_contact_id"] = contact_id
+        if name:
+            lead_row["name"] = name
+        if agent:
+            lead_row["assigned_agent"] = agent
+
+        conflict_col = "wa_contact_id" if contact_id else "phone"
+        lead_res = supabase.table("leads").upsert(
+            lead_row, on_conflict=conflict_col
+        ).execute()
+        lead_id = lead_res.data[0]["id"] if lead_res.data else None
+        if not lead_id:
+            continue
+        contacts_seen += 1
+
+        # Upsert messages
+        msg_rows = []
+        for msg in messages:
+            msg_id    = str(msg.get("id") or msg.get("wamid") or "")
+            direction = (msg.get("direction") or msg.get("type") or "inbound").lower()
+            direction = "outbound" if direction in ("outbound", "out", "agent") else "inbound"
+            body_text = (msg.get("body") or msg.get("text") or msg.get("message")
+                         or msg.get("content") or f"[{direction}]")
+            msg_ts    = _parse_mc_ts(
+                msg.get("timestamp") or msg.get("createdAt") or msg.get("sent_at")
+            ) or now_iso
+            msg_agent = (msg.get("agent_name") or msg.get("agent") or
+                         (agent if direction == "outbound" else None))
+
+            if not msg_id:
+                # Stable synthetic ID so re-runs are idempotent
+                msg_id = f"n8n_{phone}_{msg_ts}"
+
+            row = {
+                "wa_message_id": msg_id,
+                "lead_id":       lead_id,
+                "direction":     direction,
+                "body":          str(body_text)[:2000],
+                "sent_at":       msg_ts,
+            }
+            if msg_agent:
+                row["agent_name"] = msg_agent
+            msg_rows.append(row)
+            msgs_saved += 1
+            if direction == "outbound":
+                msgs_outbound += 1
+
+        for i in range(0, len(msg_rows), 100):
+            supabase.table("messages").upsert(
+                msg_rows[i:i + 100], on_conflict="wa_message_id"
+            ).execute()
+
+    log.info(
+        f"[n8n] contacts={contacts_seen} messages={msgs_saved} outbound={msgs_outbound}"
+    )
+    return {
+        "status":          "ok",
+        "contacts_saved":  contacts_seen,
+        "messages_saved":  msgs_saved,
+        "outbound_saved":  msgs_outbound,
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
