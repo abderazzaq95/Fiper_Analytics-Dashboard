@@ -8,7 +8,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from typing import AsyncGenerator
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from supabase import create_client
 from dotenv import load_dotenv
@@ -24,6 +25,22 @@ log = logging.getLogger("fiper")
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "")
 scheduler = AsyncIOScheduler()
+
+# SSE client queues — one per connected dashboard tab
+_sse_clients: set[asyncio.Queue] = set()
+
+
+async def _broadcast(event_type: str, payload: dict | None = None):
+    """Push a Server-Sent Event to every connected dashboard client."""
+    msg = f"event: {event_type}\ndata: {json.dumps(payload or {})}\n\n"
+    dead: set[asyncio.Queue] = set()
+    for q in _sse_clients:
+        try:
+            q.put_nowait(msg)
+        except asyncio.QueueFull:
+            dead.add(q)
+    for q in dead:
+        _sse_clients.discard(q)
 
 _ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 _CLAUDE_MODEL  = "claude-haiku-4-5-20251001"
@@ -517,6 +534,7 @@ async def run_pipeline():
     except Exception as e:
         log.error(f"Alert engine error: {e}")
     log.info("Pipeline complete")
+    await _broadcast("data_updated", {"source": "pipeline"})
 
 
 async def _ingest_mc_with_stats(hours_back: int) -> dict:
@@ -896,6 +914,7 @@ async def webhook_manycontacts(request: Request):
     except Exception as e:
         log.error(f"[webhook/mc] handler error: {e}", exc_info=True)
 
+    asyncio.create_task(_broadcast("data_updated", {"source": "webhook"}))
     return {"status": "ok"}
 
 
@@ -934,6 +953,37 @@ async def trigger_pipeline():
     """Manually trigger the full pipeline (ingest → AI analysis → alerts)."""
     asyncio.create_task(run_pipeline())
     return {"status": "pipeline triggered", "steps": ["ingest_manycontacts", "ingest_maqsam", "run_ai_analysis", "alert_engine"]}
+
+
+@app.get("/api/stream")
+async def sse_stream(request: Request):
+    """Server-Sent Events — pushes data_updated to all open dashboard tabs."""
+    queue: asyncio.Queue = asyncio.Queue(maxsize=20)
+    _sse_clients.add(queue)
+
+    async def generator() -> AsyncGenerator[str, None]:
+        try:
+            yield "event: connected\ndata: {}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    msg = await asyncio.wait_for(queue.get(), timeout=25)
+                    yield msg
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"  # keepalive — prevents proxy/Render timeout
+        finally:
+            _sse_clients.discard(queue)
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @app.post("/api/trigger-ingest-mc")

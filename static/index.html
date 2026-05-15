@@ -43,7 +43,11 @@ header{
 .logo-wrap img{height:36px;object-fit:contain}
 .logo-wrap .subtitle{font-size:11px;color:var(--text-light);font-weight:500;margin-top:2px;letter-spacing:.03em}
 .header-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.last-upd{font-size:11px;color:var(--text-light)}
+.last-upd{font-size:11px;color:var(--text-light);display:flex;align-items:center;gap:6px}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;opacity:0;transition:opacity .4s}
+.live-dot.on{opacity:1;animation:pulse-dot 2s ease-in-out infinite}
+.live-dot.off{opacity:1;background:var(--text-light);animation:none}
+@keyframes pulse-dot{0%,100%{box-shadow:0 0 0 0 rgba(38,207,75,.5)}50%{box-shadow:0 0 0 5px rgba(38,207,75,0)}}
 
 /* Range tabs */
 .tabs{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:3px;gap:2px}
@@ -245,7 +249,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   </div>
 
   <div class="header-right">
-    <span class="last-upd" id="lastUpd">—</span>
+    <span class="last-upd" id="lastUpd"><span class="live-dot" id="liveDot"></span><span id="lastUpdText">—</span></span>
     <button class="btn-icon" onclick="loadAll()">↻ <span data-en="Refresh" data-ar="تحديث">Refresh</span></button>
     <button class="btn-lang" onclick="toggleLang()" id="langBtn">العربية</button>
   </div>
@@ -1083,7 +1087,7 @@ function renderAll(ov, ch, leads, agents, quality, traffic) {
   renderAgents(agents);
   renderAlerts(quality);
   renderGeo(allLeads);
-  document.getElementById('lastUpd').textContent = (lang==='ar'?'تحديث: ':'Updated: ') + new Date().toLocaleTimeString();
+  document.getElementById('lastUpdText').textContent = (lang==='ar'?'تحديث: ':'Updated: ') + new Date().toLocaleTimeString();
   applyLang();
 }
 
@@ -1108,10 +1112,50 @@ window.addEventListener('scroll', () => {
   document.getElementById('scrollTop').classList.toggle('visible', window.scrollY > 400);
 });
 
+// ── Real-time SSE connection ───────────────────────────────────────────────────
+let _sseRetryTimer = null;
+let _fallbackTimer = null;
+
+function setLiveStatus(connected) {
+  const dot = document.getElementById('liveDot');
+  if (!dot) return;
+  dot.className = 'live-dot ' + (connected ? 'on' : 'off');
+  dot.title = connected
+    ? (lang==='ar' ? 'متصل — تحديث فوري' : 'Connected — live updates')
+    : (lang==='ar' ? 'غير متصل — استطلاع كل دقيقتين' : 'Disconnected — polling every 2 min');
+}
+
+function connectSSE() {
+  clearTimeout(_sseRetryTimer);
+  const es = new EventSource(`${API}/api/stream`);
+
+  es.addEventListener('connected', () => {
+    setLiveStatus(true);
+    // Cancel fallback polling — SSE handles updates
+    clearInterval(_fallbackTimer);
+    _fallbackTimer = null;
+  });
+
+  es.addEventListener('data_updated', () => {
+    loadAll();
+  });
+
+  es.onerror = () => {
+    es.close();
+    setLiveStatus(false);
+    // Start fallback polling while SSE is down
+    if (!_fallbackTimer) {
+      _fallbackTimer = setInterval(loadAll, 2 * 60 * 1000);
+    }
+    // Reconnect SSE after 5 seconds
+    _sseRetryTimer = setTimeout(connectSSE, 5000);
+  };
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 applyLang();
 loadAll();
-setInterval(loadAll, 5 * 60 * 1000);
+connectSSE();
 </script>
 </body>
 </html>
