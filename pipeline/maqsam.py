@@ -32,12 +32,25 @@ def extract_agent_name(call: dict) -> str | None:
     return None
 
 
-async def fetch_calls(date_from: str, date_to: str) -> list[dict]:
+async def fetch_calls(date_from: str, date_to: str, since_ts: int | None = None) -> list[dict]:
     """
-    Fetch all call logs for a date range. date_from/date_to: 'YYYY-MM-DD'.
-    Page size is 100 (fixed by Maqsam API). Paginates until the API returns
-    fewer than 100 results (last page) — no hard page cap.
+    Fetch call logs newest-first. Stops early once the oldest call on a page
+    predates since_ts (unix timestamp). date_from/date_to are sent for completeness
+    but the Maqsam API ignores them — filtering is done client-side via since_ts.
+
+    If since_ts is None, falls back to filtering by date_from string comparison.
     """
+    from datetime import datetime, timezone
+    import time as _time
+
+    # Derive since_ts from date_from when not supplied explicitly
+    if since_ts is None:
+        try:
+            since_dt = datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            since_ts = int(since_dt.timestamp())
+        except Exception:
+            since_ts = int(_time.time()) - 86400 * 7  # fallback: last 7 days
+
     calls: list[dict] = []
     page = 1
 
@@ -46,13 +59,21 @@ async def fetch_calls(date_from: str, date_to: str) -> list[dict]:
             resp = await client.get(
                 f"{BASE_URL}/calls",
                 headers=HEADERS,
-                params={"date_from": date_from, "date_to": date_to, "page": page},
+                params={"page": page},
             )
             resp.raise_for_status()
             batch = _extract_calls(resp.json())
             if not batch:
                 break
-            calls.extend(batch)
+
+            # Keep only calls within the time window
+            in_window = [c for c in batch if int(c.get("timestamp") or 0) >= since_ts]
+            calls.extend(in_window)
+
+            # Stop when the oldest call on this page is before our cutoff
+            oldest_ts = min((int(c.get("timestamp") or 0) for c in batch), default=0)
+            if oldest_ts < since_ts:
+                break
             if len(batch) < 100:
                 break
             page += 1
