@@ -1192,7 +1192,17 @@ function _renderEvent(ev) {
     details += `<b>${lang==='ar'?'النتيجة':'Outcome'}:</b> ${outLabel}`;
     if (ev.sentiment) details += ` &nbsp;|&nbsp; ${SENTIMENT_EMOJI[ev.sentiment]||''} ${ev.sentiment}`;
     details += `</div>`;
-    if (ev.summary) details += `<div class="tl-preview">${ev.summary}</div>`;
+    if (ev.summary) {
+      const uid = 'sum_' + Math.random().toString(36).slice(2,8);
+      const needsMore = ev.summary.length > 200;
+      const short = needsMore ? ev.summary.slice(0,200) + '…' : ev.summary;
+      details += `<div class="tl-preview">` +
+        `<span id="${uid}_s">${short}` +
+        (needsMore ? ` <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid}_s').style.display='none';document.getElementById('${uid}_f').style.display='inline'">${lang==='ar'?'اقرأ المزيد':'Read more'}</a>` : '') +
+        `</span>` +
+        (needsMore ? `<span id="${uid}_f" style="display:none">${ev.summary} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid}_f').style.display='none';document.getElementById('${uid}_s').style.display='inline'">${lang==='ar'?'أقل':'Read less'}</a></span>` : '') +
+        `</div>`;
+    }
   }
 
   if (ev.type === 'whatsapp') {
@@ -1203,7 +1213,17 @@ function _renderEvent(ev) {
     if (ev.agent && ev.direction !== 'inbound') details += ` — ${ev.agent}`;
     if (ev.total)  details += ` &nbsp;|&nbsp; ${ev.total} ${lang==='ar'?'رسائل':'messages total'}`;
     details += `</div>`;
-    if (ev.preview) details += `<div class="tl-preview">"${ev.preview}${ev.preview.length>=140?'…':''}"</div>`;
+    if (ev.preview) {
+      const uid2 = 'prv_' + Math.random().toString(36).slice(2,8);
+      const needsMore2 = ev.preview.length > 160;
+      const short2 = needsMore2 ? '"' + ev.preview.slice(0,160) + '…"' : `"${ev.preview}"`;
+      details += `<div class="tl-preview">` +
+        `<span id="${uid2}_s">${short2}` +
+        (needsMore2 ? ` <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid2}_s').style.display='none';document.getElementById('${uid2}_f').style.display='inline'">${lang==='ar'?'اقرأ المزيد':'Read more'}</a>` : '') +
+        `</span>` +
+        (needsMore2 ? `<span id="${uid2}_f" style="display:none">"${ev.preview}" <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid2}_f').style.display='none';document.getElementById('${uid2}_s').style.display='inline'">${lang==='ar'?'أقل':'Read less'}</a></span>` : '') +
+        `</div>`;
+    }
   }
 
   if (ev.type === 'ai') {
@@ -1254,8 +1274,25 @@ function _renderJourneyLead(lead, index) {
   const subStats = [
     `${lead.total_calls} ${lang==='ar'?'مكالمات':'calls'} (${lead.answered_calls} ${lang==='ar'?'مُجاب':'answered'})`,
     `${lead.total_messages} ${lang==='ar'?'رسائل واتساب':'WA msgs'}`,
-    lead.assigned_agent !== '—' ? `${lang==='ar'?'وكيل:':'Agent:'} ${lead.assigned_agent}` : '',
   ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+
+  const agentBadge = lead.assigned_agent && lead.assigned_agent !== '—'
+    ? `<span style="background:#e8f0ff;color:var(--blue);font-size:10px;font-weight:700;padding:3px 10px;border-radius:12px;display:flex;align-items:center;gap:4px;white-space:nowrap">👤 ${lead.assigned_agent}</span>`
+    : '';
+
+  const isConverted = lead.status === 'converted';
+  const convertSection = isConverted
+    ? `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px">
+        <span style="color:var(--green);font-size:16px">✓</span>
+        <span style="font-size:12px;font-weight:700;color:var(--green)">${lang==='ar'?'تم التحويل — حالة العميل: محوّل':'Converted — Lead status: converted'}</span>
+      </div>`
+    : `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <button onclick="markConverted('${lead.id}',${index})" id="convertBtn_${index}"
+          style="background:var(--green);color:#fff;border:none;padding:8px 18px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px">
+          ✓ ${lang==='ar'?'تحديد كمحوّل':'Mark as Converted'}
+        </button>
+        <span style="font-size:11px;color:var(--text-light)">${lang==='ar'?'يحدّث حالة العميل في Supabase':'Updates lead status to "converted" in Supabase'}</span>
+      </div>`;
 
   return `
     <div class="journey-lead" id="jl-${index}">
@@ -1268,12 +1305,14 @@ function _renderJourneyLead(lead, index) {
         <div class="journey-badges">
           ${_statusPill(lead.status)}
           ${chBadge}
+          ${agentBadge}
           ${alertBadge}
         </div>
         <div class="journey-chevron">▾</div>
       </div>
       <div class="journey-body">
         <div class="timeline">${timeline || `<div style="color:var(--text-light);font-size:12px;padding:8px 0">${lang==='ar'?'لا توجد أحداث':'No events recorded'}</div>`}</div>
+        ${convertSection}
       </div>
     </div>`;
 }
@@ -1281,6 +1320,19 @@ function _renderJourneyLead(lead, index) {
 function toggleJourney(index) {
   const el = document.getElementById(`jl-${index}`);
   if (el) el.classList.toggle('open');
+}
+
+async function markConverted(leadId, index) {
+  const btn = document.getElementById(`convertBtn_${index}`);
+  if (btn) { btn.disabled = true; btn.textContent = lang==='ar'?'جاري التحديث…':'Updating…'; }
+  try {
+    const r = await fetch(`${API}/api/leads/${leadId}/convert`, {method:'POST'});
+    if (!r.ok) throw new Error(await r.text());
+    await loadJourney();
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.innerHTML = `✓ ${lang==='ar'?'تحديد كمحوّل':'Mark as Converted'}`; }
+    alert(`Failed: ${e.message}`);
+  }
 }
 
 async function loadJourney() {

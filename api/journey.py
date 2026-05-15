@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
 from supabase import create_client
 from collections import defaultdict
 import os
@@ -29,7 +29,7 @@ def _dur(seconds: int | None) -> str:
 
 @router.get("/api/leads/journey")
 def leads_journey(limit: int = Query(10, ge=1, le=50)):
-    # ── Top leads by score (must have a score > 0) ────────────────────────────
+    # ── Top leads by score ────────────────────────────────────────────────────
     leads = (
         supabase.table("leads")
         .select("id,phone,name,score,status,assigned_agent,channel,last_message_at")
@@ -43,9 +43,10 @@ def leads_journey(limit: int = Query(10, ge=1, le=50)):
     if not leads:
         return {"leads": []}
 
-    lead_ids = [l["id"] for l in leads]
+    lead_ids  = [l["id"] for l in leads]
+    lead_phone = {l["id"]: l.get("phone") for l in leads}
 
-    # ── Bulk-fetch all related events ─────────────────────────────────────────
+    # ── Calls (direct lead_id match) ──────────────────────────────────────────
     calls = (
         supabase.table("calls")
         .select("lead_id,agent_name,duration_seconds,outcome,called_at,maqsam_sentiment,summary_en")
@@ -54,14 +55,37 @@ def leads_journey(limit: int = Query(10, ge=1, le=50)):
         .execute()
         .data or []
     )
-    messages = (
-        supabase.table("messages")
-        .select("lead_id,direction,body,sent_at,agent_name")
-        .in_("lead_id", lead_ids)
-        .order("sent_at")
-        .execute()
-        .data or []
-    )
+
+    # ── Messages: cross-channel phone lookup ──────────────────────────────────
+    # Top leads are often Maqsam-channel (wa_contact_id=phone). Their WA
+    # messages live under a different lead_id (the WhatsApp lead for the same
+    # phone). We find all lead_ids that share a phone with our top leads, then
+    # query messages across the full set, mapping results back by phone.
+    phones = list({p for p in lead_phone.values() if p})
+    cross_leads: list[dict] = []
+    if phones:
+        cross_leads = (
+            supabase.table("leads")
+            .select("id,phone")
+            .in_("phone", phones)
+            .execute()
+            .data or []
+        )
+    msg_lead_phone  = {cl["id"]: cl.get("phone") for cl in cross_leads}
+    all_msg_lead_ids = [cl["id"] for cl in cross_leads if cl.get("id")]
+
+    messages: list[dict] = []
+    if all_msg_lead_ids:
+        messages = (
+            supabase.table("messages")
+            .select("lead_id,direction,body,sent_at,agent_name")
+            .in_("lead_id", all_msg_lead_ids)
+            .order("sent_at")
+            .execute()
+            .data or []
+        )
+
+    # ── AI analysis + alerts (direct lead_id match) ───────────────────────────
     analyses = (
         supabase.table("ai_analysis")
         .select("lead_id,treatment_score,sentiment,topics,outcome,risk_flags,analyzed_at,source")
@@ -80,17 +104,27 @@ def leads_journey(limit: int = Query(10, ge=1, le=50)):
     )
 
     # ── Group by lead_id ──────────────────────────────────────────────────────
-    calls_by   = defaultdict(list)
-    msgs_by    = defaultdict(list)
-    ana_by     = defaultdict(list)
-    alerts_by  = defaultdict(list)
+    calls_by  = defaultdict(list)
+    msgs_by   = defaultdict(list)
+    ana_by    = defaultdict(list)
+    alerts_by = defaultdict(list)
 
     for c in calls:
         if c.get("lead_id"):
             calls_by[c["lead_id"]].append(c)
+
+    # Cross-channel: map each message back to the top lead via shared phone
     for m in messages:
-        if m.get("lead_id"):
-            msgs_by[m["lead_id"]].append(m)
+        msg_lid = m.get("lead_id")
+        if not msg_lid:
+            continue
+        phone = msg_lead_phone.get(msg_lid)
+        if not phone:
+            continue
+        for top_lid, top_phone in lead_phone.items():
+            if top_phone == phone:
+                msgs_by[top_lid].append(m)
+
     for a in analyses:
         if a.get("lead_id"):
             ana_by[a["lead_id"]].append(a)
@@ -105,51 +139,51 @@ def leads_journey(limit: int = Query(10, ge=1, le=50)):
         phone = lead.get("phone") or "—"
         timeline = []
 
-        # Calls
+        # All calls in chronological order
         for i, c in enumerate(calls_by[lid]):
             outcome = (c.get("outcome") or "unknown").lower()
             dur     = c.get("duration_seconds") or 0
             timeline.append({
-                "type":    "call",
-                "date":    c.get("called_at"),
-                "color":   _OUTCOME_COLOR.get(outcome, "gray"),
-                "title":   "First Call" if i == 0 else f"Call #{i + 1}",
-                "agent":   c.get("agent_name") or "—",
-                "duration": _dur(dur),
-                "outcome": outcome,
-                "summary": (c.get("summary_en") or "")[:200],
+                "type":      "call",
+                "date":      c.get("called_at"),
+                "color":     _OUTCOME_COLOR.get(outcome, "gray"),
+                "title":     "First Call" if i == 0 else f"Call #{i + 1}",
+                "agent":     c.get("agent_name") or "—",
+                "duration":  _dur(dur),
+                "outcome":   outcome,
+                "summary":   c.get("summary_en") or "",
                 "sentiment": c.get("maqsam_sentiment") or "",
             })
 
-        # WhatsApp messages — first inbound + first outbound + total count
-        all_msgs  = msgs_by[lid]
-        inbound   = [m for m in all_msgs if m.get("direction") == "inbound"]
-        outbound  = [m for m in all_msgs if m.get("direction") == "outbound"]
+        # WhatsApp messages — first inbound + first outbound
+        all_msgs = msgs_by[lid]
+        inbound  = [m for m in all_msgs if m.get("direction") == "inbound"]
+        outbound = [m for m in all_msgs if m.get("direction") == "outbound"]
 
         if inbound:
             m = inbound[0]
             timeline.append({
-                "type":    "whatsapp",
-                "date":    m.get("sent_at"),
-                "color":   "blue",
-                "title":   "First WhatsApp Message",
+                "type":      "whatsapp",
+                "date":      m.get("sent_at"),
+                "color":     "blue",
+                "title":     "First WhatsApp Message",
                 "direction": "inbound",
-                "preview": (m.get("body") or "")[:140],
-                "total":   len(all_msgs),
+                "preview":   m.get("body") or "",
+                "total":     len(all_msgs),
             })
         if outbound:
             m = outbound[0]
             timeline.append({
-                "type":    "whatsapp",
-                "date":    m.get("sent_at"),
-                "color":   "blue",
-                "title":   "First Agent Reply",
+                "type":      "whatsapp",
+                "date":      m.get("sent_at"),
+                "color":     "blue",
+                "title":     "First Agent Reply",
                 "direction": "outbound",
-                "agent":   m.get("agent_name") or "—",
-                "preview": (m.get("body") or "")[:140],
+                "agent":     m.get("agent_name") or "—",
+                "preview":   m.get("body") or "",
             })
 
-        # AI Analysis events (one entry per analysis record)
+        # AI analysis events
         for a in ana_by[lid]:
             ts    = a.get("treatment_score") or 0
             color = "green" if ts >= 70 else "orange" if ts >= 40 else "red"
@@ -179,22 +213,21 @@ def leads_journey(limit: int = Query(10, ge=1, le=50)):
                 "resolved": al.get("resolved") or False,
             })
 
-        # Account opened placeholder (future CRM field)
+        # Account status marker (always last)
+        is_converted = lead.get("status") == "converted"
         timeline.append({
             "type":   "account",
             "date":   None,
-            "color":  "gray",
+            "color":  "green" if is_converted else "gray",
             "title":  "Account Opened",
-            "status": "pending",
+            "status": lead.get("status") or "pending",
         })
 
-        # Sort all events chronologically (None dates go last)
         timeline.sort(key=lambda x: (x.get("date") is None, x.get("date") or ""))
 
-        # Lead-level stats
-        total_calls      = len(calls_by[lid])
-        answered_calls   = sum(1 for c in calls_by[lid] if (c.get("outcome") or "") == "completed")
-        latest_analysis  = ana_by[lid][-1] if ana_by[lid] else None
+        total_calls     = len(calls_by[lid])
+        answered_calls  = sum(1 for c in calls_by[lid] if (c.get("outcome") or "") == "completed")
+        latest_analysis = ana_by[lid][-1] if ana_by[lid] else None
 
         result.append({
             "id":             lid,
@@ -214,3 +247,16 @@ def leads_journey(limit: int = Query(10, ge=1, le=50)):
         })
 
     return {"leads": result}
+
+
+@router.post("/api/leads/{lead_id}/convert")
+def convert_lead(lead_id: str):
+    result = (
+        supabase.table("leads")
+        .update({"status": "converted"})
+        .eq("id", lead_id)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return {"success": True, "lead_id": lead_id, "status": "converted"}
