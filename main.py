@@ -251,11 +251,24 @@ async def ingest_maqsam(days_back: int = 3):
 
         call_rows.append(row)
 
+    # Deduplicate by maqsam_id (Maqsam can return duplicate IDs across pages)
+    call_rows = list({r["maqsam_id"]: r for r in call_rows}.values())
+
+    # Normalize all rows to identical key set — PostgREST PGRST102 requires this
+    ALL_CALL_KEYS = {
+        "maqsam_id", "lead_id", "agent_name", "duration_seconds", "outcome", "called_at",
+        "transcript", "summary_en", "summary_ar", "maqsam_sentiment", "auto_tags",
+    }
+    for row in call_rows:
+        for k in ALL_CALL_KEYS:
+            if k not in row:
+                row[k] = None
+
     chunk_size = 200
     for i in range(0, len(call_rows), chunk_size):
         supabase.table("calls").upsert(call_rows[i:i + chunk_size], on_conflict="maqsam_id").execute()
 
-    log.info(f"Maqsam ingestion done — {len(calls)} calls")
+    log.info(f"Maqsam ingestion done — {len(call_rows)} calls")
 
 
 async def _call_claude_async(user_message: str) -> dict:
