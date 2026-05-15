@@ -302,8 +302,8 @@ async def run_ai_analysis():
     from collections import defaultdict
 
     now = datetime.now(timezone.utc)
-    # 7h window (1h buffer over the 6h schedule) to avoid edge-case gaps
-    cutoff_iso = (now - timedelta(hours=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # 3h window (1h buffer over the 2h schedule) to avoid edge-case gaps
+    cutoff_iso = (now - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # ── Leads already analyzed in this window ─────────────────────────────────
     recently_analyzed = {
@@ -494,7 +494,7 @@ async def run_ai_analysis():
 
 
 async def run_pipeline():
-    """Full pipeline: ingest → AI analysis → alerts. Runs every 6 hours."""
+    """Full pipeline: ingest → AI analysis → alerts. Runs every 2 hours."""
     log.info("Pipeline started")
     await ingest_manycontacts()
     await ingest_maqsam()
@@ -542,10 +542,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.warning(f"Could not pre-load agent cache: {e}")
 
-    scheduler.add_job(run_pipeline, "interval", hours=6, id="pipeline", replace_existing=True)
+    scheduler.add_job(run_pipeline, "interval", hours=2, id="pipeline", replace_existing=True)
     scheduler.add_job(_ping_self, "interval", minutes=10, id="keepalive", replace_existing=True)
     scheduler.start()
-    log.info("Scheduler started — pipeline every 6 h, keep-alive ping every 10 min")
+    log.info("Scheduler started — pipeline every 2 h, keep-alive ping every 10 min")
     yield
     scheduler.shutdown()
 
