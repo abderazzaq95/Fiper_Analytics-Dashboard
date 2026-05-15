@@ -15,7 +15,7 @@ from supabase import create_client
 from dotenv import load_dotenv
 
 from pipeline import whatsapp, maqsam, ai_analyzer, alert_engine
-from api import overview, agents, leads, channels, quality
+from api import overview, agents, leads, channels, quality, journey
 
 load_dotenv()
 
@@ -595,6 +595,7 @@ app.include_router(agents.router)
 app.include_router(leads.router)
 app.include_router(channels.router)
 app.include_router(quality.router)
+app.include_router(journey.router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

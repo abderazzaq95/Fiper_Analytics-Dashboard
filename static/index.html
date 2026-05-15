@@ -170,7 +170,48 @@ html[dir=rtl] .alert-item{border-left:none;border-right:4px solid transparent}
 .risk-name{font-size:12px;color:var(--navy);font-weight:500}
 .risk-count{font-size:12px;font-weight:700;color:var(--red)}
 
-/* ── Scroll to top ── */
+/* ── Lead Journey Tracker ── */
+.journey-lead{border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px;overflow:hidden;transition:box-shadow .2s}
+.journey-lead:hover{box-shadow:var(--shadow-md)}
+.journey-header{display:flex;align-items:center;gap:14px;padding:14px 18px;cursor:pointer;background:#fff;user-select:none;transition:background .15s}
+.journey-header:hover{background:#f8fbff}
+.journey-score{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0}
+.journey-meta{flex:1;min-width:0}
+.journey-meta .phone{font-size:14px;font-weight:700;color:var(--navy)}
+.journey-meta .sub{font-size:11px;color:var(--text-light);margin-top:2px;display:flex;gap:10px;flex-wrap:wrap}
+.journey-badges{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.journey-chevron{font-size:16px;color:var(--text-light);transition:transform .25s;flex-shrink:0}
+.journey-lead.open .journey-chevron{transform:rotate(180deg)}
+.journey-body{display:none;padding:0 18px 18px}
+.journey-lead.open .journey-body{display:block}
+
+/* Timeline */
+.timeline{position:relative;padding-left:28px;margin-top:14px}
+.timeline::before{content:'';position:absolute;left:9px;top:0;bottom:0;width:2px;background:var(--border)}
+.tl-event{position:relative;margin-bottom:14px}
+.tl-event:last-child{margin-bottom:0}
+.tl-dot{position:absolute;left:-22px;top:3px;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 2px currentColor;flex-shrink:0}
+.tl-dot.green{color:var(--green);background:var(--green)}
+.tl-dot.orange{color:var(--warn);background:var(--warn)}
+.tl-dot.red{color:var(--red);background:var(--red)}
+.tl-dot.blue{color:var(--blue);background:var(--blue)}
+.tl-dot.gray{color:var(--text-light);background:var(--border)}
+.tl-card{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:10px 14px;border-left:3px solid transparent}
+.tl-card.green{border-left-color:var(--green)}
+.tl-card.orange{border-left-color:var(--warn)}
+.tl-card.red{border-left-color:var(--red)}
+.tl-card.blue{border-left-color:var(--blue)}
+.tl-card.gray{border-left-color:var(--border)}
+.tl-title{font-size:12px;font-weight:700;color:var(--navy);display:flex;align-items:center;gap:7px}
+.tl-date{font-size:10px;color:var(--text-light);margin-top:2px}
+.tl-details{font-size:11px;color:var(--body);margin-top:6px;line-height:1.5}
+.tl-preview{font-size:11px;color:var(--body);margin-top:5px;padding:6px 10px;background:#fff;border-radius:6px;border:1px solid var(--border);font-style:italic;line-height:1.45}
+.tl-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.tl-chip{font-size:10px;font-weight:600;padding:2px 8px;border-radius:12px;background:var(--blue-light);color:var(--blue)}
+.tl-chip.red{background:#fff0f0;color:var(--red)}
+.journey-empty{text-align:center;padding:48px 24px;color:var(--text-light);font-size:13px}
+
+/* Scroll to top ── */
 .scroll-top{position:fixed;bottom:24px;right:24px;background:var(--blue);color:#fff;border:none;width:40px;height:40px;border-radius:50%;cursor:pointer;font-size:18px;box-shadow:var(--shadow-md);opacity:0;transition:opacity .3s;display:flex;align-items:center;justify-content:center}
 .scroll-top.visible{opacity:1}
 html[dir=rtl] .scroll-top{right:auto;left:24px}
@@ -395,6 +436,17 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
       <div class="card-head" style="margin:0" data-en="Open Alerts" data-ar="التنبيهات المفتوحة">Open Alerts</div>
     </div>
     <div id="alertsList"><div class="skeleton" style="height:80px;margin:16px"></div></div>
+  </div>
+
+  <!-- Lead Journey Tracker -->
+  <div class="section-label" style="margin-top:32px">
+    <span data-en="Lead Journey Tracker" data-ar="متتبع رحلة العميل">Lead Journey Tracker</span>
+    <span id="journeySubtitle" style="font-size:10px;color:var(--text-light);font-weight:500;margin-left:6px" data-en="Top 10 leads by AI score — click to expand" data-ar="أفضل 10 عملاء حسب نقاط الذكاء الاصطناعي — انقر للتوسيع">Top 10 leads by AI score — click to expand</span>
+  </div>
+  <div id="journeySection">
+    <div class="skeleton" style="height:60px;border-radius:var(--r);margin-bottom:10px"></div>
+    <div class="skeleton" style="height:60px;border-radius:var(--r);margin-bottom:10px"></div>
+    <div class="skeleton" style="height:60px;border-radius:var(--r)"></div>
   </div>
 
 </main>
@@ -1091,6 +1143,165 @@ function renderAll(ov, ch, leads, agents, quality, traffic) {
   applyLang();
 }
 
+// ── Lead Journey Tracker ──────────────────────────────────────────────────────
+const EVENT_ICONS = {
+  call:      '📞', whatsapp: '💬', ai: '🤖',
+  alert:     '⚠️', account: '🏦',
+};
+const SENTIMENT_EMOJI = { positive:'😊', neutral:'😐', negative:'😔' };
+
+function _fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString(lang==='ar'?'ar-EG':'en-GB', {day:'2-digit',month:'short'})
+       + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+}
+
+function _scoreColor(s) {
+  if (s >= 70) return '#26CF4B';
+  if (s >= 40) return '#FF8F3C';
+  return '#FF0003';
+}
+
+function _statusPill(status) {
+  const map = {
+    new:      ['#8892AA','#F6F9FF'],
+    engaged:  ['#0774FF','#EEF4FF'],
+    lost:     ['#FF0003','#fff0f0'],
+  };
+  const [c,bg] = map[status] || ['#8892AA','#F6F9FF'];
+  const label = lang==='ar'
+    ? {new:'جديد',engaged:'منخرط',lost:'خرج'}[status]||status
+    : status;
+  return `<span class="pill" style="background:${bg};color:${c};font-size:10px">${label}</span>`;
+}
+
+function _renderEvent(ev) {
+  const icon    = EVENT_ICONS[ev.type] || '•';
+  const color   = ev.color || 'gray';
+  const dateStr = _fmtDate(ev.date);
+  let details   = '';
+
+  if (ev.type === 'call') {
+    const outLabel = lang==='ar'
+      ? {completed:'مكتملة',no_answer:'لا يوجد رد',busy:'مشغول',failed:'فاشلة',abandoned:'مهجورة',in_progress:'جارية'}[ev.outcome]||ev.outcome
+      : ev.outcome;
+    details += `<div class="tl-details">`;
+    details += `<b>${lang==='ar'?'الوكيل':'Agent'}:</b> ${ev.agent} &nbsp;|&nbsp; `;
+    details += `<b>${lang==='ar'?'المدة':'Duration'}:</b> ${ev.duration} &nbsp;|&nbsp; `;
+    details += `<b>${lang==='ar'?'النتيجة':'Outcome'}:</b> ${outLabel}`;
+    if (ev.sentiment) details += ` &nbsp;|&nbsp; ${SENTIMENT_EMOJI[ev.sentiment]||''} ${ev.sentiment}`;
+    details += `</div>`;
+    if (ev.summary) details += `<div class="tl-preview">${ev.summary}</div>`;
+  }
+
+  if (ev.type === 'whatsapp') {
+    const dirLabel = ev.direction === 'inbound'
+      ? (lang==='ar'?'من العميل':'From lead')
+      : (lang==='ar'?'من الوكيل':'From agent');
+    details += `<div class="tl-details">${dirLabel}`;
+    if (ev.agent && ev.direction !== 'inbound') details += ` — ${ev.agent}`;
+    if (ev.total)  details += ` &nbsp;|&nbsp; ${ev.total} ${lang==='ar'?'رسائل':'messages total'}`;
+    details += `</div>`;
+    if (ev.preview) details += `<div class="tl-preview">"${ev.preview}${ev.preview.length>=140?'…':''}"</div>`;
+  }
+
+  if (ev.type === 'ai') {
+    const sentEmoji = SENTIMENT_EMOJI[ev.sentiment] || '';
+    details += `<div class="tl-details">`;
+    details += `<b>${lang==='ar'?'النقاط':'Score'}:</b> <span style="color:${_scoreColor(ev.score)};font-weight:800">${ev.score}</span>/100`;
+    details += ` &nbsp;|&nbsp; ${sentEmoji} ${ev.sentiment}`;
+    if (ev.outcome) details += ` &nbsp;|&nbsp; <b>${lang==='ar'?'النتيجة':'Outcome'}:</b> ${ev.outcome.replace(/_/g,' ')}`;
+    details += `</div>`;
+    const chips = [];
+    (ev.topics||[]).forEach(t => chips.push(`<span class="tl-chip">${t.replace(/_/g,' ')}</span>`));
+    (ev.risk_flags||[]).forEach(f => chips.push(`<span class="tl-chip red">⚠ ${f.replace(/_/g,' ')}</span>`));
+    if (chips.length) details += `<div class="tl-chips">${chips.join('')}</div>`;
+  }
+
+  if (ev.type === 'alert') {
+    const resolved = ev.resolved
+      ? `<span style="color:var(--green);font-size:10px"> ✓ ${lang==='ar'?'محلول':'Resolved'}</span>` : '';
+    details += `<div class="tl-details">`;
+    details += `<b>${ev.severity}</b> ${resolved}`;
+    if (ev.message) details += `<br><span style="color:var(--body)">${ev.message}</span>`;
+    details += `</div>`;
+  }
+
+  if (ev.type === 'account') {
+    details += `<div class="tl-details" style="color:var(--text-light);font-style:italic">${lang==='ar'?'في انتظار ربط نظام CRM — قريباً':'Pending CRM integration — coming soon'}</div>`;
+  }
+
+  return `
+    <div class="tl-event">
+      <div class="tl-dot ${color}"></div>
+      <div class="tl-card ${color}">
+        <div class="tl-title">${icon} ${ev.title}</div>
+        <div class="tl-date">${dateStr}</div>
+        ${details}
+      </div>
+    </div>`;
+}
+
+function _renderJourneyLead(lead, index) {
+  const scoreColor = _scoreColor(lead.score);
+  const alertBadge = lead.open_alerts > 0
+    ? `<span style="background:#fff0f0;color:var(--red);font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px">${lead.open_alerts} ${lang==='ar'?'تنبيه':'alert'}${lead.open_alerts>1&&lang!=='ar'?'s':''}</span>` : '';
+  const chBadge = `<span style="background:var(--bg);color:var(--text-light);font-size:10px;padding:2px 8px;border-radius:12px;border:1px solid var(--border)">${lead.channel}</span>`;
+
+  const timeline = (lead.timeline||[]).map(_renderEvent).join('');
+
+  const subStats = [
+    `${lead.total_calls} ${lang==='ar'?'مكالمات':'calls'} (${lead.answered_calls} ${lang==='ar'?'مُجاب':'answered'})`,
+    `${lead.total_messages} ${lang==='ar'?'رسائل واتساب':'WA msgs'}`,
+    lead.assigned_agent !== '—' ? `${lang==='ar'?'وكيل:':'Agent:'} ${lead.assigned_agent}` : '',
+  ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+
+  return `
+    <div class="journey-lead" id="jl-${index}">
+      <div class="journey-header" onclick="toggleJourney(${index})">
+        <div class="journey-score" style="background:${scoreColor}">${lead.score}</div>
+        <div class="journey-meta">
+          <div class="phone">${lead.phone}${lead.name ? ' — ' + lead.name : ''}</div>
+          <div class="sub">${subStats}</div>
+        </div>
+        <div class="journey-badges">
+          ${_statusPill(lead.status)}
+          ${chBadge}
+          ${alertBadge}
+        </div>
+        <div class="journey-chevron">▾</div>
+      </div>
+      <div class="journey-body">
+        <div class="timeline">${timeline || `<div style="color:var(--text-light);font-size:12px;padding:8px 0">${lang==='ar'?'لا توجد أحداث':'No events recorded'}</div>`}</div>
+      </div>
+    </div>`;
+}
+
+function toggleJourney(index) {
+  const el = document.getElementById(`jl-${index}`);
+  if (el) el.classList.toggle('open');
+}
+
+async function loadJourney() {
+  try {
+    const r = await fetch(`${API}/api/leads/journey?limit=10`);
+    const data = await r.json();
+    const leads = data.leads || [];
+    const wrap  = document.getElementById('journeySection');
+    if (!leads.length) {
+      wrap.innerHTML = `<div class="card journey-empty">${lang==='ar'?'لا توجد بيانات رحلة بعد — تحتاج نقاط الذكاء الاصطناعي أن تكون محسوبة أولاً':'No journey data yet — AI scores need to be computed first'}</div>`;
+      return;
+    }
+    wrap.innerHTML = leads.map((l,i) => _renderJourneyLead(l,i)).join('');
+    // Auto-open first lead
+    const first = document.getElementById('jl-0');
+    if (first) first.classList.add('open');
+  } catch(e) {
+    console.error('Journey load failed:', e);
+  }
+}
+
 // ── Load all ──────────────────────────────────────────────────────────────────
 async function loadAll() {
   try {
@@ -1101,6 +1312,7 @@ async function loadAll() {
     ]);
     _cache = data;
     renderAll(...data);
+    loadJourney();
   } catch(e) {
     console.error('Load failed:', e);
     document.getElementById('kpiGrid').innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:32px;color:var(--red)">${lang==='ar'?'فشل التحميل: ':'Load failed: '}${e.message}</div>`;
