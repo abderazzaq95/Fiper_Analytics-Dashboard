@@ -30,6 +30,15 @@ def _paginate(build_query) -> list:
 
 @router.get("/api/channels")
 def channels(range: str = Query("7d", pattern="^(today|7d|30d)$")):
+    try:
+        return _channels_inner(range)
+    except Exception as e:
+        import logging
+        logging.getLogger("fiper").error(f"/api/channels error ({range}): {e}", exc_info=True)
+        return {"range": range, "whatsapp":{"leads":0,"converted":0,"conversion_rate":0,"messages":0,"avg_response_time_min":0}, "maqsam":{"leads":0,"converted":0,"conversion_rate":0,"calls":0,"avg_call_duration_seconds":0}}
+
+
+def _channels_inner(range: str):
     since = _since(range)
 
     # Leads: paginate — no date filter intentional (show channel totals all-time)

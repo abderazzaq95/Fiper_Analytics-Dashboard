@@ -34,6 +34,15 @@ def _since(range_: str) -> str:
 
 @router.get("/api/quality")
 def quality(range: str = Query("7d", pattern="^(today|7d|30d)$")):
+    try:
+        return _quality_inner(range)
+    except Exception as e:
+        import logging
+        logging.getLogger("fiper").error(f"/api/quality error ({range}): {e}", exc_info=True)
+        return {"range": range, "alerts": {"total":0,"open":0,"by_severity":{"HIGH":0,"MED":0,"LOW":0},"list":[]}, "sentiment":{"positive":0,"neutral":0,"negative":0}, "top_topics":{}, "top_risk_flags":{}, "faq_topics":[], "avg_treatment_score":0, "call_outcomes":{}, "complaints_count":0, "avg_messages_per_lead":0}
+
+
+def _quality_inner(range: str):
     since = _since(range)
 
     alerts = (
@@ -69,7 +78,7 @@ def quality(range: str = Query("7d", pattern="^(today|7d|30d)$")):
         .gte("analyzed_at", since)
         .execute()
         .data
-    )
+    ) or []
 
     calls = _paginate(
         lambda: supabase.table("calls").select("id,outcome").gte("called_at", since)

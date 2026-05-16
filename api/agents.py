@@ -57,6 +57,15 @@ def _norm(name: str | None) -> str | None:
 
 @router.get("/api/agents")
 def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
+    try:
+        return _agents_inner(range)
+    except Exception as e:
+        import logging
+        logging.getLogger("fiper").error(f"/api/agents error ({range}): {e}", exc_info=True)
+        return {"range": range, "agents": []}
+
+
+def _agents_inner(range: str):
     since = _since(range)
 
     leads    = _paginate(lambda: supabase.table("leads").select("id,assigned_agent,status,score"))

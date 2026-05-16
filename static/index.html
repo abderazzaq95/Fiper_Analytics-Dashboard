@@ -251,6 +251,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 .hot-score-badge{width:40px;height:40px;border-radius:50%;background:var(--red);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0}
 .hot-pulse{animation:hotPulse 2s ease-in-out infinite}
 @keyframes hotPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,0,3,.4)}50%{box-shadow:0 0 0 8px rgba(255,0,3,0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
 
 /* ── Sparkline ── */
 .sparkline-cell{display:flex;align-items:center;gap:4px}
@@ -291,7 +292,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 
   <div class="header-right">
     <span class="last-upd" id="lastUpd"><span class="live-dot" id="liveDot"></span><span id="lastUpdText">—</span></span>
-    <button class="btn-icon" onclick="loadAll()">↻ <span data-en="Refresh" data-ar="تحديث">Refresh</span></button>
+    <button class="btn-icon" id="refreshBtn" onclick="triggerRefresh()">↻ <span data-en="Refresh" data-ar="تحديث">Refresh</span></button>
     <button class="btn-lang" onclick="toggleLang()" id="langBtn">العربية</button>
   </div>
 </header>
@@ -574,9 +575,9 @@ function renderKPI(ov, ch) {
 
   document.getElementById('kpiGrid').innerHTML = `
     <div class="kpi-card fade-in">
-      <div class="kpi-label" data-en="Total Leads" data-ar="إجمالي العملاء">${lang==='ar'?'إجمالي العملاء':'Total Leads'}</div>
+      <div class="kpi-label" data-en="Unique Leads" data-ar="عملاء فريدون">${lang==='ar'?'عملاء فريدون':'Unique Leads'}</div>
       <div class="kpi-value">${fmt(ov.leads.total)}</div>
-      <div class="kpi-sub">${fmt(ov.leads.converted)} ${lang==='ar'?'محول':'converted'}</div>
+      <div class="kpi-sub">${fmt(ov.leads.converted)} ${lang==='ar'?'محول':'converted'} · ${lang==='ar'?'بالهاتف':'by phone'}</div>
       <span class="kpi-badge badge-blue">${pct(ov.leads.conversion_rate)} CVR</span>
     </div>
     <div class="kpi-card fade-in" style="animation-delay:.05s">
@@ -1107,7 +1108,8 @@ function renderAlerts(quality) {
     return;
   }
   const typeLabels = {no_reply:lang==='ar'?'لا رد':'No Reply',weak_engagement:lang==='ar'?'تفاعل ضعيف':'Weak Engagement',negative_sentiment:lang==='ar'?'مشاعر سلبية':'Negative Sentiment',poor_treatment:lang==='ar'?'معاملة سيئة':'Poor Treatment',beginner_risk:lang==='ar'?'خطر مبتدئ':'Beginner Risk',slow_response:lang==='ar'?'رد بطيء':'Slow Response',stale_callback:lang==='ar'?'معاودة متأخرة':'Stale Callback',profit_expectations:lang==='ar'?'توقعات مفرطة':'Profit Expectations'};
-  el.innerHTML = list.slice(0,30).map(a=>`
+  const ALERT_LIMIT = 5;
+  const mkAlert = a => `
     <div class="alert-item ${(a.severity||'').toLowerCase()}">
       <span class="pill ${a.severity==='HIGH'?'pill-red':a.severity==='MED'?'pill-warn':'pill-blue'}" style="flex-shrink:0;margin-top:1px">${a.severity}</span>
       <div class="alert-body">
@@ -1117,7 +1119,18 @@ function renderAlerts(quality) {
           ${a.created_at?`<span>🕐 ${ago(a.created_at)}</span>`:''}
         </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  const visible = list.slice(0, ALERT_LIMIT);
+  const hidden  = list.slice(ALERT_LIMIT);
+  el.innerHTML = visible.map(mkAlert).join('') +
+    (hidden.length ? `<div id="alertsRest" style="display:none">${hidden.map(mkAlert).join('')}</div>
+      <div style="padding:10px 20px;border-top:1px solid var(--border)">
+        <button id="alertsToggleBtn" data-total="${list.length}"
+          onclick="toggleAlerts(this)"
+          style="background:none;border:none;color:var(--blue);font-size:12px;font-weight:700;cursor:pointer;padding:0">
+          ${lang==='ar'?`اعرض كل ${list.length} تنبيه ←`:`Show all ${list.length} alerts →`}
+        </button>
+      </div>` : '');
 }
 
 // ── Render all sections from cached data ─────────────────────────────────────
@@ -1320,6 +1333,31 @@ function _renderJourneyLead(lead, index) {
 function toggleJourney(index) {
   const el = document.getElementById(`jl-${index}`);
   if (el) el.classList.toggle('open');
+}
+
+function toggleAlerts(btn) {
+  const rest = document.getElementById('alertsRest');
+  if (!rest || !btn) return;
+  const isOpen = rest.style.display !== 'none';
+  rest.style.display = isOpen ? 'none' : 'block';
+  const total = btn.dataset.total;
+  btn.textContent = isOpen
+    ? (lang==='ar' ? `اعرض كل ${total} تنبيه ←` : `Show all ${total} alerts →`)
+    : (lang==='ar' ? '↑ أقل' : '↑ Show less');
+}
+
+async function triggerRefresh() {
+  const btn = document.getElementById('refreshBtn');
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  const origHTML = btn.innerHTML;
+  btn.innerHTML = `<span style="display:inline-block;animation:spin .8s linear infinite">⟳</span> <span>${lang==='ar'?'جاري التشغيل…':'Running…'}</span>`;
+  try {
+    await fetch(`${API}/api/run-pipeline`, {method: 'POST'});
+  } catch(e) { /* pipeline trigger is best-effort */ }
+  await loadAll();
+  btn.innerHTML = origHTML;
+  btn.disabled = false;
 }
 
 async function markConverted(leadId, index) {

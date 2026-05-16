@@ -32,6 +32,15 @@ def _paginate(build_query) -> list:
 
 @router.get("/api/overview")
 def overview(range: str = Query("7d", pattern="^(today|7d|30d)$")):
+    try:
+        return _overview_inner(range)
+    except Exception as e:
+        import logging
+        logging.getLogger("fiper").error(f"/api/overview error ({range}): {e}", exc_info=True)
+        return {"range": range, "leads":{"total":0,"converted":0,"conversion_rate":0,"avg_score":0}, "messages":{"inbound":0,"outbound":0,"total":0}, "calls":{"total":0,"avg_duration_seconds":0}, "alerts":{"open":0,"high":0}, "hourly_distribution":[{"hour":i,"calls":0} for i in range(24)]}
+
+
+def _overview_inner(range: str):
     since = _since(range)
 
     # Messages: small dataset
@@ -82,7 +91,7 @@ def overview(range: str = Query("7d", pattern="^(today|7d|30d)$")):
             batch_ids = id_list[idx:idx + 500]
             chunk = (
                 supabase.table("leads")
-                .select("id,status,score")
+                .select("id,phone,status,score")
                 .in_("id", batch_ids)
                 .execute()
                 .data or []
@@ -96,8 +105,13 @@ def overview(range: str = Query("7d", pattern="^(today|7d|30d)$")):
         .gte("created_at", since).execute().data or []
     )
 
-    total_leads = len(leads)
-    converted = sum(1 for l in leads if l.get("status") == "converted")
+    # Count DISTINCT phone numbers — same person may have a Maqsam lead and a
+    # WhatsApp lead; we want unique people, not unique DB rows.
+    unique_phones = {l.get("phone") for l in leads if l.get("phone")}
+    total_leads = len(unique_phones)
+    # A phone is "converted" if any of its lead records has status=converted
+    converted_phones = {l.get("phone") for l in leads if l.get("status") == "converted" and l.get("phone")}
+    converted = len(converted_phones)
     conversion_rate = round((converted / total_leads * 100) if total_leads else 0, 1)
     scored_leads = [l for l in leads if l.get("score") is not None]
     avg_score = round(sum(l["score"] for l in scored_leads) / len(scored_leads), 1) if scored_leads else 0

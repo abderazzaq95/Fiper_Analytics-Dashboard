@@ -19,6 +19,15 @@ def _since(range_: str) -> str:
 
 @router.get("/api/leads")
 def leads(range: str = Query("7d", pattern="^(today|7d|30d)$")):
+    try:
+        return _leads_inner(range)
+    except Exception as e:
+        import logging
+        logging.getLogger("fiper").error(f"/api/leads error ({range}): {e}", exc_info=True)
+        return {"range": range, "total": 0, "funnel": {}, "score_distribution": {"0-25":0,"26-50":0,"51-75":0,"76-100":0}, "leads": [], "hot_leads": []}
+
+
+def _leads_inner(range: str):
     since = _since(range)
 
     all_leads = (
@@ -28,15 +37,18 @@ def leads(range: str = Query("7d", pattern="^(today|7d|30d)$")):
         .order("score", desc=True)
         .execute()
         .data
-    )
+    ) or []
 
     # Join AI summaries by lead_id
-    analyses = (
-        supabase.table("ai_analysis")
-        .select("lead_id,summary")
-        .execute()
-        .data
-    ) or []
+    try:
+        analyses = (
+            supabase.table("ai_analysis")
+            .select("lead_id,summary")
+            .execute()
+            .data
+        ) or []
+    except Exception:
+        analyses = []
     summary_map = {a["lead_id"]: a.get("summary") for a in analyses}
     for lead in all_leads:
         lead["summary"] = summary_map.get(lead["id"])
