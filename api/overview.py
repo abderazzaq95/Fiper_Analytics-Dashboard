@@ -8,6 +8,8 @@ load_dotenv()
 router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 
+_EMPTY_HOURLY = [{"hour": h, "calls": 0} for h in range(24)]
+
 
 def _since(range_: str) -> str:
     now = datetime.now(timezone.utc)
@@ -37,7 +39,7 @@ def overview(range: str = Query("7d", pattern="^(today|7d|30d)$")):
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/overview error ({range}): {e}", exc_info=True)
-        return {"range": range, "leads":{"total":0,"converted":0,"conversion_rate":0,"avg_score":0}, "messages":{"inbound":0,"outbound":0,"total":0}, "calls":{"total":0,"avg_duration_seconds":0}, "alerts":{"open":0,"high":0}, "hourly_distribution":[{"hour":i,"calls":0} for i in range(24)]}
+        return {"range": range, "leads":{"total":0,"converted":0,"conversion_rate":0,"avg_score":0}, "messages":{"inbound":0,"outbound":0,"total":0}, "calls":{"total":0,"avg_duration_seconds":0}, "alerts":{"open":0,"high":0}, "hourly_distribution":_EMPTY_HOURLY}
 
 
 def _overview_inner(range: str):

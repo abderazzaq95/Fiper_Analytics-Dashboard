@@ -1440,7 +1440,7 @@ async function loadAll() {
     const data = await Promise.all([
       get('/api/overview'), get('/api/channels'), get('/api/leads'),
       get('/api/agents'),   get('/api/quality'),
-      fetch(`${API}/api/channels/traffic`).then(r=>r.json()),
+      fetch(`${API}/api/channels/traffic`).then(r => r.ok ? r.json() : Promise.resolve({})),
     ]);
     _cache = data;
     renderAll(...data);

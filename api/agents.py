@@ -172,7 +172,7 @@ def _agents_inner(range: str):
             by_lead[m["lead_id"]].append(m)
         response_times = []
         for msgs in by_lead.values():
-            sorted_msgs = sorted(msgs, key=lambda x: x["sent_at"])
+            sorted_msgs = sorted(msgs, key=lambda x: x.get("sent_at") or "")
             last_in = None
             for m in sorted_msgs:
                 if m["direction"] == "inbound":

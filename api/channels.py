@@ -76,7 +76,7 @@ def _channels_inner(range: str):
         by_lead.setdefault(m["lead_id"], []).append(m)
 
     for msgs in by_lead.values():
-        sorted_msgs = sorted(msgs, key=lambda x: x["sent_at"])
+        sorted_msgs = sorted(msgs, key=lambda x: x.get("sent_at") or "")
         last_in = None
         for m in sorted_msgs:
             if m["direction"] == "inbound":
@@ -112,9 +112,24 @@ def _channels_inner(range: str):
     }
 
 
+_EMPTY_TRAFFIC = {
+    p: {"whatsapp": {"leads": 0, "messages": 0}, "maqsam": {"leads": 0, "calls": 0}}
+    for p in ("today", "2d", "7d")
+}
+
+
 @router.get("/api/channels/traffic")
 def channels_traffic():
     """Multi-period traffic breakdown: today / 2d / 7d for each channel."""
+    try:
+        return _channels_traffic_inner()
+    except Exception as e:
+        import logging
+        logging.getLogger("fiper").error(f"/api/channels/traffic error: {e}", exc_info=True)
+        return _EMPTY_TRAFFIC
+
+
+def _channels_traffic_inner():
     now = datetime.now(timezone.utc)
     since_7d = (now - timedelta(days=7)).isoformat()
 
