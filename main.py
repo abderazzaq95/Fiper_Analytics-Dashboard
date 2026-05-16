@@ -742,9 +742,6 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     log.info("Scheduler started — pipeline every 2 h, keep-alive ping every 10 min")
 
-    # ONE-TIME: re-run top-20 reanalysis with Arabic language enforcement
-    asyncio.create_task(_force_reanalyze_top(20))
-
     yield
     scheduler.shutdown()
 
@@ -1114,13 +1111,6 @@ def ping():
 @app.get("/health")
 def health():
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
-
-
-@app.post("/api/admin/reanalyze-top20")
-async def admin_reanalyze_top20(limit: int = Query(20, ge=1, le=50)):
-    """ONE-TIME — remove after backfill is confirmed complete."""
-    asyncio.create_task(_force_reanalyze_top(limit))
-    return {"status": "reanalysis started", "limit": limit}
 
 
 @app.post("/api/run-pipeline")
