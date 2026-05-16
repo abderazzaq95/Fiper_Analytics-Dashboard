@@ -541,6 +541,166 @@ async def run_pipeline():
     await _broadcast("data_updated", {"source": "pipeline"})
 
 
+async def _force_reanalyze_top(limit: int = 20):
+    """Re-run AI analysis on the top `limit` leads by score, bypassing the
+    recency guard.  Used once to backfill corrected summaries after a prompt fix.
+    """
+    from collections import defaultdict as _dd
+    log.info(f"[reanalyze] Starting force-reanalysis of top {limit} leads by score")
+
+    leads = (
+        supabase.table("leads")
+        .select("id,phone,channel")
+        .gt("score", 0)
+        .order("score", desc=True)
+        .limit(limit)
+        .execute()
+        .data or []
+    )
+    if not leads:
+        log.info("[reanalyze] No scored leads found — nothing to do")
+        return
+
+    lead_ids = [l["id"] for l in leads]
+
+    all_calls_raw = (
+        supabase.table("calls")
+        .select("lead_id,duration_seconds,outcome,agent_name,called_at,transcript,maqsam_sentiment,summary_en")
+        .in_("lead_id", lead_ids)
+        .gt("duration_seconds", 0)
+        .execute()
+        .data or []
+    )
+    all_msgs_raw = (
+        supabase.table("messages")
+        .select("lead_id,direction,body,sent_at,agent_name")
+        .in_("lead_id", lead_ids)
+        .execute()
+        .data or []
+    )
+
+    # Cross-channel: same person may have calls under one lead_id, msgs under another
+    phones = list({l.get("phone") for l in leads if l.get("phone")})
+    if phones:
+        cross = (
+            supabase.table("leads").select("id,phone")
+            .in_("phone", phones).execute().data or []
+        )
+        cross_ids = [c["id"] for c in cross if c.get("id")]
+        cross_phone = {c["id"]: c.get("phone") for c in cross}
+        if cross_ids:
+            extra = (
+                supabase.table("messages")
+                .select("lead_id,direction,body,sent_at,agent_name")
+                .in_("lead_id", cross_ids)
+                .execute()
+                .data or []
+            )
+            all_msgs_raw.extend(extra)
+
+    calls_by: dict = _dd(list)
+    for c in all_calls_raw:
+        if c.get("lead_id"):
+            calls_by[c["lead_id"]].append(c)
+
+    lead_phone = {l["id"]: l.get("phone") for l in leads}
+    msgs_by: dict = _dd(list)
+    for m in all_msgs_raw:
+        msg_lid = m.get("lead_id")
+        if not msg_lid:
+            continue
+        # Direct match
+        if msg_lid in lead_phone:
+            msgs_by[msg_lid].append(m)
+            continue
+        # Cross-channel: map via phone
+        phone = cross_phone.get(msg_lid) if phones else None
+        if phone:
+            for top_lid, top_phone in lead_phone.items():
+                if top_phone == phone:
+                    msgs_by[top_lid].append(m)
+
+    ok = err = skipped = 0
+    for lead in leads:
+        lid     = lead["id"]
+        channel = lead.get("channel", "")
+        phone   = lead.get("phone") or lid[:8]
+
+        try:
+            if channel == "maqsam":
+                calls = sorted(calls_by.get(lid, []), key=lambda c: c.get("called_at") or "")
+                if not calls or not any(c.get("transcript") for c in calls):
+                    log.info(f"[reanalyze] SKIP {phone} — no transcript")
+                    skipped += 1
+                    continue
+
+                blocks, sentiments = [], []
+                for i, c in enumerate(calls, 1):
+                    transcript = (c.get("transcript") or "").strip()
+                    sentiment  = c.get("maqsam_sentiment")
+                    if sentiment:
+                        sentiments.append(sentiment)
+                    block = (f"=== CALL {i} | Duration: {c.get('duration_seconds')}s | "
+                             f"State: {c.get('outcome')} | Agent: {c.get('agent_name') or 'unknown'} ===")
+                    if sentiment:
+                        block += f"\nMaqsam Sentiment: {sentiment}"
+                    if c.get("summary_en"):
+                        block += f"\nSummary: {c['summary_en']}"
+                    if transcript:
+                        block += f"\n\nTranscript:\n{transcript[:3000]}"
+                    blocks.append(block)
+
+                mq_sentiment = (
+                    "negative" if "negative" in sentiments else
+                    "positive" if "positive" in sentiments else
+                    (sentiments[0] if sentiments else None)
+                )
+                user_msg = (f"Maqsam sentiment (pre-determined): {mq_sentiment or 'unknown'}\n\n"
+                            f"Analyze these calls:\n\n" + "\n\n".join(blocks))
+                source = "maqsam"
+
+            elif channel == "whatsapp":
+                msgs = sorted(msgs_by.get(lid, []), key=lambda m: m.get("sent_at") or "")
+                if not msgs:
+                    log.info(f"[reanalyze] SKIP {phone} — no messages")
+                    skipped += 1
+                    continue
+                lines = []
+                for m in msgs:
+                    role = "Agent" if m.get("direction") == "outbound" else "Customer"
+                    lines.append(f"{role}: {(m.get('body') or '')[:300]}")
+                user_msg = ("Maqsam sentiment (pre-determined): unknown\n\n"
+                            "Analyze this WhatsApp conversation:\n\n" + "\n".join(lines))
+                mq_sentiment = None
+                source = "whatsapp"
+            else:
+                skipped += 1
+                continue
+
+            result = await _call_claude_async(user_msg)
+            if mq_sentiment:
+                result["sentiment"] = mq_sentiment
+
+            existing = (supabase.table("ai_analysis").select("id")
+                        .eq("lead_id", lid).execute().data or [])
+            if existing:
+                supabase.table("ai_analysis").update(result).eq("lead_id", lid).execute()
+            else:
+                supabase.table("ai_analysis").insert({"lead_id": lid, "source": source, **result}).execute()
+            supabase.table("leads").update({"score": result.get("score")}).eq("id", lid).execute()
+
+            summary = (result.get("summary") or "")[:100]
+            log.info(f"[reanalyze] OK {phone} score={result.get('score')} — {summary!r}")
+            ok += 1
+            await asyncio.sleep(0.4)
+
+        except Exception as e:
+            log.error(f"[reanalyze] ERROR {phone}: {e}")
+            err += 1
+
+    log.info(f"[reanalyze] Done — {ok} updated, {err} errors, {skipped} skipped")
+
+
 async def _ingest_mc_with_stats(hours_back: int) -> dict:
     """Wrapper that runs ingest_manycontacts and counts pre/post message rows."""
     before = (supabase.table("messages").select("id", count="exact")
@@ -581,6 +741,10 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_ping_self, "interval", minutes=10, id="keepalive", replace_existing=True)
     scheduler.start()
     log.info("Scheduler started — pipeline every 2 h, keep-alive ping every 10 min")
+
+    # ONE-TIME: backfill top-20 leads with corrected Fiper prompt — remove after deploy
+    asyncio.create_task(_force_reanalyze_top(20))
+
     yield
     scheduler.shutdown()
 
@@ -950,6 +1114,16 @@ def ping():
 @app.get("/health")
 def health():
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+@app.post("/api/admin/reanalyze-top20")
+async def admin_reanalyze_top20(limit: int = Query(20, ge=1, le=50)):
+    """ONE-TIME admin endpoint — force-reanalyze top leads with corrected prompt.
+    Remove this endpoint after the backfill is complete.
+    """
+    asyncio.create_task(_force_reanalyze_top(limit))
+    return {"status": "reanalysis started", "limit": limit,
+            "note": "check server logs for [reanalyze] progress"}
 
 
 @app.post("/api/run-pipeline")
