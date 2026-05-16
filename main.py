@@ -49,6 +49,10 @@ _AI_SYSTEM_PROMPT = """You are a quality assurance analyst for Fiper, a trading 
 Analyze the call transcript(s) between Fiper agents and leads.
 Maqsam has already determined the sentiment — do NOT re-evaluate it; it is passed to you separately.
 
+IMPORTANT — COMPANY NAME: The company is called FIPER (فايبر in Arabic). It is a trading broker.
+Always write "Fiper" in the summary. Never write "Viber", "Fighter", "Faiber", or "financial brokerage company".
+Write the summary in the same language as the conversation: Arabic if the conversation is in Arabic, English if in English.
+
 Respond ONLY in valid JSON. No explanation, no markdown, no extra text.
 
 {
@@ -58,7 +62,7 @@ Respond ONLY in valid JSON. No explanation, no markdown, no extra text.
   "follow_up_needed": true|false,
   "risk_flags": [],
   "treatment_score": 0-100,
-  "summary": "Max 2 sentences. Arabic if the conversation is Arabic, English if English."
+  "summary": "Max 2 sentences in the conversation language. Use the company name Fiper."
 }
 
 topics: pricing|product_fit|competitor|technical|follow_up|not_decision_maker|trading_education|account_info|greetings|profit_expectations

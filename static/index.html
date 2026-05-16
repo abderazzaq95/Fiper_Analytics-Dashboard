@@ -1162,6 +1162,27 @@ const EVENT_ICONS = {
   alert:     '⚠️', account: '🏦',
 };
 const SENTIMENT_EMOJI = { positive:'😊', neutral:'😐', negative:'😔' };
+const SENTIMENT_AR    = { positive:'إيجابي', neutral:'محايد', negative:'سلبي' };
+const AR_ORDINALS     = ['','الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة','السابعة','الثامنة','التاسعة','العاشرة'];
+
+function _translateTitle(ev) {
+  if (lang !== 'ar') return ev.title;
+  if (ev.type === 'call') {
+    if (ev.title === 'First Call') return 'المكالمة الأولى';
+    const m = ev.title.match(/^Call #(\d+)$/);
+    if (m) {
+      const n = parseInt(m[1]);
+      return `المكالمة ${n < AR_ORDINALS.length ? AR_ORDINALS[n] : '#' + n}`;
+    }
+  }
+  if (ev.type === 'whatsapp') {
+    if (ev.title === 'First WhatsApp Message') return 'أول رسالة واتساب';
+    if (ev.title === 'First Agent Reply')       return 'أول رد من الوكيل';
+  }
+  if (ev.type === 'ai')      return 'تحليل الذكاء الاصطناعي';
+  if (ev.type === 'account') return 'فتح الحساب';
+  return ev.title;
+}
 
 function _fmtDate(iso) {
   if (!iso) return '—';
@@ -1197,13 +1218,13 @@ function _renderEvent(ev) {
 
   if (ev.type === 'call') {
     const outLabel = lang==='ar'
-      ? {completed:'مكتملة',no_answer:'لا يوجد رد',busy:'مشغول',failed:'فاشلة',abandoned:'مهجورة',in_progress:'جارية'}[ev.outcome]||ev.outcome
+      ? {completed:'مكتملة',no_answer:'لا رد',busy:'مشغول',failed:'فاشلة',abandoned:'مهجورة',in_progress:'جارية',callback:'معاودة الاتصال',not_interested:'غير مهتم',ongoing:'جارية'}[ev.outcome]||ev.outcome
       : ev.outcome;
     details += `<div class="tl-details">`;
     details += `<b>${lang==='ar'?'الوكيل':'Agent'}:</b> ${ev.agent} &nbsp;|&nbsp; `;
     details += `<b>${lang==='ar'?'المدة':'Duration'}:</b> ${ev.duration} &nbsp;|&nbsp; `;
     details += `<b>${lang==='ar'?'النتيجة':'Outcome'}:</b> ${outLabel}`;
-    if (ev.sentiment) details += ` &nbsp;|&nbsp; ${SENTIMENT_EMOJI[ev.sentiment]||''} ${ev.sentiment}`;
+    if (ev.sentiment) details += ` &nbsp;|&nbsp; ${SENTIMENT_EMOJI[ev.sentiment]||''} ${lang==='ar'?(SENTIMENT_AR[ev.sentiment]||ev.sentiment):ev.sentiment}`;
     details += `</div>`;
     if (ev.summary) {
       const uid = 'sum_' + Math.random().toString(36).slice(2,8);
@@ -1243,7 +1264,7 @@ function _renderEvent(ev) {
     const sentEmoji = SENTIMENT_EMOJI[ev.sentiment] || '';
     details += `<div class="tl-details">`;
     details += `<b>${lang==='ar'?'النقاط':'Score'}:</b> <span style="color:${_scoreColor(ev.score)};font-weight:800">${ev.score}</span>/100`;
-    details += ` &nbsp;|&nbsp; ${sentEmoji} ${ev.sentiment}`;
+    details += ` &nbsp;|&nbsp; ${sentEmoji} ${lang==='ar'?(SENTIMENT_AR[ev.sentiment]||ev.sentiment):ev.sentiment}`;
     if (ev.outcome) details += ` &nbsp;|&nbsp; <b>${lang==='ar'?'النتيجة':'Outcome'}:</b> ${ev.outcome.replace(/_/g,' ')}`;
     details += `</div>`;
     const chips = [];
@@ -1269,7 +1290,7 @@ function _renderEvent(ev) {
     <div class="tl-event">
       <div class="tl-dot ${color}"></div>
       <div class="tl-card ${color}">
-        <div class="tl-title">${icon} ${ev.title}</div>
+        <div class="tl-title">${icon} ${_translateTitle(ev)}</div>
         <div class="tl-date">${dateStr}</div>
         ${details}
       </div>
