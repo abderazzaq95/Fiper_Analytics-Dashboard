@@ -9,7 +9,6 @@ load_dotenv()
 router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 
-# Country code detection — sorted longest-prefix-first at import time
 _CC_PREFIXES = sorted([
     ('9665', 'SA'), ('968', 'OM'), ('966', 'SA'), ('971', 'AE'),
     ('965', 'KW'), ('964', 'IQ'), ('962', 'JO'), ('212', 'MA'),
@@ -22,6 +21,7 @@ _OUTCOME_COLOR = {
     'abandoned': 'orange', 'failed': 'red', 'in_progress': 'blue',
 }
 _SEV_COLOR = {'HIGH': 'red', 'MED': 'orange', 'LOW': 'blue'}
+_STATUS_RANK = {'converted': 5, 'callback': 4, 'engaged': 3, 'new': 2, 'lost': 1}
 
 
 def _detect_cc(phone: str) -> str:
@@ -61,6 +61,62 @@ def _dur(seconds) -> str:
     return f'{s // 60}m {s % 60}s'
 
 
+def _merge_by_phone(raw_leads: list[dict]) -> list[dict]:
+    """Group leads sharing the same phone into one merged record."""
+    phone_groups: dict[str, list] = defaultdict(list)
+    no_phone: list[dict] = []
+    for lead in raw_leads:
+        phone = lead.get("phone")
+        if phone:
+            phone_groups[phone].append(lead)
+        else:
+            no_phone.append(lead)
+
+    merged: list[dict] = []
+    for phone, group in phone_groups.items():
+        if len(group) == 1:
+            lead = dict(group[0])
+            lead["lead_ids"] = [lead["id"]]
+            lead["channels"] = [lead.get("channel") or ""]
+            merged.append(lead)
+            continue
+
+        # Multiple leads share this phone → merge into one card
+        best_score = max(l.get("score") or 0 for l in group)
+        best_status = max(
+            (l.get("status") or "new" for l in group),
+            key=lambda s: _STATUS_RANK.get(s, 0),
+        )
+        channels = sorted({l.get("channel") for l in group if l.get("channel")})
+        last_msg = max((l.get("last_message_at") or "" for l in group)) or None
+        name = next((l.get("name") for l in group if l.get("name")), None)
+        agent = next((l.get("assigned_agent") for l in group if l.get("assigned_agent")), None)
+        # Prefer maqsam lead as primary (has calls); else first in group
+        primary = next((l for l in group if l.get("channel") == "maqsam"), group[0])
+
+        merged.append({
+            "id": primary["id"],
+            "lead_ids": [l["id"] for l in group],
+            "phone": phone,
+            "name": name,
+            "score": best_score,
+            "status": best_status,
+            "assigned_agent": agent,
+            "channel": "+".join(channels),
+            "channels": channels,
+            "last_message_at": last_msg,
+        })
+
+    # Leads with no phone are kept as-is (single-channel, no merge possible)
+    for lead in no_phone:
+        lead = dict(lead)
+        lead["lead_ids"] = [lead["id"]]
+        lead["channels"] = [lead.get("channel") or ""]
+        merged.append(lead)
+
+    return merged
+
+
 @router.get("/api/leads/journey/v2")
 def leads_journey_v2(
     page: int = Query(1, ge=1),
@@ -90,7 +146,6 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
     since_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 
     # ── 1. Collect active lead IDs from last 7 days ───────────────────────────
-    # Calls in last 7d (also collect counts for 'most calls' sort)
     call_rows = _paginate(
         lambda: supabase.table("calls").select("lead_id,called_at").gte("called_at", since_7d)
     )
@@ -102,7 +157,6 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
             call_lead_ids.add(lid)
             call_counts[lid] += 1
 
-    # Leads with recent message activity
     msg_lead_rows = (
         supabase.table("leads").select("id")
         .gte("last_message_at", since_7d)
@@ -115,31 +169,44 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
         return {"leads": [], "total": 0, "page": page, "pages": 1, "meta": {"agents": []}}
 
     # ── 2. Fetch lead details ─────────────────────────────────────────────────
-    all_leads: list[dict] = []
+    raw_leads: list[dict] = []
     for batch in _chunks(all_active_ids, 500):
-        all_leads += (
+        raw_leads += (
             supabase.table("leads")
             .select("id,phone,name,score,status,assigned_agent,channel,last_message_at")
             .in_("id", batch)
             .execute().data or []
         )
 
-    # ── 3. Fetch ai_analysis for all leads ────────────────────────────────────
-    all_ids = [l["id"] for l in all_leads]
+    # ── 3. Merge leads sharing the same phone into one card ───────────────────
+    all_leads = _merge_by_phone(raw_leads)
+
+    # Build reverse map: every raw lead_id → its merged primary lead_id
+    raw_to_primary: dict[str, str] = {}
+    for merged in all_leads:
+        for sid in merged["lead_ids"]:
+            raw_to_primary[sid] = merged["id"]
+
+    # ── 4. Fetch ai_analysis for all raw lead IDs ─────────────────────────────
+    raw_lead_ids = [l["id"] for l in raw_leads]
     analyses_raw: list[dict] = []
-    for batch in _chunks(all_ids, 500):
+    for batch in _chunks(raw_lead_ids, 500):
         analyses_raw += (
             supabase.table("ai_analysis")
             .select("lead_id,outcome,risk_flags,sentiment,treatment_score,topics,summary,analyzed_at,source")
             .in_("lead_id", batch)
             .execute().data or []
         )
+
+    # Map analyses to merged primary IDs
     analysis_by_lead: dict[str, list] = defaultdict(list)
     for a in analyses_raw:
-        if a.get("lead_id"):
-            analysis_by_lead[a["lead_id"]].append(a)
+        raw_lid = a.get("lead_id")
+        if raw_lid:
+            primary = raw_to_primary.get(raw_lid, raw_lid)
+            analysis_by_lead[primary].append(a)
 
-    # ── 4. Apply filters ──────────────────────────────────────────────────────
+    # ── 5. Apply filters ──────────────────────────────────────────────────────
     filtered = list(all_leads)
 
     if phone_search:
@@ -152,15 +219,10 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
         filtered = [l for l in filtered if min_score <= (l.get("score") or 0) <= max_score]
 
     if channel == "both":
-        phone_channels: dict[str, set] = defaultdict(set)
-        for l in all_leads:
-            if l.get("phone") and l.get("channel"):
-                phone_channels[l["phone"]].add(l["channel"])
-        both_phones = {p for p, chs in phone_channels.items()
-                       if "maqsam" in chs and "whatsapp" in chs}
-        filtered = [l for l in filtered if l.get("phone") in both_phones]
+        filtered = [l for l in filtered
+                    if "maqsam" in l.get("channels", []) and "whatsapp" in l.get("channels", [])]
     elif channel:
-        filtered = [l for l in filtered if l.get("channel") == channel]
+        filtered = [l for l in filtered if channel in l.get("channels", [])]
 
     if outcome:
         filtered = [
@@ -180,7 +242,7 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
             if any(bool(a.get("risk_flags")) for a in analysis_by_lead.get(l["id"], []))
         ]
 
-    # ── 5. Sort ───────────────────────────────────────────────────────────────
+    # ── 6. Sort ───────────────────────────────────────────────────────────────
     if sort_by == "score":
         filtered.sort(key=lambda l: l.get("score") or 0, reverse=True)
     elif sort_by == "recent":
@@ -188,9 +250,12 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
     elif sort_by == "waiting":
         filtered.sort(key=lambda l: l.get("last_message_at") or "")
     elif sort_by == "calls":
-        filtered.sort(key=lambda l: call_counts.get(l["id"], 0), reverse=True)
+        filtered.sort(
+            key=lambda l: sum(call_counts.get(sid, 0) for sid in l["lead_ids"]),
+            reverse=True,
+        )
 
-    # ── 6. Paginate ───────────────────────────────────────────────────────────
+    # ── 7. Paginate ───────────────────────────────────────────────────────────
     total = len(filtered)
     pages = max(1, (total + limit - 1) // limit)
     page = min(max(page, 1), pages)
@@ -202,19 +267,29 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
         return {"leads": [], "total": total, "page": page, "pages": pages,
                 "meta": {"agents": all_agents}}
 
-    # ── 7. Build timelines for this page ──────────────────────────────────────
-    page_ids = [l["id"] for l in page_leads]
+    # ── 8. Build timelines for this page ──────────────────────────────────────
+    # Expand each merged lead to all its raw lead_ids
+    sub_to_primary: dict[str, str] = {}
+    all_page_sub_ids: list[str] = []
+    for lead in page_leads:
+        lid = lead["id"]
+        for sid in lead["lead_ids"]:
+            sub_to_primary[sid] = lid
+            all_page_sub_ids.append(sid)
+    all_page_sub_ids = list(set(all_page_sub_ids))
+    page_primary_set = {l["id"] for l in page_leads}
     page_phones = list({l.get("phone") for l in page_leads if l.get("phone")})
 
+    # Fetch calls for all sub-lead-ids (covers maqsam calls on any lead in the merge)
     page_calls = (
         supabase.table("calls")
         .select("lead_id,agent_name,duration_seconds,outcome,called_at,maqsam_sentiment,summary_en,transcript")
-        .in_("lead_id", page_ids)
+        .in_("lead_id", all_page_sub_ids)
         .order("called_at")
         .execute().data or []
     )
 
-    # Cross-channel messages: same phone → different lead_id
+    # Cross-channel messages via phone lookup (covers whatsapp lead messages)
     cross_leads: list[dict] = []
     if page_phones:
         cross_leads = (
@@ -238,20 +313,24 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
     page_alerts = (
         supabase.table("alerts")
         .select("lead_id,severity,type,message,created_at,resolved")
-        .in_("lead_id", page_ids)
+        .in_("lead_id", all_page_sub_ids)
         .order("created_at")
         .execute().data or []
     )
 
-    # Group
+    # Group everything by primary (merged) lead_id
     calls_by: dict[str, list] = defaultdict(list)
     msgs_by: dict[str, list] = defaultdict(list)
     alerts_by: dict[str, list] = defaultdict(list)
     page_ana_by: dict[str, list] = defaultdict(list)
 
     for c in page_calls:
-        if c.get("lead_id"):
-            calls_by[c["lead_id"]].append(c)
+        raw_lid = c.get("lead_id")
+        if not raw_lid:
+            continue
+        primary = sub_to_primary.get(raw_lid, raw_lid)
+        if primary in page_primary_set:
+            calls_by[primary].append(c)
 
     lead_phone_map = {l["id"]: l.get("phone") for l in page_leads}
     for m in page_messages:
@@ -266,15 +345,23 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
                 msgs_by[top_lid].append(m)
 
     for al in page_alerts:
-        if al.get("lead_id"):
-            alerts_by[al["lead_id"]].append(al)
+        raw_lid = al.get("lead_id")
+        if not raw_lid:
+            continue
+        primary = sub_to_primary.get(raw_lid, raw_lid)
+        if primary in page_primary_set:
+            alerts_by[primary].append(al)
 
-    page_id_set = {l["id"] for l in page_leads}
+    # ai_analysis: re-use already-fetched analyses_raw, map via sub_to_primary
     for a in analyses_raw:
-        if a.get("lead_id") in page_id_set:
-            page_ana_by[a["lead_id"]].append(a)
+        raw_lid = a.get("lead_id")
+        if not raw_lid:
+            continue
+        primary = sub_to_primary.get(raw_lid)
+        if primary and primary in page_primary_set:
+            page_ana_by[primary].append(a)
 
-    # Build result
+    # ── 9. Assemble result ────────────────────────────────────────────────────
     result = []
     for lead in page_leads:
         lid = lead["id"]
@@ -312,7 +399,6 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
                 "agent": m.get("agent_name") or "—", "preview": m.get("body") or "",
             })
 
-        # Determine if all calls for this lead are short with no transcript
         lead_calls = calls_by[lid]
         _all_short_no_transcript = bool(lead_calls) and all(
             (c.get("duration_seconds") or 0) < 30 and not c.get("transcript")
@@ -361,12 +447,14 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
 
         result.append({
             "id": lid,
+            "lead_ids": lead["lead_ids"],
             "phone": lead.get("phone") or "—",
             "name": lead.get("name") or "",
             "score": lead.get("score") or 0,
             "status": lead.get("status") or "new",
             "assigned_agent": lead.get("assigned_agent") or "—",
             "channel": lead.get("channel") or "—",
+            "channels": lead.get("channels") or [],
             "total_calls": total_calls,
             "answered_calls": answered,
             "total_messages": len(all_msgs),

@@ -1570,7 +1570,8 @@ function _renderJourneyLead(lead, index) {
   const scoreColor = _scoreColor(lead.score);
   const alertBadge = lead.open_alerts > 0
     ? `<span style="background:#fff0f0;color:var(--red);font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px">${lead.open_alerts} ${lang==='ar'?'تنبيه':'alert'}${lead.open_alerts>1&&lang!=='ar'?'s':''}</span>` : '';
-  const chBadge = `<span style="background:var(--bg);color:var(--text-light);font-size:10px;padding:2px 8px;border-radius:12px;border:1px solid var(--border)">${lead.channel}</span>`;
+  const _chList = lead.channels && lead.channels.length ? lead.channels : [lead.channel];
+  const chBadge = _chList.map(ch => `<span style="background:var(--bg);color:var(--text-light);font-size:10px;padding:2px 8px;border-radius:12px;border:1px solid var(--border)">${ch}</span>`).join('');
 
   const timeline = (lead.timeline||[]).map(_renderEvent).join('');
 
@@ -1590,7 +1591,7 @@ function _renderJourneyLead(lead, index) {
         <span style="font-size:12px;font-weight:700;color:var(--green)">${lang==='ar'?'تم التحويل — حالة العميل: محوّل':'Converted — Lead status: converted'}</span>
       </div>`
     : `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <button onclick="markConverted('${lead.id}',${index})" id="convertBtn_${index}"
+        <button onclick="markConverted(${index})" id="convertBtn_${index}"
           style="background:var(--green);color:#fff;border:none;padding:8px 18px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px">
           ✓ ${lang==='ar'?'تحديد كمحوّل':'Mark as Converted'}
         </button>
@@ -1650,13 +1651,15 @@ async function triggerRefresh() {
   btn.disabled = false;
 }
 
-async function markConverted(leadId, index) {
+async function markConverted(index) {
+  const lead = _journeyLeads[index];
+  if (!lead) return;
+  const ids = lead.lead_ids && lead.lead_ids.length ? lead.lead_ids : [lead.id];
   const btn = document.getElementById(`convertBtn_${index}`);
   if (btn) { btn.disabled = true; btn.textContent = lang==='ar'?'جاري التحديث…':'Updating…'; }
   try {
-    const r = await fetch(`${API}/api/leads/${leadId}/convert`, {method:'POST'});
-    if (!r.ok) throw new Error(await r.text());
-    await loadJourney();
+    await Promise.all(ids.map(id => fetch(`${API}/api/leads/${id}/convert`, {method:'POST'}).then(r => { if (!r.ok) throw new Error(id); })));
+    await loadJourneyV2();
   } catch(e) {
     if (btn) { btn.disabled = false; btn.innerHTML = `✓ ${lang==='ar'?'تحديد كمحوّل':'Mark as Converted'}`; }
     alert(`Failed: ${e.message}`);
@@ -1671,6 +1674,7 @@ const jFilters = {
 };
 let _jTotal = 0, _jPages = 1;
 let _jDebounce = null;
+let _journeyLeads = [];
 
 function fmtPhone(phone) {
   if (!phone) return '—';
@@ -1784,6 +1788,7 @@ async function loadJourneyV2() {
       wrap.innerHTML = `<div class="card journey-empty">${lang==='ar'?'لا توجد نتائج تطابق الفلاتر':'No leads match the current filters'}</div>`;
       return;
     }
+    _journeyLeads = leads;
     wrap.innerHTML = leads.map((l,i) => _renderJourneyLead(l,i)).join('');
     applyLang();
   } catch(e) {
