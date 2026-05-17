@@ -130,11 +130,12 @@ def leads_journey_v2(
     agent: str = Query(""),
     high_risk_only: bool = Query(False),
     sort_by: str = Query("score"),
+    lang: str = Query("en"),
 ):
     try:
         return _inner(page, limit, phone_search, country,
                       min_score, max_score, channel, outcome,
-                      agent, high_risk_only, sort_by)
+                      agent, high_risk_only, sort_by, lang)
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/leads/journey/v2 error: {e}", exc_info=True)
@@ -142,7 +143,7 @@ def leads_journey_v2(
 
 
 def _inner(page, limit, phone_search, country, min_score, max_score,
-           channel, outcome, agent, high_risk_only, sort_by):
+           channel, outcome, agent, high_risk_only, sort_by, lang="en"):
     since_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 
     # ── 1. Collect active lead IDs from last 7 days ───────────────────────────
@@ -286,7 +287,7 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
     # Fetch calls for all sub-lead-ids (covers maqsam calls on any lead in the merge)
     page_calls = (
         supabase.table("calls")
-        .select("lead_id,agent_name,duration_seconds,outcome,called_at,maqsam_sentiment,summary_en,transcript")
+        .select("lead_id,agent_name,duration_seconds,outcome,called_at,maqsam_sentiment,summary_en,summary_ar,transcript")
         .in_("lead_id", all_page_sub_ids)
         .order("called_at")
         .execute().data or []
@@ -372,6 +373,11 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
 
         for i, c in enumerate(calls_by[lid]):
             oc = (c.get("outcome") or "unknown").lower()
+            # Pick Maqsam summary in the right language; fall back to the other language
+            if lang == "ar":
+                call_summary = c.get("summary_ar") or c.get("summary_en") or ""
+            else:
+                call_summary = c.get("summary_en") or c.get("summary_ar") or ""
             timeline.append({
                 "type": "call",
                 "date": c.get("called_at"),
@@ -380,7 +386,7 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
                 "agent": c.get("agent_name") or "—",
                 "duration": _dur(c.get("duration_seconds")),
                 "outcome": oc,
-                "summary": c.get("summary_en") or "",
+                "summary": call_summary,
                 "sentiment": c.get("maqsam_sentiment") or "",
             })
 

@@ -1895,6 +1895,7 @@ async function loadJourneyV2() {
   if (jFilters.outcomes.length)    p.set('outcome', jFilters.outcomes.join(','));
   if (jFilters.agents.length)      p.set('agent', jFilters.agents.join(','));
   if (jFilters.high_risk_only)     p.set('high_risk_only', 'true');
+  p.set('lang', lang);
 
   const wrap = document.getElementById('journeySection');
   try {
@@ -1926,6 +1927,7 @@ function exportJourneyCSV() {
   if (jFilters.outcomes.length)  p.set('outcome', jFilters.outcomes.join(','));
   if (jFilters.agents.length)    p.set('agent', jFilters.agents.join(','));
   if (jFilters.high_risk_only)   p.set('high_risk_only', 'true');
+  p.set('lang', lang);
   fetch(`${API}/api/leads/journey/v2?${p}`).then(r=>r.json()).then(data=>{
     const ls = data.leads || [];
     if (!ls.length) { alert(lang==='ar'?'لا توجد بيانات للتصدير':'No data to export'); return; }

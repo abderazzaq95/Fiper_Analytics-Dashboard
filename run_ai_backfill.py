@@ -1,62 +1,39 @@
-"""
-Improved AI backfill — last 7 days only, using real Maqsam call transcripts.
+"""Force-reanalyze the top N leads with the updated AI prompt.
 
-Flow:
-  1. Fetch 7-day calls from Maqsam API (includes full callTranscription, summary, sentiment)
-  2. Update calls table with transcript / summary / sentiment / auto_tags
-  3. Group calls by lead_id; skip leads already analyzed in this run's window
-  4. Pass actual Arabic transcript to Claude for: score, treatment_score, risk_flags,
-     follow_up_needed, topics, outcome, summary
-  5. Use Maqsam's sentiment directly (skip Claude sentiment to save tokens)
-  6. Skip Claude entirely if call has no transcript (no_answer / abandoned / 0s)
-
-Usage:  py run_ai_backfill.py
+Usage:
+    py run_ai_backfill.py --force-reanalyze --limit 20
+    py run_ai_backfill.py --force-reanalyze --limit 20 --dry-run
 """
+import argparse
 import asyncio
-import base64
-import json as _json
-import logging
+import json
 import os
-import sys
-import time
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
 
 import httpx
 from dotenv import load_dotenv
+from supabase import create_client
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-log = logging.getLogger("ai_backfill")
+SB_URL        = os.getenv("SUPABASE_URL")
+SB_KEY        = os.getenv("SUPABASE_SERVICE_KEY")
+ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
+CLAUDE_MODEL  = "claude-haiku-4-5-20251001"
 
-# ── Supabase ──────────────────────────────────────────────────────────────────
-SB = os.getenv("SUPABASE_URL")
-KEY = os.getenv("SUPABASE_SERVICE_KEY")
-SB_H = {
-    "apikey": KEY,
-    "Authorization": f"Bearer {KEY}",
-    "Content-Type": "application/json",
-}
-SB_H_COUNT = {**SB_H, "Prefer": "count=exact"}
+supabase = create_client(SB_URL, SB_KEY)
 
-# ── Maqsam ────────────────────────────────────────────────────────────────────
-_mq_key    = os.getenv("MAQSAM_ACCESS_KEY", "")
-_mq_secret = os.getenv("MAQSAM_ACCESS_SECRET", "")
-_mq_token  = base64.b64encode(f"{_mq_key}:{_mq_secret}".encode()).decode()
-MQ_HEADERS = {"Authorization": f"Basic {_mq_token}"}
-MQ_BASE    = "https://api.maqsam.com/v2"
-
-# ── Claude ────────────────────────────────────────────────────────────────────
-ANTHROPIC_KEY  = os.getenv("ANTHROPIC_API_KEY")
-CLAUDE_MODEL   = "claude-haiku-4-5-20251001"   # fast + cheap for bulk
-
+# Matches the updated prompt in main.py — enforces "Fiper" company name
 SYSTEM_PROMPT = """You are a quality assurance analyst for Fiper, a trading broker in Arabic-speaking markets.
-You will receive one or more call transcripts between Fiper agents and leads.
-Maqsam has already determined the sentiment — do NOT re-evaluate sentiment; it is passed separately.
+Analyze the call transcript(s) between Fiper agents and leads.
+Maqsam has already determined the sentiment — do NOT re-evaluate it; it is passed to you separately.
 
-Analyze the conversation and respond ONLY in valid JSON. No explanation, no markdown, no extra text.
+IMPORTANT — ROLES: The AGENT is the Fiper employee making the outbound call. The CUSTOMER or LEAD is the person being called by Fiper. Always evaluate agent quality from the Fiper employee's perspective.
+IMPORTANT — COMPANY NAME: The company is called FIPER (فايبر in Arabic). It is a trading broker.
+Always write "Fiper" in the summary. Never write "Viber", "Fighter", "Faiber", or "financial brokerage company". Never say "financial brokerage" — always say "Fiper".
+Write the summary in the same language as the conversation: Arabic if the conversation is in Arabic, English if in English.
+
+Respond ONLY in valid JSON. No explanation, no markdown, no extra text.
 
 {
   "score": 0-100,
@@ -65,360 +42,193 @@ Analyze the conversation and respond ONLY in valid JSON. No explanation, no mark
   "follow_up_needed": true|false,
   "risk_flags": [],
   "treatment_score": 0-100,
-  "summary": "Max 2 sentences. Arabic if the conversation is Arabic, English if English."
+  "summary": "Max 2 sentences in the conversation language. Use the company name Fiper."
 }
 
-topics options: pricing|product_fit|competitor|technical|follow_up|not_decision_maker|trading_education|account_info|greetings|profit_expectations
-risk_flags options: unanswered|profit_expectations|beginner_risk|stale_callback|negative_sentiment|slow_response
-
-treatment_score rubric (0-100):
-  90-100: Excellent — professional greeting, clear value prop, handled objections, agreed next step
-  70-89:  Good — mostly professional, minor gaps
-  50-69:  Average — some unprofessional moments or missed opportunities
-  30-49:  Poor — multiple issues, disorganized, or pushy
-  0-29:   Very poor — rude, scripted errors, or zero engagement"""
+topics: pricing|product_fit|competitor|technical|follow_up|not_decision_maker|trading_education|account_info|greetings|profit_expectations
+risk_flags: unanswered|profit_expectations|beginner_risk|stale_callback|negative_sentiment|slow_response
+treatment_score: 90-100 excellent, 70-89 good, 50-69 average, 30-49 poor, 0-29 very poor"""
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+async def call_claude(user_message: str) -> dict:
+    async with httpx.AsyncClient(timeout=40) as client:
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            content=json.dumps({
+                "model": CLAUDE_MODEL,
+                "max_tokens": 512,
+                "system": SYSTEM_PROMPT,
+                "messages": [{"role": "user", "content": user_message}],
+            }),
+        )
+        resp.raise_for_status()
+        raw = resp.json()["content"][0]["text"].strip()
 
-async def sb_fetch_all(c: httpx.AsyncClient, path: str, params: dict) -> list:
-    """Paginate Supabase REST in 1000-row chunks."""
-    rows, offset = [], 0
-    while True:
-        r = await c.get(f"{SB}/rest/v1/{path}", headers=SB_H,
-                        params={**params, "limit": 1000, "offset": offset})
-        r.raise_for_status()
-        batch = r.json()
-        rows.extend(batch)
-        if len(batch) < 1000:
-            break
-        offset += 1000
-    return rows
-
-
-async def mq_fetch_calls(c: httpx.AsyncClient, since_ts: int) -> list[dict]:
-    """
-    Fetch Maqsam calls newer than since_ts (unix timestamp).
-    Maqsam returns calls newest-first; we stop paginating as soon as we
-    see a call older than the cutoff — the date_from/date_to params are
-    ignored by the API and all historical data is returned otherwise.
-    """
-    calls, page = [], 1
-    while True:
-        r = await c.get(f"{MQ_BASE}/calls", headers=MQ_HEADERS,
-                        params={"page": page},
-                        timeout=30)
-        r.raise_for_status()
-        data = r.json()
-        batch = data.get("message", []) if isinstance(data, dict) else data
-        if not batch:
-            break
-
-        # Filter to calls within window; stop when page goes past cutoff
-        in_window = [c2 for c2 in batch if int(c2.get("timestamp") or 0) >= since_ts]
-        calls.extend(in_window)
-        oldest_ts = min((int(c2.get("timestamp") or 0) for c2 in batch), default=0)
-        log.info(f"  Maqsam page {page}: {len(batch)} calls, {len(in_window)} in window "
-                 f"(total so far: {len(calls)})")
-
-        # All calls on this page are older than our window — done
-        if oldest_ts < since_ts:
-            log.info(f"  Reached calls older than cutoff on page {page}, stopping.")
-            break
-
-        if len(batch) < 100:
-            break
-        page += 1
-    return calls
-
-
-def build_transcript_text(call: dict) -> str:
-    """Convert callTranscription list to readable text."""
-    lines = call.get("callTranscription") or []
-    if not lines:
-        return ""
-    parts = []
-    for seg in lines:
-        party = "Agent" if seg.get("party") == "agent" else "Customer"
-        content = seg.get("content", "").strip()
-        if content:
-            parts.append(f"{party}: {content}")
-    return "\n".join(parts)
-
-
-def build_claude_prompt(calls: list[dict]) -> str | None:
-    """
-    Build the full prompt text for one lead's calls.
-    Returns None if no call has a transcript (nothing for Claude to analyze).
-    """
-    blocks = []
-    for i, call in enumerate(sorted(calls, key=lambda x: x.get("timestamp") or 0), 1):
-        ts = call.get("timestamp")
-        dt_str = datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime("%Y-%m-%d %H:%M") if ts else "unknown"
-        duration = call.get("duration") or 0
-        state    = call.get("state", "unknown")
-        agents   = call.get("agents") or []
-        agent_name = agents[0].get("name") if agents else "unknown"
-        sentiment  = call.get("sentiment") or "unknown"
-        summary_en = (call.get("summary") or {}).get("en") or ""
-        auto_tags  = ", ".join(call.get("callAutoTags") or []) or "none"
-        transcript = build_transcript_text(call)
-
-        block = [
-            f"=== CALL {i} — {dt_str} | Agent: {agent_name} | Duration: {duration}s | State: {state} ===",
-            f"Maqsam Sentiment: {sentiment}",
-            f"Auto Tags: {auto_tags}",
-        ]
-        if summary_en:
-            block.append(f"Summary: {summary_en}")
-        if transcript:
-            block.append(f"\nTranscript:\n{transcript}")
-        else:
-            block.append("(No transcript — call was not answered or too short)")
-        blocks.append("\n".join(block))
-
-    if not blocks:
-        return None
-
-    # Only proceed with Claude if at least one call has a real transcript
-    has_transcript = any(build_transcript_text(c) for c in calls)
-    if not has_transcript:
-        return None
-
-    return "\n\n".join(blocks)
-
-
-def call_claude(prompt: str, maqsam_sentiment: str | None) -> dict:
-    """Call Claude via raw httpx. Returns parsed JSON dict."""
-    user_msg = f"Maqsam sentiment (pre-determined, do not change): {maqsam_sentiment or 'unknown'}\n\nAnalyze these calls:\n\n{prompt}"
-    payload = {
-        "model": CLAUDE_MODEL,
-        "max_tokens": 512,
-        "system": SYSTEM_PROMPT,
-        "messages": [{"role": "user", "content": user_msg}],
-    }
-    resp = httpx.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": ANTHROPIC_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-        content=_json.dumps(payload),
-        timeout=30,
-    )
-    resp.raise_for_status()
-    raw = resp.json()["content"][0]["text"].strip()
     try:
-        return _json.loads(raw)
-    except _json.JSONDecodeError:
-        start, end = raw.find("{"), raw.rfind("}") + 1
-        if start != -1:
-            return _json.loads(raw[start:end])
-        return {"score": 0, "topics": [], "outcome": "ongoing",
-                "follow_up_needed": False, "risk_flags": [],
-                "treatment_score": 50, "summary": "Parse error."}
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        s, e = raw.find("{"), raw.rfind("}") + 1
+        if s != -1:
+            return json.loads(raw[s:e])
+        return {}
 
 
-async def main():
-    # ── Date range: last 7 days ───────────────────────────────────────────────
-    now = datetime.now(timezone.utc)
-    since_dt = now - timedelta(days=7)
-    since_ts = int(since_dt.timestamp())
-    log.info(f"Backfill window: {since_dt.strftime('%Y-%m-%d %H:%M UTC')} → now "
-             f"(unix cutoff: {since_ts})")
+async def reanalyze_lead(lead: dict, calls_by: dict, msgs_by: dict, dry_run: bool) -> str:
+    lid     = lead["id"]
+    channel = lead.get("channel", "")
+    phone   = lead.get("phone") or lid[:8]
 
-    async with httpx.AsyncClient(timeout=60) as c:
+    if channel == "maqsam":
+        calls = sorted(calls_by.get(lid, []), key=lambda c: c.get("called_at") or "")
+        if not calls or not any(c.get("transcript") for c in calls):
+            return f"  SKIP  {phone} — no transcript"
 
-        # ── 1. Fetch 7-day calls from Maqsam API ──────────────────────────────
-        log.info("Fetching calls from Maqsam API (stopping when timestamps go past 7 days)...")
-        mq_calls = await mq_fetch_calls(c, since_ts)
-        log.info(f"  {len(mq_calls)} total Maqsam calls in window")
-
-        # Filter to calls with duration >= 30s
-        qualified = [call for call in mq_calls if (call.get("duration") or 0) >= 30]
-        log.info(f"  {len(qualified)} calls with duration >= 30s")
-
-        with_transcript = [c2 for c2 in qualified if c2.get("callTranscription")]
-        log.info(f"  {len(with_transcript)} calls WITH transcripts")
-        log.info(f"  {len(qualified) - len(with_transcript)} calls without transcripts")
-
-        if not qualified:
-            log.info("Nothing to process.")
-            return
-
-        # ── 2. Build maqsam_id → call lookup ─────────────────────────────────
-        mq_id_to_call = {str(call["id"]): call for call in qualified}
-        mq_ids = list(mq_id_to_call.keys())
-
-        # ── 3. Look up matching DB call rows (get lead_id + maqsam_id) ────────
-        log.info("Looking up call records in Supabase...")
-        db_calls = await sb_fetch_all(c, "calls",
-                                      {"select": "id,maqsam_id,lead_id",
-                                       "maqsam_id": f"in.({','.join(mq_ids)})"})
-        log.info(f"  {len(db_calls)} matching rows found in DB")
-
-        # Map maqsam_id → db row
-        mq_id_to_db = {row["maqsam_id"]: row for row in db_calls if row.get("maqsam_id")}
-
-        # ── 4. Update calls table with transcript / summary / sentiment ────────
-        log.info("Updating calls table with transcript data...")
-        updated = skipped_no_col = 0
-        for mq_id, call in mq_id_to_call.items():
-            if mq_id not in mq_id_to_db:
-                continue  # call not in DB yet (will be ingested on next poll)
-
-            transcript_text = build_transcript_text(call)
-            summary_obj = call.get("summary") or {}
-            sentiment   = call.get("sentiment")
-            auto_tags   = call.get("callAutoTags") or []
-
-            patch_data = {}
-            if transcript_text:
-                patch_data["transcript"] = transcript_text
-            if summary_obj.get("en"):
-                patch_data["summary_en"] = summary_obj["en"]
-            if summary_obj.get("ar"):
-                patch_data["summary_ar"] = summary_obj["ar"]
+        blocks, sentiments = [], []
+        for i, c in enumerate(calls, 1):
+            transcript = (c.get("transcript") or "").strip()
+            sentiment  = c.get("maqsam_sentiment")
             if sentiment:
-                patch_data["maqsam_sentiment"] = sentiment
-            if auto_tags:
-                patch_data["auto_tags"] = auto_tags
+                sentiments.append(sentiment)
+            block = (
+                f"=== CALL {i} | Duration: {c.get('duration_seconds')}s | "
+                f"State: {c.get('outcome')} | Agent: {c.get('agent_name') or 'unknown'} ==="
+            )
+            if sentiment:
+                block += f"\nMaqsam Sentiment: {sentiment}"
+            if c.get("summary_en"):
+                block += f"\nSummary: {c['summary_en']}"
+            if transcript:
+                block += f"\n\nTranscript:\n{transcript[:3000]}"
+            blocks.append(block)
 
-            if not patch_data:
-                continue
+        mq_sentiment = (
+            "negative" if "negative" in sentiments else
+            "positive" if "positive" in sentiments else
+            (sentiments[0] if sentiments else None)
+        )
+        user_msg = (
+            f"Maqsam sentiment (pre-determined): {mq_sentiment or 'unknown'}\n\n"
+            f"Analyze these calls:\n\n" + "\n\n".join(blocks)
+        )
+        source = "maqsam"
 
-            try:
-                r = await c.patch(
-                    f"{SB}/rest/v1/calls",
-                    headers=SB_H,
-                    params={"maqsam_id": f"eq.{mq_id}"},
-                    content=_json.dumps(patch_data),
-                )
-                if r.status_code == 400 and "column" in r.text.lower():
-                    skipped_no_col += 1
-                    if skipped_no_col == 1:
-                        log.warning("Column missing — run migrate_calls_columns.py first! Continuing without saving transcript to DB.")
-                else:
-                    r.raise_for_status()
-                    updated += 1
-            except Exception as e:
-                log.warning(f"  Failed to update call {mq_id}: {e}")
+    elif channel == "whatsapp":
+        msgs = sorted(msgs_by.get(lid, []), key=lambda m: m.get("sent_at") or "")
+        if not msgs:
+            return f"  SKIP  {phone} — no messages"
+        lines = []
+        for m in msgs:
+            role = "Agent" if m.get("direction") == "outbound" else "Customer"
+            lines.append(f"{role}: {(m.get('body') or '')[:300]}")
+        user_msg = (
+            "Maqsam sentiment (pre-determined): unknown\n\n"
+            "Analyze this WhatsApp conversation:\n\n" + "\n".join(lines)
+        )
+        mq_sentiment = None
+        source = "whatsapp"
 
-        log.info(f"  {updated} call rows updated with transcript data")
-        if skipped_no_col:
-            log.warning(f"  {skipped_no_col} skipped (missing columns — run SQL migration)")
+    else:
+        return f"  SKIP  {phone} — unknown channel '{channel}'"
 
-        # ── 5. Group calls by lead_id ──────────────────────────────────────────
-        calls_by_lead: dict[str, list] = defaultdict(list)
-        for mq_id, call in mq_id_to_call.items():
-            db_row = mq_id_to_db.get(mq_id)
-            if db_row and db_row.get("lead_id"):
-                calls_by_lead[db_row["lead_id"]].append(call)
+    if dry_run:
+        return f"  DRY   {phone} (channel={channel}, score={lead.get('score')})"
 
-        log.info(f"  {len(calls_by_lead)} unique leads with qualifying calls")
+    result = await call_claude(user_msg)
+    if not result:
+        return f"  ERROR {phone} — empty Claude response"
 
-        # ── 6. Get leads already analyzed (window: last 7 days) ───────────────
-        # ai_analysis uses analyzed_at (not created_at); format as UTC Z string
-        since_iso = since_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-        already_done = await sb_fetch_all(c, "ai_analysis",
-                                          {"select": "lead_id",
-                                           "analyzed_at": f"gte.{since_iso}"})
-        done_ids = {a["lead_id"] for a in already_done}
-        log.info(f"  {len(done_ids)} leads already analyzed in this window")
+    if mq_sentiment:
+        result["sentiment"] = mq_sentiment
 
-        to_analyze = [lid for lid in calls_by_lead if lid not in done_ids]
-        log.info(f"  {len(to_analyze)} leads to analyze")
+    # Overwrite existing ai_analysis row, or insert new one
+    existing = (
+        supabase.table("ai_analysis").select("id").eq("lead_id", lid).execute().data or []
+    )
+    if existing:
+        supabase.table("ai_analysis").update(result).eq("lead_id", lid).execute()
+    else:
+        supabase.table("ai_analysis").insert({"lead_id": lid, "source": source, **result}).execute()
 
-        if not to_analyze:
-            log.info("All leads in window already analyzed.")
-        else:
-            # ── 7. Run Claude per lead ─────────────────────────────────────────
-            ok = err = skipped_no_transcript = 0
+    supabase.table("leads").update({"score": result.get("score")}).eq("id", lid).execute()
 
-            for i, lead_id in enumerate(to_analyze, 1):
-                calls = calls_by_lead[lead_id]
+    summary_preview = (result.get("summary") or "")[:80]
+    return f"  OK    {phone} score={result.get('score')} — {repr(summary_preview)}"
 
-                # Determine dominant Maqsam sentiment across calls
-                sentiments = [c2.get("sentiment") for c2 in calls if c2.get("sentiment")]
-                mq_sentiment = (
-                    "negative" if "negative" in sentiments else
-                    "positive" if "positive" in sentiments else
-                    sentiments[0] if sentiments else None
-                )
 
-                prompt = build_claude_prompt(calls)
-                if prompt is None:
-                    skipped_no_transcript += 1
-                    continue
+async def main(limit: int, dry_run: bool):
+    print(f"Fetching top {limit} leads by score...")
+    leads = (
+        supabase.table("leads")
+        .select("id,phone,channel,score")
+        .gt("score", 0)
+        .order("score", desc=True)
+        .limit(limit)
+        .execute()
+        .data or []
+    )
+    if not leads:
+        print("No scored leads found.")
+        return
 
-                try:
-                    result = call_claude(prompt, mq_sentiment)
+    lead_ids = [l["id"] for l in leads]
+    print(f"Found {len(leads)} leads. Fetching calls and messages...")
 
-                    # Override sentiment with Maqsam's value
-                    result["sentiment"] = mq_sentiment or result.get("sentiment", "neutral")
+    all_calls = (
+        supabase.table("calls")
+        .select("lead_id,agent_name,duration_seconds,outcome,called_at,transcript,maqsam_sentiment,summary_en")
+        .in_("lead_id", lead_ids)
+        .gt("duration_seconds", 0)
+        .execute()
+        .data or []
+    )
+    all_msgs = (
+        supabase.table("messages")
+        .select("lead_id,direction,body,sent_at")
+        .in_("lead_id", lead_ids)
+        .execute()
+        .data or []
+    )
 
-                    # Upsert ai_analysis (delete old + insert, or just insert)
-                    r = await c.post(
-                        f"{SB}/rest/v1/ai_analysis",
-                        headers={**SB_H, "Prefer": "return=minimal"},
-                        content=_json.dumps({
-                            "lead_id": lead_id,
-                            "source": "maqsam",
-                            **result,
-                        }),
-                    )
-                    if r.status_code == 409:
-                        # Already exists — update instead
-                        r2 = await c.patch(
-                            f"{SB}/rest/v1/ai_analysis",
-                            headers=SB_H,
-                            params={"lead_id": f"eq.{lead_id}"},
-                            content=_json.dumps(result),
-                        )
-                        r2.raise_for_status()
-                    else:
-                        r.raise_for_status()
+    calls_by: dict = defaultdict(list)
+    msgs_by:  dict = defaultdict(list)
+    for c in all_calls:
+        if c.get("lead_id"):
+            calls_by[c["lead_id"]].append(c)
+    for m in all_msgs:
+        if m.get("lead_id"):
+            msgs_by[m["lead_id"]].append(m)
 
-                    # Update lead score
-                    r3 = await c.patch(
-                        f"{SB}/rest/v1/leads",
-                        headers=SB_H,
-                        params={"id": f"eq.{lead_id}"},
-                        content=_json.dumps({"score": result.get("score")}),
-                    )
-                    r3.raise_for_status()
+    print(f"Reanalyzing {len(leads)} leads (dry_run={dry_run})...\n")
+    ok = skip = err = 0
+    for lead in leads:
+        line = await reanalyze_lead(lead, calls_by, msgs_by, dry_run)
+        print(line)
+        if "OK"    in line: ok   += 1
+        elif "SKIP" in line: skip += 1
+        elif "DRY"  in line: skip += 1
+        else:                err  += 1
+        if not dry_run:
+            await asyncio.sleep(0.5)  # stay within Claude rate limits
 
-                    ok += 1
-                    if ok % 10 == 0:
-                        log.info(f"  Progress: {i}/{len(to_analyze)} processed — {ok} analyzed, {err} errors, {skipped_no_transcript} skipped (no transcript)")
-
-                    time.sleep(0.3)  # stay within Claude rate limits
-
-                except Exception as e:
-                    log.error(f"  Lead {lead_id}: {e}")
-                    err += 1
-                    time.sleep(1)
-
-            log.info(f"\nAI backfill complete:")
-            log.info(f"  Analyzed:              {ok}")
-            log.info(f"  Skipped (no transcript): {skipped_no_transcript}")
-            log.info(f"  Errors:                {err}")
-            log.info(f"  Total leads processed: {len(to_analyze)}")
-
-        # ── 8. Final DB counts ────────────────────────────────────────────────
-        log.info("\nFinal DB counts:")
-        for table in ("calls", "leads", "ai_analysis"):
-            r = await c.get(f"{SB}/rest/v1/{table}", headers=SB_H_COUNT,
-                            params={"select": "id", "limit": 1})
-            log.info(f"  {table}: {r.headers.get('content-range', '?')}")
-
-        log.info("\nTranscript coverage summary (last 7 days):")
-        log.info(f"  Maqsam API calls fetched:  {len(mq_calls)}")
-        log.info(f"  Duration >= 30s:            {len(qualified)}")
-        log.info(f"  With full transcript:       {len(with_transcript)}")
-        log.info(f"  Without transcript:         {len(qualified) - len(with_transcript)}")
+    print(f"\nDone — {ok} updated, {skip} skipped, {err} errors")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--force-reanalyze", action="store_true",
+                        help="Required flag to actually run (safety guard)")
+    parser.add_argument("--limit", type=int, default=20,
+                        help="Number of top leads to reanalyze (default 20)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Print what would happen without writing to DB")
+    args = parser.parse_args()
+
+    if not args.force_reanalyze:
+        print("Add --force-reanalyze to run. Use --dry-run to preview.")
+    else:
+        asyncio.run(main(args.limit, args.dry_run))
