@@ -264,29 +264,52 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 .faq-bar-row:last-child{margin-bottom:0}
 
 /* ── Top Nav Bar ── */
+:root{--red-brand:#C0392B}
 #topNav{
   position:sticky;top:65px;z-index:99;
-  background:#1a2440;
-  display:flex;align-items:stretch;
-  padding:0 28px;
-  box-shadow:0 3px 14px rgba(0,0,0,.22);
+  background:#fff;
+  border-bottom:2px solid var(--red-brand);
+  display:flex;align-items:stretch;justify-content:center;
+  padding:0;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);
   overflow-x:auto;scrollbar-width:none;
-  border-bottom:1px solid rgba(255,255,255,.06);
 }
 #topNav::-webkit-scrollbar{display:none}
+#navLinks{display:flex;align-items:stretch}
 #topNav a{
   display:inline-flex;align-items:center;gap:5px;
-  padding:10px 16px;
-  color:rgba(255,255,255,.5);
-  text-decoration:none;font-size:11.5px;font-weight:600;
+  padding:11px 16px;
+  color:var(--text);
+  text-decoration:none;font-size:12px;font-weight:600;
   white-space:nowrap;letter-spacing:.02em;
-  border-bottom:2px solid transparent;margin-bottom:-1px;
+  border-bottom:2px solid transparent;margin-bottom:-2px;
   transition:color .15s,border-color .15s;
 }
-#topNav a:hover{color:rgba(255,255,255,.88);border-bottom-color:rgba(255,255,255,.25)}
-#topNav a.nav-active{color:#fff;border-bottom-color:var(--blue)}
-[dir=rtl] #topNav{padding:0 28px}
-[dir=rtl] #topNav a:first-child{padding-right:0}
+#topNav a:hover{color:var(--red-brand);border-bottom-color:rgba(192,57,43,.3)}
+#topNav a.nav-active{color:var(--red-brand);border-bottom-color:var(--red-brand)}
+/* Hamburger — hidden on desktop */
+#navHamburger{
+  display:none;position:absolute;right:16px;top:50%;transform:translateY(-50%);
+  background:none;border:none;font-size:20px;cursor:pointer;
+  color:var(--navy);padding:4px 8px;border-radius:6px;line-height:1;
+}
+#navHamburger:hover{background:var(--bg)}
+[dir=rtl] #navHamburger{right:auto;left:16px}
+@media(max-width:768px){
+  #topNav{justify-content:flex-start;position:relative;overflow:visible;padding:0 16px}
+  #navHamburger{display:flex;align-items:center}
+  #navLinks{
+    display:none;flex-direction:column;
+    position:absolute;top:calc(100% + 2px);left:0;right:0;
+    background:#fff;border:1px solid var(--border);
+    box-shadow:0 8px 24px rgba(0,0,0,.1);z-index:200;padding:6px 0;
+  }
+  #navLinks.open{display:flex}
+  #topNav a{padding:10px 20px;border-bottom:none;border-left:3px solid transparent;margin:0}
+  #topNav a.nav-active{border-left-color:var(--red-brand);background:#fff5f4;border-bottom:none}
+  [dir=rtl] #topNav a{border-left:none;border-right:3px solid transparent}
+  [dir=rtl] #topNav a.nav-active{border-right-color:var(--red-brand);border-left:none}
+}
 
 /* ── Journey filter bar ── */
 .jfilter-bar{
@@ -389,14 +412,17 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 
 <!-- Top Navigation Bar -->
 <nav id="topNav">
-  <a href="#sec-overview" onclick="smoothScrollTo('sec-overview',event)" data-en="Overview" data-ar="نظرة عامة">Overview</a>
-  <a href="#sec-channels" onclick="smoothScrollTo('sec-channels',event)" data-en="Channels" data-ar="القنوات">Channels</a>
-  <a href="#sec-pipeline" onclick="smoothScrollTo('sec-pipeline',event)" data-en="Lead Pipeline" data-ar="خط العملاء">Lead Pipeline</a>
-  <a href="#sec-insights" onclick="smoothScrollTo('sec-insights',event)" data-en="AI Insights" data-ar="رؤى الذكاء الاصطناعي">AI Insights</a>
-  <a href="#sec-geo"      onclick="smoothScrollTo('sec-geo',event)"      data-en="Geographic" data-ar="الجغرافي">Geographic</a>
-  <a href="#sec-agents"   onclick="smoothScrollTo('sec-agents',event)"   data-en="Agents" data-ar="الوكلاء">Agents</a>
-  <a href="#sec-alerts"   onclick="smoothScrollTo('sec-alerts',event)"   data-en="Alerts" data-ar="التنبيهات">Alerts</a>
-  <a href="#sec-journey"  onclick="smoothScrollTo('sec-journey',event)"  data-en="Lead Journey" data-ar="رحلة العميل">Lead Journey</a>
+  <button id="navHamburger" onclick="toggleNavMenu()" aria-label="Menu">☰</button>
+  <div id="navLinks">
+    <a href="#sec-overview" onclick="smoothScrollTo('sec-overview',event)" data-en="Overview"     data-ar="نظرة عامة">Overview</a>
+    <a href="#sec-channels" onclick="smoothScrollTo('sec-channels',event)" data-en="Channels"     data-ar="القنوات">Channels</a>
+    <a href="#sec-pipeline" onclick="smoothScrollTo('sec-pipeline',event)" data-en="Lead Pipeline" data-ar="خط العملاء">Lead Pipeline</a>
+    <a href="#sec-insights" onclick="smoothScrollTo('sec-insights',event)" data-en="AI Insights"  data-ar="رؤى الذكاء الاصطناعي">AI Insights</a>
+    <a href="#sec-geo"      onclick="smoothScrollTo('sec-geo',event)"      data-en="Geographic"   data-ar="الجغرافي">Geographic</a>
+    <a href="#sec-agents"   onclick="smoothScrollTo('sec-agents',event)"   data-en="Agents"       data-ar="الوكلاء">Agents</a>
+    <a href="#sec-alerts"   onclick="smoothScrollTo('sec-alerts',event)"   data-en="Alerts"       data-ar="التنبيهات">Alerts</a>
+    <a href="#sec-journey"  onclick="smoothScrollTo('sec-journey',event)"  data-en="Lead Journey" data-ar="رحلة العميل">Lead Journey</a>
+  </div>
 </nav>
 
 <main>
@@ -1777,21 +1803,30 @@ async function loadAll() {
 
 // ── Top nav smooth scroll + active tracking ───────────────────────────────────
 const _NAV_SECTIONS = ['sec-overview','sec-channels','sec-pipeline','sec-insights','sec-geo','sec-agents','sec-alerts','sec-journey'];
+function _stickyOffset() {
+  const hdr = document.querySelector('header');
+  const nav = document.getElementById('topNav');
+  return (hdr ? hdr.offsetHeight : 65) + (nav ? nav.offsetHeight : 44) + 8;
+}
+function toggleNavMenu() {
+  document.getElementById('navLinks')?.classList.toggle('open');
+}
 function smoothScrollTo(id, ev) {
   if (ev) ev.preventDefault();
+  document.getElementById('navLinks')?.classList.remove('open');
   const el = document.getElementById(id);
   if (!el) return;
-  const offset = el.getBoundingClientRect().top + window.scrollY - 115;
+  const offset = el.getBoundingClientRect().top + window.scrollY - _stickyOffset();
   window.scrollTo({ top: Math.max(0, offset), behavior: 'smooth' });
 }
 function _updateActiveNav() {
-  const scrollY = window.scrollY + 140;
+  const threshold = window.scrollY + _stickyOffset() + 16;
   let active = _NAV_SECTIONS[0];
   for (const id of _NAV_SECTIONS) {
     const el = document.getElementById(id);
-    if (el && el.getBoundingClientRect().top + window.scrollY <= scrollY) active = id;
+    if (el && el.getBoundingClientRect().top + window.scrollY <= threshold) active = id;
   }
-  document.querySelectorAll('#topNav a').forEach(a => {
+  document.querySelectorAll('#navLinks a').forEach(a => {
     a.classList.toggle('nav-active', a.getAttribute('href') === '#' + active);
   });
 }
