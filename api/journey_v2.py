@@ -208,7 +208,7 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
 
     page_calls = (
         supabase.table("calls")
-        .select("lead_id,agent_name,duration_seconds,outcome,called_at,maqsam_sentiment,summary_en")
+        .select("lead_id,agent_name,duration_seconds,outcome,called_at,maqsam_sentiment,summary_en,transcript")
         .in_("lead_id", page_ids)
         .order("called_at")
         .execute().data or []
@@ -312,10 +312,17 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
                 "agent": m.get("agent_name") or "—", "preview": m.get("body") or "",
             })
 
+        # Determine if all calls for this lead are short with no transcript
+        lead_calls = calls_by[lid]
+        _all_short_no_transcript = bool(lead_calls) and all(
+            (c.get("duration_seconds") or 0) < 30 and not c.get("transcript")
+            for c in lead_calls
+        )
+
         for a in page_ana_by[lid]:
             ts = a.get("treatment_score") or 0
             color = "green" if ts >= 70 else "orange" if ts >= 40 else "red"
-            timeline.append({
+            event: dict = {
                 "type": "ai", "date": a.get("analyzed_at"), "color": color,
                 "title": "AI Analysis", "score": ts,
                 "sentiment": a.get("sentiment") or "neutral",
@@ -324,7 +331,10 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
                 "risk_flags": a.get("risk_flags") or [],
                 "summary": a.get("summary") or "",
                 "source": a.get("source") or "",
-            })
+            }
+            if _all_short_no_transcript:
+                event["unreliable"] = True
+            timeline.append(event)
 
         for al in alerts_by[lid]:
             sev = al.get("severity") or "MED"
