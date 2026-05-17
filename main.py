@@ -15,7 +15,7 @@ from supabase import create_client
 from dotenv import load_dotenv
 
 from pipeline import whatsapp, maqsam, ai_analyzer, alert_engine
-from api import overview, agents, leads, channels, quality, journey
+from api import overview, agents, leads, channels, quality, journey, journey_v2
 
 load_dotenv()
 
@@ -761,6 +761,15 @@ app.include_router(leads.router)
 app.include_router(channels.router)
 app.include_router(quality.router)
 app.include_router(journey.router)
+app.include_router(journey_v2.router)
+
+
+@app.post("/api/admin/reanalyze-top20")
+async def admin_reanalyze_top20():
+    """Temporary — remove after use."""
+    asyncio.create_task(_force_reanalyze_top(20))
+    return {"status": "started", "limit": 20,
+            "message": "Running in background — check server logs in ~60s."}
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

@@ -263,11 +263,101 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 .faq-bar-row{margin-bottom:12px}
 .faq-bar-row:last-child{margin-bottom:0}
 
+/* ── Top Nav Bar ── */
+#topNav{
+  position:sticky;top:65px;z-index:99;
+  background:#1a2440;
+  display:flex;align-items:stretch;
+  padding:0 28px;
+  box-shadow:0 3px 14px rgba(0,0,0,.22);
+  overflow-x:auto;scrollbar-width:none;
+  border-bottom:1px solid rgba(255,255,255,.06);
+}
+#topNav::-webkit-scrollbar{display:none}
+#topNav a{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:10px 16px;
+  color:rgba(255,255,255,.5);
+  text-decoration:none;font-size:11.5px;font-weight:600;
+  white-space:nowrap;letter-spacing:.02em;
+  border-bottom:2px solid transparent;margin-bottom:-1px;
+  transition:color .15s,border-color .15s;
+}
+#topNav a:hover{color:rgba(255,255,255,.88);border-bottom-color:rgba(255,255,255,.25)}
+#topNav a.nav-active{color:#fff;border-bottom-color:var(--blue)}
+[dir=rtl] #topNav{padding:0 28px}
+[dir=rtl] #topNav a:first-child{padding-right:0}
+
+/* ── Journey filter bar ── */
+.jfilter-bar{
+  background:#fff;border:1px solid var(--border);border-radius:var(--r);
+  padding:14px 18px;margin-bottom:12px;
+  display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;
+  box-shadow:var(--shadow);
+}
+.jfilter-group{display:flex;flex-direction:column;gap:4px}
+.jfilter-label{font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em}
+.jfilter-select,.jfilter-input{
+  border:1px solid var(--border);border-radius:8px;
+  padding:6px 10px;font-size:12px;font-family:inherit;
+  color:var(--navy);background:var(--bg);outline:none;
+  transition:border-color .15s,background .15s;
+}
+.jfilter-select{cursor:pointer;min-width:120px;padding-right:24px}
+.jfilter-input{min-width:155px}
+.jfilter-select:focus,.jfilter-input:focus{border-color:var(--blue);background:#fff}
+.jfilter-toggle{
+  display:flex;align-items:center;gap:6px;
+  padding:7px 12px;border:1px solid var(--border);border-radius:8px;
+  font-size:11.5px;font-weight:600;cursor:pointer;
+  background:var(--bg);color:var(--text);font-family:inherit;
+  transition:all .15s;
+}
+.jfilter-toggle.active{background:#fff4ec;border-color:var(--warn);color:#c8601a}
+.jfilter-sep{width:1px;height:32px;background:var(--border);margin:0 4px;align-self:flex-end}
+.jfilter-actions{display:flex;gap:8px;align-items:flex-end;margin-left:auto}
+
+/* Dual-handle score slider */
+.score-slider-wrap{position:relative;width:130px;height:22px;margin-top:2px}
+.score-slider-track{position:absolute;top:9px;left:0;right:0;height:4px;background:var(--border);border-radius:2px}
+.score-slider-fill{position:absolute;top:9px;height:4px;background:var(--blue-grad);border-radius:2px}
+.score-slider-wrap input[type=range]{
+  position:absolute;width:100%;height:4px;
+  background:transparent;pointer-events:none;
+  -webkit-appearance:none;appearance:none;outline:none;
+}
+.score-slider-wrap input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;
+  width:14px;height:14px;border-radius:50%;
+  background:var(--blue);cursor:pointer;
+  pointer-events:all;
+  border:2px solid #fff;box-shadow:0 1px 5px rgba(7,116,255,.35);
+}
+.score-slider-wrap input[type=range]::-moz-range-thumb{
+  width:14px;height:14px;border-radius:50%;
+  background:var(--blue);cursor:pointer;border:2px solid #fff;
+}
+
+/* Journey count + pagination row */
+.journey-meta-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
+.journey-count-label{font-size:12px;font-weight:600;color:var(--text-light)}
+.jpagination{display:flex;align-items:center;gap:6px}
+.jpage-btn{
+  background:var(--bg);border:1px solid var(--border);border-radius:6px;
+  padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;
+  color:var(--navy);font-family:inherit;transition:all .15s;
+}
+.jpage-btn:hover:not(:disabled){background:var(--blue-light);border-color:var(--blue);color:var(--blue)}
+.jpage-btn:disabled{opacity:.35;cursor:default}
+.jpage-info{font-size:12px;font-weight:700;color:var(--navy);padding:0 6px}
+
 /* ── Responsive ── */
 @media(max-width:600px){
   header{padding:12px 16px}
+  #topNav{padding:0 16px}
   main{padding:16px}
   .kpi-grid{grid-template-columns:1fr 1fr}
+  .jfilter-bar{gap:8px}
 }
 </style>
 </head>
@@ -297,6 +387,18 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   </div>
 </header>
 
+<!-- Top Navigation Bar -->
+<nav id="topNav">
+  <a href="#sec-overview" onclick="smoothScrollTo('sec-overview',event)" data-en="Overview" data-ar="نظرة عامة">Overview</a>
+  <a href="#sec-channels" onclick="smoothScrollTo('sec-channels',event)" data-en="Channels" data-ar="القنوات">Channels</a>
+  <a href="#sec-pipeline" onclick="smoothScrollTo('sec-pipeline',event)" data-en="Lead Pipeline" data-ar="خط العملاء">Lead Pipeline</a>
+  <a href="#sec-insights" onclick="smoothScrollTo('sec-insights',event)" data-en="AI Insights" data-ar="رؤى الذكاء الاصطناعي">AI Insights</a>
+  <a href="#sec-geo"      onclick="smoothScrollTo('sec-geo',event)"      data-en="Geographic" data-ar="الجغرافي">Geographic</a>
+  <a href="#sec-agents"   onclick="smoothScrollTo('sec-agents',event)"   data-en="Agents" data-ar="الوكلاء">Agents</a>
+  <a href="#sec-alerts"   onclick="smoothScrollTo('sec-alerts',event)"   data-en="Alerts" data-ar="التنبيهات">Alerts</a>
+  <a href="#sec-journey"  onclick="smoothScrollTo('sec-journey',event)"  data-en="Lead Journey" data-ar="رحلة العميل">Lead Journey</a>
+</nav>
+
 <main>
 
   <!-- Hot Leads Alert -->
@@ -308,7 +410,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   </div>
 
   <!-- KPI -->
-  <div class="section-label"><span data-en="Key Metrics" data-ar="المؤشرات الرئيسية">Key Metrics</span></div>
+  <div id="sec-overview" class="section-label"><span data-en="Key Metrics" data-ar="المؤشرات الرئيسية">Key Metrics</span></div>
   <div class="kpi-grid" id="kpiGrid">
     <div class="kpi-card"><div class="skeleton" style="height:60px"></div></div>
     <div class="kpi-card"><div class="skeleton" style="height:60px"></div></div>
@@ -319,7 +421,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   </div>
 
   <!-- Channels -->
-  <div class="section-label"><span data-en="Channel Performance" data-ar="أداء القنوات">Channel Performance</span></div>
+  <div id="sec-channels" class="section-label"><span data-en="Channel Performance" data-ar="أداء القنوات">Channel Performance</span></div>
   <div class="two-col">
     <div class="card" id="waCard"><div class="skeleton" style="height:120px"></div></div>
     <div class="card" id="mqCard"><div class="skeleton" style="height:120px"></div></div>
@@ -343,7 +445,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   </div>
 
   <!-- Charts -->
-  <div class="section-label"><span data-en="Lead Pipeline &amp; Call Analytics" data-ar="خط العملاء وتحليل المكالمات">Lead Pipeline &amp; Call Analytics</span></div>
+  <div id="sec-pipeline" class="section-label"><span data-en="Lead Pipeline &amp; Call Analytics" data-ar="خط العملاء وتحليل المكالمات">Lead Pipeline &amp; Call Analytics</span></div>
   <div class="three-col">
     <div class="card"><div class="card-head" data-en="Lead Status Funnel" data-ar="مسار حالة العملاء">Lead Status Funnel</div><div class="chart-wrap"><canvas id="funnelChart"></canvas></div></div>
     <div class="card"><div class="card-head" data-en="Call Outcomes" data-ar="نتائج المكالمات">Call Outcomes</div><div class="chart-wrap" id="outcomesWrap"><canvas id="outcomesChart"></canvas></div></div>
@@ -351,7 +453,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   </div>
 
   <!-- AI Insights -->
-  <div class="section-label"><span data-en="AI Insights" data-ar="رؤى الذكاء الاصطناعي">AI Insights</span></div>
+  <div id="sec-insights" class="section-label"><span data-en="AI Insights" data-ar="رؤى الذكاء الاصطناعي">AI Insights</span></div>
   <div class="two-col">
     <div class="card">
       <div class="card-head" data-en="Sentiment Analysis" data-ar="تحليل المشاعر">Sentiment Analysis</div>
@@ -398,7 +500,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   </div>
 
   <!-- Geographic -->
-  <div class="section-label"><span data-en="Geographic Distribution" data-ar="التوزيع الجغرافي">Geographic Distribution</span></div>
+  <div id="sec-geo" class="section-label"><span data-en="Geographic Distribution" data-ar="التوزيع الجغرافي">Geographic Distribution</span></div>
   <div class="card">
     <div class="card-head" data-en="Leads by Country" data-ar="العملاء حسب الدولة">Leads by Country</div>
     <div id="geoList"><div class="skeleton" style="height:120px"></div></div>
@@ -421,7 +523,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   </div>
 
   <!-- Agents -->
-  <div class="section-label"><span data-en="Agent Performance" data-ar="أداء الوكلاء">Agent Performance</span></div>
+  <div id="sec-agents" class="section-label"><span data-en="Agent Performance" data-ar="أداء الوكلاء">Agent Performance</span></div>
   <div class="card" style="padding:0;overflow:hidden">
     <div style="padding:18px 22px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
       <div class="card-head" style="margin:0" data-en="Agent Leaderboard" data-ar="لوحة الوكلاء">Agent Leaderboard</div>
@@ -431,7 +533,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   </div>
 
   <!-- Alerts -->
-  <div class="section-label"><span data-en="Active Alerts" data-ar="التنبيهات النشطة">Active Alerts</span></div>
+  <div id="sec-alerts" class="section-label"><span data-en="Active Alerts" data-ar="التنبيهات النشطة">Active Alerts</span></div>
   <div class="card" style="padding:0;overflow:hidden">
     <div style="padding:18px 22px 14px;border-bottom:1px solid var(--border)">
       <div class="card-head" style="margin:0" data-en="Open Alerts" data-ar="التنبيهات المفتوحة">Open Alerts</div>
@@ -439,11 +541,99 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
     <div id="alertsList"><div class="skeleton" style="height:80px;margin:16px"></div></div>
   </div>
 
-  <!-- Lead Journey Tracker -->
-  <div class="section-label" style="margin-top:32px">
+  <!-- Lead Journey Tracker v2 -->
+  <div id="sec-journey" class="section-label" style="margin-top:32px">
     <span data-en="Lead Journey Tracker" data-ar="متتبع رحلة العميل">Lead Journey Tracker</span>
-    <span id="journeySubtitle" style="font-size:10px;color:var(--text-light);font-weight:500;margin-left:6px" data-en="Top 10 leads by AI score — click to expand" data-ar="أفضل 10 عملاء حسب نقاط الذكاء الاصطناعي — انقر للتوسيع">Top 10 leads by AI score — click to expand</span>
+    <span style="font-size:10px;color:var(--text-light);font-weight:500;margin-left:6px" data-en="All leads · last 7 days · click to expand" data-ar="جميع العملاء · آخر 7 أيام · انقر للتوسيع">All leads · last 7 days · click to expand</span>
   </div>
+
+  <!-- Filter bar -->
+  <div class="jfilter-bar">
+    <div class="jfilter-group">
+      <div class="jfilter-label" data-en="Search" data-ar="بحث">Search</div>
+      <input class="jfilter-input" id="jSearch" type="text"
+        placeholder="Phone number…"
+        data-placeholder-en="Phone number…" data-placeholder-ar="رقم الهاتف…"
+        oninput="jFilterChange('phone_search',this.value)">
+    </div>
+    <div class="jfilter-group">
+      <div class="jfilter-label" data-en="Country" data-ar="الدولة">Country</div>
+      <select class="jfilter-select" id="jCountry" onchange="jFilterChange('country',this.value)">
+        <option value="" data-en="All Countries" data-ar="كل الدول">All Countries</option>
+        <option value="IQ">🇮🇶 Iraq / العراق</option>
+        <option value="OM">🇴🇲 Oman / عمان</option>
+        <option value="SA">🇸🇦 Saudi / السعودية</option>
+        <option value="AE">🇦🇪 UAE / الإمارات</option>
+        <option value="KW">🇰🇼 Kuwait / الكويت</option>
+        <option value="JO">🇯🇴 Jordan / الأردن</option>
+        <option value="MA">🇲🇦 Morocco / المغرب</option>
+        <option value="EG">🇪🇬 Egypt / مصر</option>
+        <option value="TR">🇹🇷 Turkey / تركيا</option>
+        <option value="OTHER">🌍 Other / أخرى</option>
+      </select>
+    </div>
+    <div class="jfilter-group">
+      <div class="jfilter-label" data-en="Channel" data-ar="القناة">Channel</div>
+      <select class="jfilter-select" id="jChannel" onchange="jFilterChange('channel',this.value)">
+        <option value="" data-en="All" data-ar="الكل">All</option>
+        <option value="maqsam" data-en="Maqsam only" data-ar="مقسم فقط">Maqsam only</option>
+        <option value="whatsapp" data-en="WhatsApp only" data-ar="واتساب فقط">WhatsApp only</option>
+        <option value="both" data-en="Both channels" data-ar="القناتان">Both channels</option>
+      </select>
+    </div>
+    <div class="jfilter-group">
+      <div class="jfilter-label" data-en="Outcome" data-ar="النتيجة">Outcome</div>
+      <select class="jfilter-select" id="jOutcome" onchange="jFilterChange('outcome',this.value)">
+        <option value="" data-en="All" data-ar="الكل">All</option>
+        <option value="converted"     data-en="Converted"     data-ar="محوّل">Converted</option>
+        <option value="callback"      data-en="Callback"      data-ar="معاودة">Callback</option>
+        <option value="not_interested" data-en="Not interested" data-ar="غير مهتم">Not interested</option>
+        <option value="no_answer"     data-en="No answer"     data-ar="لا رد">No answer</option>
+        <option value="ongoing"       data-en="Ongoing"       data-ar="جارية">Ongoing</option>
+      </select>
+    </div>
+    <div class="jfilter-group">
+      <div class="jfilter-label" data-en="Agent" data-ar="الوكيل">Agent</div>
+      <select class="jfilter-select" id="jAgent" onchange="jFilterChange('agent',this.value)">
+        <option value="" data-en="All agents" data-ar="كل الوكلاء">All agents</option>
+        <option value="__unassigned__" data-en="Unassigned" data-ar="غير مخصص">Unassigned</option>
+      </select>
+    </div>
+    <div class="jfilter-group">
+      <div class="jfilter-label"><span data-en="Score" data-ar="النقاط">Score</span>: <span id="jScoreLabel">0–100</span></div>
+      <div class="score-slider-wrap">
+        <div class="score-slider-track"></div>
+        <div class="score-slider-fill" id="jScoreFill" style="left:0%;width:100%"></div>
+        <input type="range" min="0" max="100" value="0"   id="jMinScore" oninput="updateScoreRange()">
+        <input type="range" min="0" max="100" value="100" id="jMaxScore" oninput="updateScoreRange()">
+      </div>
+    </div>
+    <div class="jfilter-group">
+      <div class="jfilter-label" data-en="Sort by" data-ar="الترتيب">Sort by</div>
+      <select class="jfilter-select" id="jSort" onchange="jFilterChange('sort_by',this.value)">
+        <option value="score"   data-en="Highest score"    data-ar="أعلى نقاط">Highest score</option>
+        <option value="recent"  data-en="Most recent"      data-ar="الأحدث">Most recent</option>
+        <option value="waiting" data-en="Longest waiting"  data-ar="الأطول انتظاراً">Longest waiting</option>
+        <option value="calls"   data-en="Most calls"       data-ar="الأكثر مكالمات">Most calls</option>
+      </select>
+    </div>
+    <div class="jfilter-sep"></div>
+    <button class="jfilter-toggle" id="jHighRisk" onclick="toggleHighRisk()">⚠️ <span data-en="High Risk Only" data-ar="عالي الخطورة فقط">High Risk Only</span></button>
+    <div class="jfilter-actions">
+      <button class="btn-icon" onclick="exportJourneyCSV()" title="Export CSV">📥 <span data-en="Export CSV" data-ar="تصدير CSV">Export CSV</span></button>
+    </div>
+  </div>
+
+  <!-- Count + pagination row -->
+  <div class="journey-meta-row">
+    <span class="journey-count-label" id="journeyCount"></span>
+    <div class="jpagination" id="journeyPagination" style="display:none">
+      <button class="jpage-btn" id="jPrevBtn" onclick="jChangePage(-1)">‹ <span data-en="Prev" data-ar="السابق">Prev</span></button>
+      <span class="jpage-info" id="jPageInfo"></span>
+      <button class="jpage-btn" id="jNextBtn" onclick="jChangePage(1)"><span data-en="Next" data-ar="التالي">Next</span> ›</button>
+    </div>
+  </div>
+
   <div id="journeySection">
     <div class="skeleton" style="height:60px;border-radius:var(--r);margin-bottom:10px"></div>
     <div class="skeleton" style="height:60px;border-radius:var(--r);margin-bottom:10px"></div>
@@ -471,12 +661,21 @@ function applyLang() {
   document.querySelectorAll('[data-en]').forEach(el => {
     el.textContent = isAr ? (el.dataset.ar || el.dataset.en) : el.dataset.en;
   });
+  // Update placeholder texts
+  document.querySelectorAll('[data-placeholder-en]').forEach(el => {
+    el.placeholder = isAr ? (el.dataset.placeholderAr || el.dataset.placeholderEn) : el.dataset.placeholderEn;
+  });
+  // Update nav links
+  document.querySelectorAll('#topNav a[data-en]').forEach(el => {
+    el.textContent = isAr ? (el.dataset.ar || el.dataset.en) : el.dataset.en;
+  });
 }
 function toggleLang() {
   lang = lang === 'en' ? 'ar' : 'en';
   localStorage.setItem('fiper_lang', lang);
+  applyLang();
   if (_cache) renderAll(..._cache);
-  else applyLang();
+  loadJourneyV2();
 }
 
 // ── Range tabs ────────────────────────────────────────────────────────────────
@@ -1292,6 +1491,17 @@ function _renderEvent(ev) {
     (ev.topics||[]).forEach(t => chips.push(`<span class="tl-chip">${_translateTag(t)}</span>`));
     (ev.risk_flags||[]).forEach(f => chips.push(`<span class="tl-chip red">⚠ ${_translateTag(f)}</span>`));
     if (chips.length) details += `<div class="tl-chips">${chips.join('')}</div>`;
+    if (ev.summary) {
+      const uid3 = 'ais_' + Math.random().toString(36).slice(2,8);
+      const nm3 = ev.summary.length > 200;
+      const sh3 = nm3 ? ev.summary.slice(0,200) + '…' : ev.summary;
+      details += `<div class="tl-preview" style="margin-top:6px">` +
+        `<span id="${uid3}_s">${sh3}` +
+        (nm3?` <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid3}_s').style.display='none';document.getElementById('${uid3}_f').style.display='inline'">${lang==='ar'?'اقرأ المزيد':'Read more'}</a>`:'') +
+        `</span>` +
+        (nm3?`<span id="${uid3}_f" style="display:none">${ev.summary} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid3}_f').style.display='none';document.getElementById('${uid3}_s').style.display='inline'">${lang==='ar'?'أقل':'Read less'}</a></span>`:'') +
+        `</div>`;
+    }
   }
 
   if (ev.type === 'alert') {
@@ -1415,23 +1625,137 @@ async function markConverted(leadId, index) {
   }
 }
 
-async function loadJourney() {
+// ── Journey v2 state ──────────────────────────────────────────────────────────
+const jFilters = {
+  phone_search:'', country:'', min_score:0, max_score:100,
+  channel:'', outcome:'', agent:'', high_risk_only:false,
+  sort_by:'score', page:1,
+};
+let _jTotal = 0, _jPages = 1;
+let _jDebounce = null;
+
+function jFilterChange(key, value) {
+  if (key === 'phone_search') {
+    clearTimeout(_jDebounce);
+    _jDebounce = setTimeout(() => { jFilters.phone_search = value; jFilters.page = 1; loadJourneyV2(); }, 380);
+    return;
+  }
+  jFilters[key] = value;
+  jFilters.page = 1;
+  loadJourneyV2();
+}
+
+function toggleHighRisk() {
+  jFilters.high_risk_only = !jFilters.high_risk_only;
+  const btn = document.getElementById('jHighRisk');
+  if (btn) btn.classList.toggle('active', jFilters.high_risk_only);
+  jFilters.page = 1;
+  loadJourneyV2();
+}
+
+function updateScoreRange() {
+  const minEl = document.getElementById('jMinScore');
+  const maxEl = document.getElementById('jMaxScore');
+  let lo = parseInt(minEl.value), hi = parseInt(maxEl.value);
+  if (lo > hi) {
+    if (event && event.target === minEl) { minEl.value = hi; lo = hi; }
+    else { maxEl.value = lo; hi = lo; }
+  }
+  document.getElementById('jScoreLabel').textContent = `${lo}–${hi}`;
+  const fill = document.getElementById('jScoreFill');
+  if (fill) { fill.style.left = lo + '%'; fill.style.width = (hi - lo) + '%'; }
+  jFilters.min_score = lo; jFilters.max_score = hi;
+  clearTimeout(_jDebounce);
+  _jDebounce = setTimeout(() => { jFilters.page = 1; loadJourneyV2(); }, 380);
+}
+
+function jChangePage(delta) {
+  const p = jFilters.page + delta;
+  if (p < 1 || p > _jPages) return;
+  jFilters.page = p;
+  loadJourneyV2();
+  document.getElementById('sec-journey').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function _syncJourneyPagination(total, pages, page) {
+  _jTotal = total; _jPages = pages;
+  const lo = Math.min((page-1)*20+1, total), hi = Math.min(page*20, total);
+  const countEl = document.getElementById('journeyCount');
+  if (countEl) countEl.textContent = total > 0
+    ? (lang==='ar' ? `عرض ${lo}–${hi} من ${fmt(total)} عميل` : `Showing ${lo}–${hi} of ${fmt(total)} leads`)
+    : (lang==='ar' ? 'لا توجد نتائج' : 'No results');
+  const pag = document.getElementById('journeyPagination');
+  if (pag) pag.style.display = pages > 1 ? 'flex' : 'none';
+  const pi = document.getElementById('jPageInfo');
+  if (pi) pi.textContent = `${page} / ${pages}`;
+  const prev = document.getElementById('jPrevBtn');
+  const next = document.getElementById('jNextBtn');
+  if (prev) prev.disabled = page <= 1;
+  if (next) next.disabled = page >= pages;
+}
+
+function _syncAgentDropdown(agents) {
+  const sel = document.getElementById('jAgent');
+  if (!sel) return;
+  const cur = sel.value;
+  while (sel.options.length > 2) sel.remove(2);
+  agents.forEach(ag => {
+    const o = document.createElement('option');
+    o.value = ag; o.textContent = ag;
+    sel.appendChild(o);
+  });
+  sel.value = cur;
+}
+
+async function loadJourneyV2() {
+  const p = new URLSearchParams({ page: jFilters.page, limit: 20, sort_by: jFilters.sort_by });
+  if (jFilters.phone_search) p.set('phone_search', jFilters.phone_search);
+  if (jFilters.country)      p.set('country', jFilters.country);
+  if (jFilters.min_score > 0)  p.set('min_score', jFilters.min_score);
+  if (jFilters.max_score < 100) p.set('max_score', jFilters.max_score);
+  if (jFilters.channel)      p.set('channel', jFilters.channel);
+  if (jFilters.outcome)      p.set('outcome', jFilters.outcome);
+  if (jFilters.agent)        p.set('agent', jFilters.agent);
+  if (jFilters.high_risk_only) p.set('high_risk_only', 'true');
+
+  const wrap = document.getElementById('journeySection');
   try {
-    const r = await fetch(`${API}/api/leads/journey?limit=10`);
+    const r = await fetch(`${API}/api/leads/journey/v2?${p}`);
     const data = await r.json();
     const leads = data.leads || [];
-    const wrap  = document.getElementById('journeySection');
+    _syncJourneyPagination(data.total || 0, data.pages || 1, data.page || 1);
+    _syncAgentDropdown((data.meta || {}).agents || []);
     if (!leads.length) {
-      wrap.innerHTML = `<div class="card journey-empty">${lang==='ar'?'لا توجد بيانات رحلة بعد — تحتاج نقاط الذكاء الاصطناعي أن تكون محسوبة أولاً':'No journey data yet — AI scores need to be computed first'}</div>`;
+      wrap.innerHTML = `<div class="card journey-empty">${lang==='ar'?'لا توجد نتائج تطابق الفلاتر':'No leads match the current filters'}</div>`;
       return;
     }
     wrap.innerHTML = leads.map((l,i) => _renderJourneyLead(l,i)).join('');
-    // Auto-open first lead
-    const first = document.getElementById('jl-0');
-    if (first) first.classList.add('open');
+    applyLang();
   } catch(e) {
-    console.error('Journey load failed:', e);
+    console.error('Journey v2 failed:', e);
+    wrap.innerHTML = `<div class="card journey-empty" style="color:var(--red)">${lang==='ar'?'فشل تحميل رحلة العميل':'Failed to load journey data'}</div>`;
   }
+}
+
+function exportJourneyCSV() {
+  const p = new URLSearchParams({ page:1, limit:1000, sort_by:jFilters.sort_by });
+  if (jFilters.phone_search) p.set('phone_search', jFilters.phone_search);
+  if (jFilters.country)      p.set('country', jFilters.country);
+  if (jFilters.min_score > 0)  p.set('min_score', jFilters.min_score);
+  if (jFilters.max_score < 100) p.set('max_score', jFilters.max_score);
+  if (jFilters.channel)      p.set('channel', jFilters.channel);
+  if (jFilters.outcome)      p.set('outcome', jFilters.outcome);
+  if (jFilters.agent)        p.set('agent', jFilters.agent);
+  if (jFilters.high_risk_only) p.set('high_risk_only', 'true');
+  fetch(`${API}/api/leads/journey/v2?${p}`).then(r=>r.json()).then(data=>{
+    const ls = data.leads || [];
+    if (!ls.length) { alert(lang==='ar'?'لا توجد بيانات للتصدير':'No data to export'); return; }
+    const hdrs = ['Phone','Name','Score','Status','Channel','Agent','Calls','Messages','Alerts'];
+    const rows = ls.map(l=>[l.phone,l.name,l.score,l.status,l.channel,l.assigned_agent,l.total_calls,l.total_messages,l.open_alerts]);
+    const csv = [hdrs,...rows].map(r=>r.map(v=>`"${(v??'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
+    const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([csv],{type:'text/csv'})),download:`fiper_leads_${new Date().toISOString().slice(0,10)}.csv`});
+    a.click();
+  }).catch(e=>alert(`Export failed: ${e.message}`));
 }
 
 // ── Load all ──────────────────────────────────────────────────────────────────
@@ -1444,17 +1768,39 @@ async function loadAll() {
     ]);
     _cache = data;
     renderAll(...data);
-    loadJourney();
+    loadJourneyV2();
   } catch(e) {
     console.error('Load failed:', e);
     document.getElementById('kpiGrid').innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:32px;color:var(--red)">${lang==='ar'?'فشل التحميل: ':'Load failed: '}${e.message}</div>`;
   }
 }
 
+// ── Top nav smooth scroll + active tracking ───────────────────────────────────
+const _NAV_SECTIONS = ['sec-overview','sec-channels','sec-pipeline','sec-insights','sec-geo','sec-agents','sec-alerts','sec-journey'];
+function smoothScrollTo(id, ev) {
+  if (ev) ev.preventDefault();
+  const el = document.getElementById(id);
+  if (!el) return;
+  const offset = el.getBoundingClientRect().top + window.scrollY - 115;
+  window.scrollTo({ top: Math.max(0, offset), behavior: 'smooth' });
+}
+function _updateActiveNav() {
+  const scrollY = window.scrollY + 140;
+  let active = _NAV_SECTIONS[0];
+  for (const id of _NAV_SECTIONS) {
+    const el = document.getElementById(id);
+    if (el && el.getBoundingClientRect().top + window.scrollY <= scrollY) active = id;
+  }
+  document.querySelectorAll('#topNav a').forEach(a => {
+    a.classList.toggle('nav-active', a.getAttribute('href') === '#' + active);
+  });
+}
+
 // ── Scroll to top button ───────────────────────────────────────────────────────
 window.addEventListener('scroll', () => {
   document.getElementById('scrollTop').classList.toggle('visible', window.scrollY > 400);
-});
+  _updateActiveNav();
+}, { passive: true });
 
 // ── Real-time SSE connection ───────────────────────────────────────────────────
 let _sseRetryTimer = null;
@@ -1500,6 +1846,7 @@ function connectSSE() {
 applyLang();
 loadAll();
 connectSSE();
+_updateActiveNav();
 </script>
 </body>
 </html>
