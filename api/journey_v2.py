@@ -213,7 +213,8 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
         filtered = [l for l in filtered if phone_search in (l.get("phone") or "")]
 
     if country:
-        filtered = [l for l in filtered if _detect_cc(l.get("phone")) == country]
+        _countries = {c.strip() for c in country.split(',') if c.strip()}
+        filtered = [l for l in filtered if _detect_cc(l.get("phone")) in _countries]
 
     if min_score > 0 or max_score < 100:
         filtered = [l for l in filtered if min_score <= (l.get("score") or 0) <= max_score]
@@ -225,16 +226,18 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
         filtered = [l for l in filtered if channel in l.get("channels", [])]
 
     if outcome:
+        _outcomes = {o.strip() for o in outcome.split(',') if o.strip()}
         filtered = [
             l for l in filtered
-            if any(a.get("outcome") == outcome for a in analysis_by_lead.get(l["id"], []))
+            if any(a.get("outcome") in _outcomes for a in analysis_by_lead.get(l["id"], []))
         ]
 
     if agent:
-        if agent == "__unassigned__":
-            filtered = [l for l in filtered if not l.get("assigned_agent")]
-        else:
-            filtered = [l for l in filtered if l.get("assigned_agent") == agent]
+        _agents = {a.strip() for a in agent.split(',') if a.strip()}
+        def _agent_match(lead):
+            la = lead.get("assigned_agent")
+            return ("__unassigned__" in _agents and not la) or (la in _agents)
+        filtered = [l for l in filtered if _agent_match(l)]
 
     if high_risk_only:
         filtered = [

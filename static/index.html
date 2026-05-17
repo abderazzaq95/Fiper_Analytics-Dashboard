@@ -340,9 +340,53 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 .jfilter-toggle.active{background:#fff4ec;border-color:var(--warn);color:#c8601a}
 .jfilter-sep{width:1px;height:32px;background:var(--border);margin:0 4px;align-self:flex-end}
 .jfilter-actions{display:flex;gap:8px;align-items:flex-end;margin-left:auto}
-.jfilter-apply{padding:7px 16px;font-size:12px;border-radius:8px}
 .jfilter-reset{font-size:12px;color:var(--text-light);text-decoration:underline;white-space:nowrap;align-self:flex-end;padding-bottom:1px}
 .jfilter-reset:hover{color:var(--red)}
+/* Primary button */
+.btn-primary{
+  background:var(--blue);color:#fff;border:none;
+  padding:8px 18px;border-radius:10px;cursor:pointer;
+  font-size:12px;font-weight:700;font-family:inherit;
+  display:inline-flex;align-items:center;gap:6px;
+  box-shadow:0 2px 8px rgba(7,116,255,.28);
+  transition:background .15s,transform .1s,box-shadow .15s;
+}
+.btn-primary:hover{background:#0560d9;box-shadow:0 4px 14px rgba(7,116,255,.38)}
+.btn-primary:active{transform:scale(.95);background:#044fb5;box-shadow:none}
+.btn-primary:disabled{opacity:.6;cursor:not-allowed;transform:none;box-shadow:none}
+/* Multi-select dropdown */
+.jms-wrap{position:relative}
+.jms-trigger{
+  display:flex;align-items:center;gap:6px;
+  height:32px;padding:0 10px 0 12px;min-width:118px;
+  background:#fff;border:1px solid var(--border);border-radius:8px;
+  font-size:12px;font-family:inherit;cursor:pointer;color:var(--text);
+  white-space:nowrap;transition:border-color .15s,box-shadow .15s;
+}
+.jms-trigger:hover{border-color:var(--blue)}
+.jms-wrap.open .jms-trigger{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-light)}
+.jms-caret{margin-left:auto;font-size:9px;color:var(--text-light);transition:transform .15s;flex-shrink:0}
+.jms-wrap.open .jms-caret{transform:rotate(180deg)}
+.jms-panel{
+  display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:400;
+  background:#fff;border:1px solid var(--border);border-radius:10px;
+  box-shadow:0 8px 24px rgba(0,0,0,.12);
+  min-width:190px;max-height:230px;overflow-y:auto;padding:6px 0;
+  scrollbar-width:thin;
+}
+.jms-wrap.open .jms-panel{display:block}
+[dir=rtl] .jms-panel{left:auto;right:0}
+.jms-opt{
+  display:flex;align-items:center;gap:8px;
+  padding:7px 14px;font-size:12px;cursor:pointer;
+  color:var(--text);white-space:nowrap;transition:background .1s;
+}
+.jms-opt:hover{background:var(--bg)}
+.jms-opt input[type=checkbox]{width:14px;height:14px;cursor:pointer;accent-color:var(--blue);flex-shrink:0}
+.jms-badge{
+  background:var(--blue);color:#fff;font-size:10px;font-weight:700;
+  padding:1px 6px;border-radius:10px;min-width:18px;text-align:center;flex-shrink:0;
+}
 
 /* Dual-handle score slider */
 .score-slider-wrap{position:relative;width:130px;height:22px;margin-top:2px}
@@ -588,19 +632,24 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
     </div>
     <div class="jfilter-group">
       <div class="jfilter-label" data-en="Country" data-ar="الدولة">Country</div>
-      <select class="jfilter-select" id="jCountry" onchange="jFilterChange('country',this.value)">
-        <option value="" data-en="All Countries" data-ar="كل الدول">All Countries</option>
-        <option value="IQ">🇮🇶 Iraq / العراق</option>
-        <option value="OM">🇴🇲 Oman / عمان</option>
-        <option value="SA">🇸🇦 Saudi / السعودية</option>
-        <option value="AE">🇦🇪 UAE / الإمارات</option>
-        <option value="KW">🇰🇼 Kuwait / الكويت</option>
-        <option value="JO">🇯🇴 Jordan / الأردن</option>
-        <option value="MA">🇲🇦 Morocco / المغرب</option>
-        <option value="EG">🇪🇬 Egypt / مصر</option>
-        <option value="TR">🇹🇷 Turkey / تركيا</option>
-        <option value="OTHER">🌍 Other / أخرى</option>
-      </select>
+      <div class="jms-wrap" id="jmsCountry">
+        <button class="jms-trigger" type="button" onclick="toggleJms('jmsCountry')">
+          <span class="jms-label" id="jmsCountryLabel" data-en="All Countries" data-ar="كل الدول">All Countries</span>
+          <span class="jms-caret">▾</span>
+        </button>
+        <div class="jms-panel">
+          <label class="jms-opt"><input type="checkbox" value="IQ" onchange="jmsChange('countries','IQ',this.checked,'jmsCountry','jmsCountryLabel')"> 🇮🇶 Iraq</label>
+          <label class="jms-opt"><input type="checkbox" value="OM" onchange="jmsChange('countries','OM',this.checked,'jmsCountry','jmsCountryLabel')"> 🇴🇲 Oman</label>
+          <label class="jms-opt"><input type="checkbox" value="SA" onchange="jmsChange('countries','SA',this.checked,'jmsCountry','jmsCountryLabel')"> 🇸🇦 Saudi Arabia</label>
+          <label class="jms-opt"><input type="checkbox" value="AE" onchange="jmsChange('countries','AE',this.checked,'jmsCountry','jmsCountryLabel')"> 🇦🇪 UAE</label>
+          <label class="jms-opt"><input type="checkbox" value="KW" onchange="jmsChange('countries','KW',this.checked,'jmsCountry','jmsCountryLabel')"> 🇰🇼 Kuwait</label>
+          <label class="jms-opt"><input type="checkbox" value="JO" onchange="jmsChange('countries','JO',this.checked,'jmsCountry','jmsCountryLabel')"> 🇯🇴 Jordan</label>
+          <label class="jms-opt"><input type="checkbox" value="MA" onchange="jmsChange('countries','MA',this.checked,'jmsCountry','jmsCountryLabel')"> 🇲🇦 Morocco</label>
+          <label class="jms-opt"><input type="checkbox" value="EG" onchange="jmsChange('countries','EG',this.checked,'jmsCountry','jmsCountryLabel')"> 🇪🇬 Egypt</label>
+          <label class="jms-opt"><input type="checkbox" value="TR" onchange="jmsChange('countries','TR',this.checked,'jmsCountry','jmsCountryLabel')"> 🇹🇷 Turkey</label>
+          <label class="jms-opt"><input type="checkbox" value="OTHER" onchange="jmsChange('countries','OTHER',this.checked,'jmsCountry','jmsCountryLabel')"> 🌍 Other</label>
+        </div>
+      </div>
     </div>
     <div class="jfilter-group">
       <div class="jfilter-label" data-en="Channel" data-ar="القناة">Channel</div>
@@ -613,21 +662,31 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
     </div>
     <div class="jfilter-group">
       <div class="jfilter-label" data-en="Outcome" data-ar="النتيجة">Outcome</div>
-      <select class="jfilter-select" id="jOutcome" onchange="jFilterChange('outcome',this.value)">
-        <option value="" data-en="All" data-ar="الكل">All</option>
-        <option value="converted"     data-en="Converted"     data-ar="محوّل">Converted</option>
-        <option value="callback"      data-en="Callback"      data-ar="معاودة">Callback</option>
-        <option value="not_interested" data-en="Not interested" data-ar="غير مهتم">Not interested</option>
-        <option value="no_answer"     data-en="No answer"     data-ar="لا رد">No answer</option>
-        <option value="ongoing"       data-en="Ongoing"       data-ar="جارية">Ongoing</option>
-      </select>
+      <div class="jms-wrap" id="jmsOutcome">
+        <button class="jms-trigger" type="button" onclick="toggleJms('jmsOutcome')">
+          <span class="jms-label" id="jmsOutcomeLabel" data-en="All" data-ar="الكل">All</span>
+          <span class="jms-caret">▾</span>
+        </button>
+        <div class="jms-panel">
+          <label class="jms-opt"><input type="checkbox" value="converted"     onchange="jmsChange('outcomes','converted',this.checked,'jmsOutcome','jmsOutcomeLabel')"> ✅ Converted</label>
+          <label class="jms-opt"><input type="checkbox" value="callback"      onchange="jmsChange('outcomes','callback',this.checked,'jmsOutcome','jmsOutcomeLabel')"> 📞 Callback</label>
+          <label class="jms-opt"><input type="checkbox" value="not_interested" onchange="jmsChange('outcomes','not_interested',this.checked,'jmsOutcome','jmsOutcomeLabel')"> ❌ Not interested</label>
+          <label class="jms-opt"><input type="checkbox" value="no_answer"     onchange="jmsChange('outcomes','no_answer',this.checked,'jmsOutcome','jmsOutcomeLabel')"> 📵 No answer</label>
+          <label class="jms-opt"><input type="checkbox" value="ongoing"       onchange="jmsChange('outcomes','ongoing',this.checked,'jmsOutcome','jmsOutcomeLabel')"> 🔄 Ongoing</label>
+        </div>
+      </div>
     </div>
     <div class="jfilter-group">
       <div class="jfilter-label" data-en="Agent" data-ar="الوكيل">Agent</div>
-      <select class="jfilter-select" id="jAgent" onchange="jFilterChange('agent',this.value)">
-        <option value="" data-en="All agents" data-ar="كل الوكلاء">All agents</option>
-        <option value="__unassigned__" data-en="Unassigned" data-ar="غير مخصص">Unassigned</option>
-      </select>
+      <div class="jms-wrap" id="jmsAgent">
+        <button class="jms-trigger" type="button" onclick="toggleJms('jmsAgent')">
+          <span class="jms-label" id="jmsAgentLabel" data-en="All agents" data-ar="كل الوكلاء">All agents</span>
+          <span class="jms-caret">▾</span>
+        </button>
+        <div class="jms-panel" id="jmsAgentPanel">
+          <label class="jms-opt"><input type="checkbox" value="__unassigned__" onchange="jmsChange('agents','__unassigned__',this.checked,'jmsAgent','jmsAgentLabel')"> — Unassigned</label>
+        </div>
+      </div>
     </div>
     <div class="jfilter-group">
       <div class="jfilter-label"><span data-en="Score" data-ar="النقاط">Score</span>: <span id="jScoreLabel">0–100</span></div>
@@ -1668,13 +1727,55 @@ async function markConverted(index) {
 
 // ── Journey v2 state ──────────────────────────────────────────────────────────
 const jFilters = {
-  phone_search:'', country:'', min_score:0, max_score:100,
-  channel:'', outcome:'', agent:'', high_risk_only:false,
+  phone_search:'', countries:[], min_score:0, max_score:100,
+  channel:'', outcomes:[], agents:[], high_risk_only:false,
   sort_by:'score', page:1,
 };
 let _jTotal = 0, _jPages = 1;
 let _jDebounce = null;
 let _journeyLeads = [];
+
+// ── Multi-select dropdown helpers ─────────────────────────────────────────────
+function toggleJms(wrapId) {
+  const wrap = document.getElementById(wrapId);
+  const isOpen = wrap.classList.contains('open');
+  document.querySelectorAll('.jms-wrap.open').forEach(el => el.classList.remove('open'));
+  if (!isOpen) wrap.classList.add('open');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.jms-wrap')) {
+    document.querySelectorAll('.jms-wrap.open').forEach(el => el.classList.remove('open'));
+  }
+});
+function jmsChange(filterKey, value, checked, wrapId, labelId) {
+  if (checked) {
+    if (!jFilters[filterKey].includes(value)) jFilters[filterKey].push(value);
+  } else {
+    jFilters[filterKey] = jFilters[filterKey].filter(v => v !== value);
+  }
+  _jmsUpdateLabel(wrapId, labelId, filterKey);
+}
+function _jmsUpdateLabel(wrapId, labelId, filterKey) {
+  const label = document.getElementById(labelId);
+  if (!label) return;
+  const sel = jFilters[filterKey] || [];
+  if (sel.length === 0) {
+    label.textContent = label.dataset.en || label.textContent;
+    const badge = document.querySelector(`#${wrapId} .jms-badge`);
+    if (badge) badge.remove();
+  } else {
+    label.textContent = sel.length === 1
+      ? (document.querySelector(`#${wrapId} input[value="${sel[0]}"]`)?.closest('.jms-opt')?.textContent.trim() || sel[0])
+      : `${sel.length} ${lang==='ar'?'مختار':'selected'}`;
+    let badge = document.querySelector(`#${wrapId} .jms-badge`);
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'jms-badge';
+      document.querySelector(`#${wrapId} .jms-trigger`)?.appendChild(badge);
+    }
+    badge.textContent = sel.length;
+  }
+}
 
 function fmtPhone(phone) {
   if (!phone) return '—';
@@ -1685,25 +1786,38 @@ function jFilterChange(key, value) {
   jFilters[key] = value;
 }
 
-function applyJourneyFilters() {
+async function applyJourneyFilters() {
   jFilters.page = 1;
-  loadJourneyV2();
+  const btn = document.querySelector('.jfilter-apply');
+  const span = btn?.querySelector('span');
+  if (btn) { btn.disabled = true; if (span) span.textContent = lang==='ar'?'جاري البحث…':'Applying…'; }
+  await loadJourneyV2();
+  if (btn) {
+    btn.disabled = false;
+    if (span) { span.dataset.en='Apply Filters'; span.dataset.ar='تطبيق الفلاتر'; }
+    applyLang();
+  }
 }
 
 function resetJourneyFilters(ev) {
   if (ev) ev.preventDefault();
-  jFilters.phone_search = ''; jFilters.country = '';
+  jFilters.phone_search = ''; jFilters.countries = []; jFilters.outcomes = []; jFilters.agents = [];
   jFilters.min_score = 0; jFilters.max_score = 100;
-  jFilters.channel = ''; jFilters.outcome = '';
-  jFilters.agent = ''; jFilters.high_risk_only = false;
+  jFilters.channel = ''; jFilters.high_risk_only = false;
   jFilters.sort_by = 'score'; jFilters.page = 1;
-  // reset DOM controls
-  const ids = {jSearch:'',jCountry:'',jChannel:'',jOutcome:'',jAgent:'',jSort:'score'};
-  Object.entries(ids).forEach(([id,v])=>{const el=document.getElementById(id);if(el)el.value=v;});
-  const btn=document.getElementById('jHighRisk'); if(btn)btn.classList.remove('active');
-  // reset score slider
-  const sMin=document.getElementById('sMin'),sMax=document.getElementById('sMax');
-  if(sMin){sMin.value=0;} if(sMax){sMax.value=100;}
+  // reset text input and selects
+  const jSearch = document.getElementById('jSearch'); if(jSearch) jSearch.value='';
+  const jChannel = document.getElementById('jChannel'); if(jChannel) jChannel.value='';
+  const jSort = document.getElementById('jSort'); if(jSort) jSort.value='score';
+  // reset all jms checkboxes + labels
+  [['jmsCountry','jmsCountryLabel','countries'],['jmsOutcome','jmsOutcomeLabel','outcomes'],['jmsAgent','jmsAgentLabel','agents']].forEach(([wid,lid,key])=>{
+    document.querySelectorAll(`#${wid} input[type=checkbox]`).forEach(cb => cb.checked=false);
+    const badge = document.querySelector(`#${wid} .jms-badge`); if(badge) badge.remove();
+    const lbl = document.getElementById(lid); if(lbl) { lbl.textContent = lbl.dataset.en || lbl.textContent; }
+  });
+  const hrBtn=document.getElementById('jHighRisk'); if(hrBtn)hrBtn.classList.remove('active');
+  const sMin=document.getElementById('jMinScore'),sMax=document.getElementById('jMaxScore');
+  if(sMin)sMin.value=0; if(sMax)sMax.value=100;
   updateScoreRange();
   loadJourneyV2();
 }
@@ -1754,28 +1868,33 @@ function _syncJourneyPagination(total, pages, page) {
 }
 
 function _syncAgentDropdown(agents) {
-  const sel = document.getElementById('jAgent');
-  if (!sel) return;
-  const cur = sel.value;
-  while (sel.options.length > 2) sel.remove(2);
+  const panel = document.getElementById('jmsAgentPanel');
+  if (!panel) return;
+  const existing = new Set([...panel.querySelectorAll('input[type=checkbox]')].map(cb => cb.value));
   agents.forEach(ag => {
-    const o = document.createElement('option');
-    o.value = ag; o.textContent = ag;
-    sel.appendChild(o);
+    if (existing.has(ag)) return;
+    const label = document.createElement('label');
+    label.className = 'jms-opt';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.value = ag;
+    cb.onchange = () => jmsChange('agents', ag, cb.checked, 'jmsAgent', 'jmsAgentLabel');
+    if (jFilters.agents.includes(ag)) cb.checked = true;
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(' ' + ag));
+    panel.appendChild(label);
   });
-  sel.value = cur;
 }
 
 async function loadJourneyV2() {
   const p = new URLSearchParams({ page: jFilters.page, limit: 20, sort_by: jFilters.sort_by });
-  if (jFilters.phone_search) p.set('phone_search', jFilters.phone_search);
-  if (jFilters.country)      p.set('country', jFilters.country);
-  if (jFilters.min_score > 0)  p.set('min_score', jFilters.min_score);
-  if (jFilters.max_score < 100) p.set('max_score', jFilters.max_score);
-  if (jFilters.channel)      p.set('channel', jFilters.channel);
-  if (jFilters.outcome)      p.set('outcome', jFilters.outcome);
-  if (jFilters.agent)        p.set('agent', jFilters.agent);
-  if (jFilters.high_risk_only) p.set('high_risk_only', 'true');
+  if (jFilters.phone_search)       p.set('phone_search', jFilters.phone_search);
+  if (jFilters.countries.length)   p.set('country', jFilters.countries.join(','));
+  if (jFilters.min_score > 0)      p.set('min_score', jFilters.min_score);
+  if (jFilters.max_score < 100)    p.set('max_score', jFilters.max_score);
+  if (jFilters.channel)            p.set('channel', jFilters.channel);
+  if (jFilters.outcomes.length)    p.set('outcome', jFilters.outcomes.join(','));
+  if (jFilters.agents.length)      p.set('agent', jFilters.agents.join(','));
+  if (jFilters.high_risk_only)     p.set('high_risk_only', 'true');
 
   const wrap = document.getElementById('journeySection');
   try {
@@ -1799,14 +1918,14 @@ async function loadJourneyV2() {
 
 function exportJourneyCSV() {
   const p = new URLSearchParams({ page:1, limit:1000, sort_by:jFilters.sort_by });
-  if (jFilters.phone_search) p.set('phone_search', jFilters.phone_search);
-  if (jFilters.country)      p.set('country', jFilters.country);
-  if (jFilters.min_score > 0)  p.set('min_score', jFilters.min_score);
-  if (jFilters.max_score < 100) p.set('max_score', jFilters.max_score);
-  if (jFilters.channel)      p.set('channel', jFilters.channel);
-  if (jFilters.outcome)      p.set('outcome', jFilters.outcome);
-  if (jFilters.agent)        p.set('agent', jFilters.agent);
-  if (jFilters.high_risk_only) p.set('high_risk_only', 'true');
+  if (jFilters.phone_search)     p.set('phone_search', jFilters.phone_search);
+  if (jFilters.countries.length) p.set('country', jFilters.countries.join(','));
+  if (jFilters.min_score > 0)    p.set('min_score', jFilters.min_score);
+  if (jFilters.max_score < 100)  p.set('max_score', jFilters.max_score);
+  if (jFilters.channel)          p.set('channel', jFilters.channel);
+  if (jFilters.outcomes.length)  p.set('outcome', jFilters.outcomes.join(','));
+  if (jFilters.agents.length)    p.set('agent', jFilters.agents.join(','));
+  if (jFilters.high_risk_only)   p.set('high_risk_only', 'true');
   fetch(`${API}/api/leads/journey/v2?${p}`).then(r=>r.json()).then(data=>{
     const ls = data.leads || [];
     if (!ls.length) { alert(lang==='ar'?'لا توجد بيانات للتصدير':'No data to export'); return; }
