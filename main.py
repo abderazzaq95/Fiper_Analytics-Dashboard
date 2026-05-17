@@ -763,14 +763,6 @@ app.include_router(quality.router)
 app.include_router(journey.router)
 app.include_router(journey_v2.router)
 
-
-@app.post("/api/admin/reanalyze-top20")
-async def admin_reanalyze_top20():
-    """Temporary — remove after use."""
-    asyncio.create_task(_force_reanalyze_top(20))
-    return {"status": "started", "limit": 20,
-            "message": "Running in background — check server logs in ~60s."}
-
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
