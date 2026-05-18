@@ -20,6 +20,15 @@ def _since(range_: str) -> str:
     return (now - deltas.get(range_, timedelta(days=7))).isoformat()
 
 
+def _minutes_between(later: str, earlier: str) -> float:
+    try:
+        later_dt = datetime.fromisoformat(later.replace("Z", "+00:00"))
+        earlier_dt = datetime.fromisoformat(earlier.replace("Z", "+00:00"))
+        return (later_dt - earlier_dt).total_seconds() / 60
+    except (ValueError, TypeError, AttributeError):
+        return 0
+
+
 def _paginate(build_query) -> list:
     """Exhaust Supabase pagination — calls build_query() fresh each page."""
     rows, offset = [], 0
@@ -63,6 +72,10 @@ def _overview_inner(range: str):
     active_whatsapp_conversations = len({
         l.get("phone") or l.get("id") for l in wa_activity if l.get("phone") or l.get("id")
     })
+    latest_whatsapp_activity = max(
+        (l.get("last_message_at") or "" for l in wa_activity),
+        default="",
+    )
 
     # Calls: paginate for accurate call-based lead count; count="exact" for total
     calls_res = (
@@ -133,6 +146,18 @@ def _overview_inner(range: str):
 
     inbound = sum(1 for m in messages if m.get("direction") == "inbound")
     outbound = sum(1 for m in messages if m.get("direction") == "outbound")
+    latest_stored_message = max(
+        (m.get("sent_at") or "" for m in messages),
+        default="",
+    )
+    capture_lag_min = (
+        _minutes_between(latest_whatsapp_activity, latest_stored_message)
+        if latest_whatsapp_activity and latest_stored_message else 0
+    )
+    capture_stale = bool(
+        latest_whatsapp_activity
+        and (not latest_stored_message or capture_lag_min > 10)
+    )
 
     avg_call_duration = round(
         sum(c.get("duration_seconds") or 0 for c in calls_sample) / len(calls_sample), 1
@@ -173,6 +198,10 @@ def _overview_inner(range: str):
             "stored_total": len(messages),
             "active_conversations": active_whatsapp_conversations,
             "total": active_whatsapp_conversations,
+            "latest_activity_at": latest_whatsapp_activity or None,
+            "latest_stored_at": latest_stored_message or None,
+            "capture_lag_min": round(capture_lag_min, 1),
+            "capture_stale": capture_stale,
         },
         "calls": {
             "total": total_calls,

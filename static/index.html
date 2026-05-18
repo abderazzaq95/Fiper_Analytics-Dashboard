@@ -895,6 +895,12 @@ function renderKPI(ov, ch) {
   // We'll calculate answer rate properly from quality data; approximate here
   const ar_color = answerRate > 50 ? 'green' : answerRate > 30 ? 'warn' : 'red';
   const ar_badge = answerRate > 50 ? 'badge-green' : answerRate > 30 ? 'badge-warn' : 'badge-red';
+  const waCaptureStale = !!ov.messages.capture_stale;
+  const waLatestStored = ov.messages.latest_stored_at ? _fmtDate(ov.messages.latest_stored_at) : '—';
+  const waStoredLabel = lang==='ar' ? 'نصوص محفوظة' : 'Captured bodies';
+  const waStaleText = lang==='ar'
+    ? `التقاط الرسائل متوقف منذ ${waLatestStored}`
+    : `Capture stalled since ${waLatestStored}`;
 
   document.getElementById('kpiGrid').innerHTML = `
     <div class="kpi-card fade-in">
@@ -915,12 +921,13 @@ function renderKPI(ov, ch) {
       <div class="kpi-value" id="answerRateVal">—</div>
       <div class="kpi-sub">${lang==='ar'?'من إجمالي المكالمات':'of total calls'}</div>
     </div>
-    <div class="kpi-card fade-in" style="animation-delay:.15s">
+    <div class="kpi-card ${waCaptureStale?'warn':''} fade-in" style="animation-delay:.15s">
       <div class="kpi-label" data-en="WhatsApp Activity" data-ar="نشاط واتساب">${lang==='ar'?'نشاط واتساب':'WhatsApp Activity'}</div>
       <div class="kpi-value">${fmt(ov.messages.total)}</div>
       <div class="kpi-sub">${lang==='ar'?'محادثات نشطة':'active chats'}</div>
-      <div class="kpi-sub">${lang==='ar'?'الرسائل المحفوظة':'Stored messages'}: ${fmt(ov.messages.inbound)} ${lang==='ar'?'وارد':'in'} / ${fmt(ov.messages.outbound)} ${lang==='ar'?'صادر':'out'}</div>
-      <span class="kpi-badge badge-green">WhatsApp</span>
+      <div class="kpi-sub">${waStoredLabel}: ${fmt(ov.messages.inbound)} ${lang==='ar'?'وارد':'in'} / ${fmt(ov.messages.outbound)} ${lang==='ar'?'صادر':'out'}</div>
+      ${waCaptureStale ? `<div class="kpi-sub" style="color:var(--warn);font-weight:700">${waStaleText}</div>` : ''}
+      <span class="kpi-badge ${waCaptureStale?'badge-warn':'badge-green'}">WhatsApp</span>
     </div>
     <div class="kpi-card ${ov.alerts.open>0?'red':''} fade-in" style="animation-delay:.2s">
       <div class="kpi-label" data-en="Open Alerts" data-ar="التنبيهات المفتوحة">${lang==='ar'?'التنبيهات المفتوحة':'Open Alerts'}</div>

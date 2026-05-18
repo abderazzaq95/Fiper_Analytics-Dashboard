@@ -1149,11 +1149,22 @@ def _parse_mc_ts(ts) -> str | None:
 
 def _mc_message_direction(raw_type: str | None) -> str | None:
     msg_type = (raw_type or "").strip().lower()
-    if msg_type in {"sent", "outbound", "out", "agent", "agent_message", "from_me"}:
+    if msg_type in {"sent", "outbound", "out", "agent", "agent_message", "from_me", "fromme"}:
         return "outbound"
-    if msg_type in {"received", "inbound", "in", "customer", "contact"}:
+    if msg_type in {"received", "inbound", "in", "customer", "contact", "incoming"}:
         return "inbound"
     return None
+
+
+def _first_dict(*values) -> dict:
+    for value in values:
+        if isinstance(value, dict):
+            return value
+    return {}
+
+
+def _first_list_item(value):
+    return value[0] if isinstance(value, list) and value else value
 
 
 def _find_whatsapp_lead(contact_id: str | None, phone: str | None) -> dict | None:
@@ -1379,29 +1390,64 @@ async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
     If ManyContacts sends outbound replies with type=sent/outbound/etc., this
     stores the full agent body, agent name, and timestamp.
     """
-    delta = body.get("delta") or {}
-    contact = body.get("contact") or {}
-    message = delta.get("message") or body.get("message") or {}
+    root = _first_dict(body.get("data"), body.get("payload"), body)
+    delta = _first_dict(root.get("delta"), root.get("eventData"), root.get("data"))
+    message = _first_list_item(
+        delta.get("message") or root.get("message") or root.get("messages")
+    )
+    message = _first_dict(message)
+    contact = _first_dict(
+        root.get("contact"),
+        delta.get("contact"),
+        message.get("contact"),
+        root.get("conversation"),
+        delta.get("conversation"),
+        root.get("chat"),
+        delta.get("chat"),
+    )
 
     if not isinstance(delta, dict) or not isinstance(contact, dict) or not isinstance(message, dict):
         log.warning(f"[webhook/mc] message_new malformed — preview={str(body)[:500]}")
         return
 
-    contact_id = delta.get("contactId") or contact.get("id")
-    phone = contact.get("number") or contact.get("phone")
+    contact_id = (
+        delta.get("contactId") or delta.get("contact_id")
+        or root.get("contactId") or root.get("contact_id")
+        or contact.get("id")
+    )
+    phone = (
+        contact.get("number") or contact.get("phone") or contact.get("wa_id")
+        or message.get("from") or message.get("to")
+        or root.get("number") or root.get("phone")
+    )
+    if isinstance(phone, str) and "@" in phone:
+        phone = phone.split("@")[0]
     name = contact.get("name")
     msg_id = message.get("id") or message.get("wamid")
-    msg_type = message.get("type") or delta.get("type") or body.get("type")
+    msg_type = (
+        message.get("type") or message.get("direction")
+        or delta.get("type") or delta.get("direction")
+        or root.get("type") or root.get("direction")
+    )
     direction = _mc_message_direction(msg_type)
+    if not direction and (message.get("fromMe") is True or message.get("from_me") is True):
+        direction = "outbound"
+    if not direction and (message.get("fromMe") is False or message.get("from_me") is False):
+        direction = "inbound"
     metadata = message.get("metadata") or {}
     sent_at = (
         _parse_mc_ts(metadata.get("time") or message.get("createdAt") or message.get("created_at")
-                     or message.get("timestamp") or delta.get("lastInbound"))
+                     or message.get("timestamp") or message.get("time")
+                     or delta.get("lastInbound") or delta.get("timestamp") or root.get("timestamp"))
         or now_iso
     )
 
+    text_obj = message.get("text")
+    if isinstance(text_obj, dict):
+        text_obj = text_obj.get("body") or text_obj.get("text")
     body_text = (
-        message.get("text") or message.get("body") or message.get("content")
+        text_obj or message.get("body") or message.get("content")
+        or message.get("caption") or root.get("body") or root.get("text")
         or f"[{msg_type or 'message'}]"
     )
 
@@ -1416,8 +1462,16 @@ async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
         log.warning(f"[webhook/mc] message_new missing contact — keys={list(body.keys())}")
         return
 
-    agent_id = delta.get("lastUserId") or contact.get("last_user_id")
-    agent_name = whatsapp.resolve_agent_name(agent_id) if agent_id else None
+    agent_obj = _first_dict(root.get("agent"), root.get("user"), message.get("user"), message.get("sender"))
+    agent_id = (
+        delta.get("lastUserId") or delta.get("last_user_id")
+        or contact.get("last_user_id") or message.get("user_id")
+        or agent_obj.get("id")
+    )
+    agent_name = (
+        agent_obj.get("name") or agent_obj.get("fullName") or agent_obj.get("displayName")
+        or (whatsapp.resolve_agent_name(agent_id) if agent_id else None)
+    )
 
     lead_key = contact_id or phone
     lead_row = {
