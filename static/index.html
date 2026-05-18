@@ -920,6 +920,7 @@ function renderKPI(ov, ch) {
       <div class="kpi-label" data-en="WhatsApp Activity" data-ar="نشاط واتساب">${lang==='ar'?'نشاط واتساب':'WhatsApp Activity'}</div>
       <div class="kpi-value">${fmt(ov.messages.total)}</div>
       <div class="kpi-sub">${lang==='ar'?'محادثات نشطة':'active chats'}</div>
+      <div class="kpi-sub">${lang==='ar'?'الرسائل في المحادثات النشطة':'Messages in active chats'}: ${fmt(ov.messages.inbound)} ${lang==='ar'?'وارد':'in'} / ${fmt(ov.messages.outbound)} ${lang==='ar'?'صادر':'out'}</div>
       <div class="kpi-sub">${waManyContactsLabel}</div>
       <span class="kpi-badge badge-green">WhatsApp</span>
     </div>

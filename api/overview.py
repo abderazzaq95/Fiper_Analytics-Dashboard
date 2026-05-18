@@ -72,6 +72,22 @@ def _overview_inner(range: str):
     active_whatsapp_conversations = len({
         l.get("phone") or l.get("id") for l in wa_activity if l.get("phone") or l.get("id")
     })
+    active_whatsapp_phones = {l.get("phone") for l in wa_activity if l.get("phone")}
+    active_whatsapp_lead_ids = {l.get("id") for l in wa_activity if l.get("id")}
+    if active_whatsapp_phones:
+        phones = list(active_whatsapp_phones)
+        idx = 0
+        while idx < len(phones):
+            batch_phones = phones[idx:idx + 500]
+            rows = (
+                supabase.table("leads")
+                .select("id,phone")
+                .eq("channel", "whatsapp")
+                .in_("phone", batch_phones)
+                .execute().data or []
+            )
+            active_whatsapp_lead_ids.update(r["id"] for r in rows if r.get("id"))
+            idx += 500
     latest_whatsapp_activity = max(
         (l.get("last_message_at") or "" for l in wa_activity),
         default="",
@@ -144,8 +160,12 @@ def _overview_inner(range: str):
     scored_leads = [l for l in leads if l.get("score") is not None]
     avg_score = round(sum(l["score"] for l in scored_leads) / len(scored_leads), 1) if scored_leads else 0
 
-    inbound = sum(1 for m in messages if m.get("direction") == "inbound")
-    outbound = sum(1 for m in messages if m.get("direction") == "outbound")
+    active_chat_messages = [
+        m for m in messages
+        if m.get("lead_id") in active_whatsapp_lead_ids
+    ]
+    inbound = sum(1 for m in active_chat_messages if m.get("direction") == "inbound")
+    outbound = sum(1 for m in active_chat_messages if m.get("direction") == "outbound")
     latest_stored_message = max(
         (m.get("sent_at") or "" for m in messages),
         default="",
