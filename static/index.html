@@ -1736,7 +1736,7 @@ function _renderJourneyLead(lead, index) {
       </div>`;
 
   return `
-    <div class="journey-lead" id="jl-${index}">
+    <div class="journey-lead" id="jl-${index}" data-lead-id="${lead.id}">
       <div class="journey-header" onclick="toggleJourney(${index})">
         <div class="journey-score" style="background:${scoreColor}">${lead.score}</div>
         <div class="journey-meta">
@@ -1761,7 +1761,12 @@ function _renderJourneyLead(lead, index) {
 
 function toggleJourney(index) {
   const el = document.getElementById(`jl-${index}`);
-  if (el) el.classList.toggle('open');
+  if (!el) return;
+  el.classList.toggle('open');
+  const leadId = el.dataset.leadId;
+  if (!leadId) return;
+  if (el.classList.contains('open')) _openJourneyLeadIds.add(leadId);
+  else _openJourneyLeadIds.delete(leadId);
 }
 
 function toggleAlerts(btn) {
@@ -1813,6 +1818,7 @@ const jFilters = {
 let _jTotal = 0, _jPages = 1;
 let _jDebounce = null;
 let _journeyLeads = [];
+const _openJourneyLeadIds = new Set();
 
 // ── Multi-select dropdown helpers ─────────────────────────────────────────────
 function toggleJms(wrapId) {
@@ -1978,6 +1984,9 @@ async function loadJourneyV2() {
 
   const wrap = document.getElementById('journeySection');
   try {
+    document.querySelectorAll('.journey-lead.open[data-lead-id]').forEach(el => {
+      _openJourneyLeadIds.add(el.dataset.leadId);
+    });
     const r = await fetch(`${API}/api/leads/journey/v2?${p}`);
     const data = await r.json();
     const leads = data.leads || [];
@@ -1989,6 +1998,9 @@ async function loadJourneyV2() {
     }
     _journeyLeads = leads;
     wrap.innerHTML = leads.map((l,i) => _renderJourneyLead(l,i)).join('');
+    document.querySelectorAll('.journey-lead[data-lead-id]').forEach(el => {
+      el.classList.toggle('open', _openJourneyLeadIds.has(el.dataset.leadId));
+    });
     applyLang();
   } catch(e) {
     console.error('Journey v2 failed:', e);
