@@ -78,6 +78,7 @@ main{padding:24px 28px;max-width:1600px;margin:0 auto}
 .kpi-value{font-size:30px;font-weight:800;color:var(--navy);line-height:1;font-family:var(--font-en)}
 html[dir=rtl] .kpi-value{font-family:var(--font-ar)}
 .kpi-sub{font-size:11px;color:var(--text-light);margin-top:6px}
+.kpi-sync{font-size:10px;color:var(--text-light);margin-top:5px;opacity:.8}
 .kpi-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:700;margin-top:8px}
 .badge-blue{background:var(--blue-light);color:var(--blue)}
 .badge-green{background:var(--green-light);color:#1aab3a}
@@ -854,6 +855,35 @@ function renderGeo(leads) {
     </div>`).join('');
 }
 
+// ── Pipeline freshness helpers ────────────────────────────────────────────────
+let _pipelineStatus = null;
+function _relTime(isoStr) {
+  if (!isoStr) return null;
+  const diffMs = Date.now() - new Date(isoStr).getTime();
+  const m = Math.round(diffMs / 60000);
+  if (m < 1)  return lang==='ar'?'الآن':'just now';
+  if (m < 60) return lang==='ar'?`منذ ${m} د`:`${m}m ago`;
+  const h = Math.floor(m / 60), rm = m % 60;
+  return lang==='ar'?`منذ ${h}س ${rm}د`:`${h}h ${rm}m ago`;
+}
+function _timeUntil(isoStr) {
+  if (!isoStr) return null;
+  const diffMs = new Date(isoStr).getTime() - Date.now();
+  if (diffMs <= 0) return lang==='ar'?'قريباً':'soon';
+  const m = Math.round(diffMs / 60000);
+  if (m < 60) return lang==='ar'?`${m} د`:`${m}m`;
+  const h = Math.floor(m / 60), rm = m % 60;
+  return lang==='ar'?`${h}س ${rm}د`:`${h}h ${rm}m`;
+}
+function _syncBadge() {
+  if (!_pipelineStatus) return '';
+  const last = _relTime(_pipelineStatus.last_pipeline_run);
+  const next = _timeUntil(_pipelineStatus.next_pipeline_run);
+  const lastTxt = last ? (lang==='ar'?`آخر تحديث: ${last}`:`synced ${last}`) : '';
+  const nextTxt = next ? (lang==='ar'?`التالي: ${next}`:`next in ${next}`) : '';
+  return `<div class="kpi-sync">${lastTxt}${lastTxt && nextTxt ? ' · ' : ''}${nextTxt}</div>`;
+}
+
 // ── KPI ───────────────────────────────────────────────────────────────────────
 function renderKPI(ov, ch) {
   const answerRate = ch.maqsam.calls
@@ -874,6 +904,7 @@ function renderKPI(ov, ch) {
       <div class="kpi-label" data-en="Total Calls" data-ar="إجمالي المكالمات">${lang==='ar'?'إجمالي المكالمات':'Total Calls'}</div>
       <div class="kpi-value">${fmt(ov.calls.total)}</div>
       <div class="kpi-sub">${lang==='ar'?'متوسط المدة':'Avg'}: ${dur(ov.calls.avg_duration_seconds)}</div>
+      ${_syncBadge()}
       <span class="kpi-badge badge-blue">${lang==='ar'?'مقصام':'Maqsam'}</span>
     </div>
     <div class="kpi-card ${ar_color} fade-in" style="animation-delay:.1s" id="kpiAnswerRate">
@@ -1942,11 +1973,13 @@ function exportJourneyCSV() {
 // ── Load all ──────────────────────────────────────────────────────────────────
 async function loadAll() {
   try {
-    const data = await Promise.all([
+    const [status, ...data] = await Promise.all([
+      fetch(`${API}/api/status`).then(r => r.ok ? r.json() : Promise.resolve({})),
       get('/api/overview'), get('/api/channels'), get('/api/leads'),
       get('/api/agents'),   get('/api/quality'),
       fetch(`${API}/api/channels/traffic`).then(r => r.ok ? r.json() : Promise.resolve({})),
     ]);
+    _pipelineStatus = status;
     _cache = data;
     renderAll(...data);
     loadJourneyV2();

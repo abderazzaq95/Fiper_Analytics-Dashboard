@@ -25,6 +25,7 @@ log = logging.getLogger("fiper")
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "")
 scheduler = AsyncIOScheduler()
+_last_pipeline_run: datetime | None = None
 
 # SSE client queues — one per connected dashboard tab
 _sse_clients: set[asyncio.Queue] = set()
@@ -530,6 +531,7 @@ async def run_ai_analysis():
 
 async def run_pipeline():
     """Full pipeline: ingest → AI analysis → alerts. Runs every 2 hours."""
+    global _last_pipeline_run
     log.info("Pipeline started")
     await ingest_manycontacts()
     await ingest_maqsam()
@@ -538,6 +540,7 @@ async def run_pipeline():
         alert_engine.run_all_checks()
     except Exception as e:
         log.error(f"Alert engine error: {e}")
+    _last_pipeline_run = datetime.now(timezone.utc)
     log.info("Pipeline complete")
     await _broadcast("data_updated", {"source": "pipeline"})
 
@@ -1113,6 +1116,16 @@ def ping():
 @app.get("/health")
 def health():
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+@app.get("/api/status")
+def pipeline_status():
+    job = scheduler.get_job("pipeline")
+    next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+    return {
+        "last_pipeline_run": _last_pipeline_run.isoformat() if _last_pipeline_run else None,
+        "next_pipeline_run": next_run,
+    }
 
 
 @app.post("/api/run-pipeline")
