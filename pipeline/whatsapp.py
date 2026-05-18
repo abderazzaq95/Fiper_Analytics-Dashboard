@@ -19,6 +19,7 @@ format at POST /webhook/manycontacts.
 import os
 import httpx
 from dotenv import load_dotenv
+from datetime import datetime, timezone
 
 load_dotenv()
 
@@ -51,7 +52,8 @@ async def fetch_contacts(date_from: str | None = None, date_to: str | None = Non
     """
     Fetch contacts updated within the given date range.
     date_from / date_to: 'YYYY-MM-DD' strings.
-    ManyContacts returns all matching contacts in a single JSON array.
+    ManyContacts returns 50 contacts per page. The unpaged request is the first
+    slice; page=1 continues after it.
     """
     params: dict = {}
     if date_from:
@@ -59,15 +61,60 @@ async def fetch_contacts(date_from: str | None = None, date_to: str | None = Non
     if date_to:
         params["date_to"] = date_to
 
+    cutoff = None
+    if date_from:
+        cutoff = datetime.fromisoformat(date_from).replace(tzinfo=timezone.utc)
+
+    def _updated_at(contact: dict) -> datetime | None:
+        raw = contact.get("updatedAt") or contact.get("updated_at") or contact.get("updated")
+        if not raw:
+            return None
+        try:
+            return datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+
+    all_contacts: list[dict] = []
+    seen_ids: set[str] = set()
     async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.get(
-            f"{BASE_URL}/contacts",
-            headers=HEADERS,
-            params=params,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data if isinstance(data, list) else []
+        # The default request gives the latest page. page=1,2,... gives older
+        # pages, so include both shapes and deduplicate by contact id.
+        page: int | None = None
+        while True:
+            req_params = dict(params)
+            if page is not None:
+                req_params["page"] = page
+            resp = await client.get(
+                f"{BASE_URL}/contacts",
+                headers=HEADERS,
+                params=req_params,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if not isinstance(data, list) or not data:
+                break
+
+            page_oldest = None
+            for contact in data:
+                if not isinstance(contact, dict):
+                    continue
+                updated = _updated_at(contact)
+                if updated and (page_oldest is None or updated < page_oldest):
+                    page_oldest = updated
+                if cutoff and updated and updated < cutoff:
+                    continue
+                contact_id = str(contact.get("id") or contact.get("number") or "")
+                if contact_id and contact_id not in seen_ids:
+                    seen_ids.add(contact_id)
+                    all_contacts.append(contact)
+
+            if len(data) < 50:
+                break
+            if cutoff and page_oldest and page_oldest < cutoff:
+                break
+            page = 1 if page is None else page + 1
+
+    return all_contacts
 
 
 async def fetch_contact(contact_id: str) -> dict:
