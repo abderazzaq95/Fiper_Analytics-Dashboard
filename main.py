@@ -2,6 +2,7 @@ import os
 import json
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 
@@ -71,6 +72,20 @@ Respond ONLY in valid JSON. No explanation, no markdown, no extra text.
 topics: pricing|product_fit|competitor|technical|follow_up|not_decision_maker|trading_education|account_info|greetings|profit_expectations
 risk_flags: unanswered|profit_expectations|beginner_risk|stale_callback|negative_sentiment|slow_response
 treatment_score: 90-100 excellent, 70-89 good, 50-69 average, 30-49 poor, 0-29 very poor"""
+
+_BAD_FIPER_NAMES = re.compile(
+    r"\b(Fiverr|Viber|Faiber|Fiber|Fighter|financial brokerage company|financial brokerage)\b",
+    re.IGNORECASE,
+)
+
+_CALL_SUMMARY_SYSTEM_PROMPT = """You summarize Fiper call transcripts for an analytics dashboard.
+Always write the company name exactly as "Fiper". Never write Fiverr, Viber, Faiber, Fiber, Fighter, financial brokerage, or financial brokerage company.
+Return ONLY valid JSON with this shape:
+{
+  "summary_en": "Max 2 concise sentences in English.",
+  "summary_ar": "Max 2 concise sentences in Arabic."
+}
+The English summary must be English. The Arabic summary must be Arabic."""
 
 
 # ---------------------------------------------------------------------------
@@ -455,6 +470,99 @@ async def _call_claude_async(user_message: str) -> dict:
                 "risk_flags": [], "treatment_score": 50, "summary": "Parse error."}
 
 
+def _clean_fiper_text(text: str | None) -> str:
+    if not text:
+        return ""
+    return _BAD_FIPER_NAMES.sub("Fiper", text)
+
+
+async def _call_claude_call_summary_async(call: dict) -> dict:
+    """Generate bilingual call summaries for one Fiper call transcript."""
+    import httpx as _httpx
+    import json as _json
+
+    transcript = (call.get("transcript") or "").strip()
+    user_message = (
+        f"Duration: {call.get('duration_seconds')}s\n"
+        f"Outcome: {call.get('outcome') or 'unknown'}\n"
+        f"Agent: {call.get('agent_name') or 'unknown'}\n\n"
+        f"Transcript:\n{transcript[:5000]}"
+    )
+    payload = {
+        "model": _CLAUDE_MODEL,
+        "max_tokens": 350,
+        "system": _CALL_SUMMARY_SYSTEM_PROMPT,
+        "messages": [{"role": "user", "content": user_message}],
+    }
+    async with _httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": _ANTHROPIC_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            content=_json.dumps(payload),
+        )
+        resp.raise_for_status()
+        raw = resp.json()["content"][0]["text"].strip()
+
+    try:
+        parsed = _json.loads(raw)
+    except _json.JSONDecodeError:
+        start, end = raw.find("{"), raw.rfind("}") + 1
+        parsed = _json.loads(raw[start:end]) if start != -1 and end > start else {}
+
+    return {
+        "summary_en": _clean_fiper_text(parsed.get("summary_en") or ""),
+        "summary_ar": _clean_fiper_text(parsed.get("summary_ar") or ""),
+    }
+
+
+async def backfill_call_summaries(hours_back: int = 6, limit: int = 30) -> dict:
+    """Fill missing summaries for calls over 30s when a transcript exists."""
+    if not _ANTHROPIC_KEY:
+        log.info("Call summary backfill skipped: ANTHROPIC_API_KEY is missing")
+        return {"summarized": 0, "errors": 0, "skipped": 0}
+
+    cutoff_iso = (datetime.now(timezone.utc) - timedelta(hours=hours_back)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rows = (
+        supabase.table("calls")
+        .select("id,maqsam_id,agent_name,duration_seconds,outcome,called_at,transcript,summary_en,summary_ar")
+        .gte("called_at", cutoff_iso)
+        .gt("duration_seconds", 30)
+        .not_.is_("transcript", "null")
+        .order("called_at", desc=True)
+        .limit(limit * 3)
+        .execute().data or []
+    )
+    candidates = [
+        r for r in rows
+        if (r.get("transcript") or "").strip() and not (r.get("summary_en") and r.get("summary_ar"))
+    ][:limit]
+
+    ok = err = skipped = 0
+    for call in candidates:
+        try:
+            summary = await _call_claude_call_summary_async(call)
+            update = {
+                k: v for k, v in summary.items()
+                if v and not call.get(k)
+            }
+            if not update:
+                skipped += 1
+                continue
+            supabase.table("calls").update(update).eq("id", call["id"]).execute()
+            ok += 1
+            await asyncio.sleep(0.3)
+        except Exception as e:
+            log.error(f"Call summary backfill failed for call {call.get('maqsam_id') or call.get('id')}: {e}")
+            err += 1
+
+    log.info(f"Call summary backfill done — {ok} summarized, {err} errors, {skipped} skipped")
+    return {"summarized": ok, "errors": err, "skipped": skipped}
+
+
 async def run_ai_analysis(hours_back: int = 3):
     """Analyze leads that have no ai_analysis in the selected recent window.
 
@@ -468,6 +576,7 @@ async def run_ai_analysis(hours_back: int = 3):
     # Default 3h window has a buffer over the 2h full pipeline schedule. Manual
     # triggers can pass a wider window after a Maqsam catch-up sync.
     cutoff_iso = (now - timedelta(hours=hours_back)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    summary_stats = await backfill_call_summaries(hours_back=max(hours_back, 6), limit=30)
 
     # ── Leads already analyzed in this window ─────────────────────────────────
     recently_analyzed = {
@@ -503,7 +612,7 @@ async def run_ai_analysis(hours_back: int = 3):
 
     if not to_analyze:
         log.info(f"AI analysis: no new leads to analyze (hours_back={hours_back})")
-        return {"analyzed": 0, "errors": 0, "skipped": 0}
+        return {"analyzed": 0, "errors": 0, "skipped": 0, "call_summaries": summary_stats}
 
     log.info(f"AI analysis: {len(to_analyze)} leads to analyze (hours_back={hours_back})")
 
@@ -655,7 +764,7 @@ async def run_ai_analysis(hours_back: int = 3):
             err += 1
 
     log.info(f"AI analysis done — {ok} analyzed, {err} errors, {skipped} skipped (no data)")
-    return {"analyzed": ok, "errors": err, "skipped": skipped}
+    return {"analyzed": ok, "errors": err, "skipped": skipped, "call_summaries": summary_stats}
 
 
 async def run_pipeline():

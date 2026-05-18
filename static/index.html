@@ -185,6 +185,9 @@ html[dir=rtl] .alert-item{border-left:none;border-right:4px solid transparent}
 .journey-lead.open .journey-chevron{transform:rotate(180deg)}
 .journey-body{display:none;padding:0 18px 18px}
 .journey-lead.open .journey-body{display:block}
+.journey-coverage{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 2px;padding:10px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.jc-pill{font-size:11px;color:var(--body);background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:4px 9px}
+.jc-pill.warn{background:#fffbeb;border-color:#fde68a;color:#92400e}
 
 /* Timeline */
 .timeline{position:relative;padding-left:28px;margin-top:14px}
@@ -1482,7 +1485,7 @@ function renderAll(ov, ch, leads, agents, quality, traffic) {
 // ── Lead Journey Tracker ──────────────────────────────────────────────────────
 const EVENT_ICONS = {
   call:      '📞', whatsapp: '💬', ai: '🤖',
-  alert:     '⚠️', account: '🏦',
+  alert:     '⚠️', account: '🏦', next_action: '↪',
 };
 const SENTIMENT_EMOJI = { positive:'😊', neutral:'😐', negative:'😔' };
 const SENTIMENT_AR    = { positive:'إيجابي', neutral:'محايد', negative:'سلبي' };
@@ -1513,6 +1516,13 @@ function _translateTitle(ev) {
   if (lang !== 'ar') return ev.title;
   if (ev.type === 'call') {
     if (ev.title === 'First Call') return 'المكالمة الأولى';
+    if (ev.title === 'First Call Attempt') return 'محاولة الاتصال الأولى';
+    if (ev.title === 'First Answered Call') return 'أول مكالمة مجابة';
+    const am = ev.title.match(/^Call Attempt #(\d+)$/);
+    if (am) {
+      const n = parseInt(am[1]);
+      return `محاولة الاتصال ${n < AR_ORDINALS.length ? AR_ORDINALS[n] : '#' + n}`;
+    }
     const m = ev.title.match(/^Call #(\d+)$/);
     if (m) {
       const n = parseInt(m[1]);
@@ -1522,9 +1532,11 @@ function _translateTitle(ev) {
   if (ev.type === 'whatsapp') {
     if (ev.title === 'First WhatsApp Message') return 'أول رسالة واتساب';
     if (ev.title === 'First Agent Reply')       return 'أول رد من الوكيل';
+    if (ev.title === 'WhatsApp Conversation Updated') return 'تحديث محادثة واتساب';
   }
   if (ev.type === 'ai')      return 'تحليل الذكاء الاصطناعي';
-  if (ev.type === 'account') return 'فتح الحساب';
+  if (ev.type === 'account') return ev.title === 'Account Opened' ? 'فتح الحساب' : 'حالة الحساب';
+  if (ev.type === 'next_action') return 'متابعة مطلوبة';
   return ev.title;
 }
 
@@ -1570,6 +1582,12 @@ function _renderEvent(ev) {
     details += `<b>${lang==='ar'?'النتيجة':'Outcome'}:</b> ${outLabel}`;
     if (ev.sentiment) details += ` &nbsp;|&nbsp; ${SENTIMENT_EMOJI[ev.sentiment]||''} ${lang==='ar'?(SENTIMENT_AR[ev.sentiment]||ev.sentiment):ev.sentiment}`;
     details += `</div>`;
+    if (ev.summary_required && ev.summary_status && ev.summary_status !== 'ok') {
+      const warnText = ev.summary_status === 'missing_transcript'
+        ? (lang==='ar'?'لا يوجد نص مكالمة، لذلك الملخص غير متاح.':'No transcript is stored, so the call summary is unavailable.')
+        : (lang==='ar'?'ملخص المكالمة قيد الإنشاء.':'Call summary is being generated.');
+      details += `<div class="tl-details tl-unreliable">⚠️ ${warnText}</div>`;
+    }
     if (ev.summary) {
       const uid = 'sum_' + Math.random().toString(36).slice(2,8);
       const needsMore = ev.summary.length > 200;
@@ -1584,7 +1602,9 @@ function _renderEvent(ev) {
   }
 
   if (ev.type === 'whatsapp') {
-    const dirLabel = ev.direction === 'inbound'
+    const dirLabel = ev.direction === 'activity'
+      ? (lang==='ar'?'نشاط واتساب':'WhatsApp activity')
+      : ev.direction === 'inbound'
       ? (lang==='ar'?'من العميل':'From lead')
       : (lang==='ar'?'من الوكيل':'From agent');
     details += `<div class="tl-details">${dirLabel}`;
@@ -1594,20 +1614,25 @@ function _renderEvent(ev) {
     if (ev.preview) {
       const uid2 = 'prv_' + Math.random().toString(36).slice(2,8);
       const needsMore2 = ev.preview.length > 160;
-      const short2 = needsMore2 ? '"' + ev.preview.slice(0,160) + '…"' : `"${ev.preview}"`;
+      const short2 = ev.activity_only
+        ? (needsMore2 ? ev.preview.slice(0,160) + '…' : ev.preview)
+        : (needsMore2 ? '"' + ev.preview.slice(0,160) + '…"' : `"${ev.preview}"`);
       details += `<div class="tl-preview">` +
         `<span id="${uid2}_s">${short2}` +
         (needsMore2 ? ` <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid2}_s').style.display='none';document.getElementById('${uid2}_f').style.display='inline'">${lang==='ar'?'اقرأ المزيد':'Read more'}</a>` : '') +
         `</span>` +
-        (needsMore2 ? `<span id="${uid2}_f" style="display:none">"${ev.preview}" <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid2}_f').style.display='none';document.getElementById('${uid2}_s').style.display='inline'">${lang==='ar'?'أقل':'Read less'}</a></span>` : '') +
+        (needsMore2 ? `<span id="${uid2}_f" style="display:none">${ev.activity_only ? ev.preview : '"' + ev.preview + '"'} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid2}_f').style.display='none';document.getElementById('${uid2}_s').style.display='inline'">${lang==='ar'?'أقل':'Read less'}</a></span>` : '') +
         `</div>`;
     }
   }
 
   if (ev.type === 'ai') {
     if (ev.unreliable) {
+      const reason = ev.unreliable_reason === 'missing_outbound'
+        ? (lang==='ar'?'التحليل جزئي لأن ردود الوكيل في واتساب غير محفوظة.':'Partial analysis: WhatsApp agent replies are not stored.')
+        : (lang==='ar'?'التحليل غير متاح — المكالمة قصيرة جداً':'Analysis unavailable — call too short');
       details += `<div class="tl-details tl-unreliable">` +
-        `⚠️ ${lang==='ar'?'التحليل غير متاح — المكالمة قصيرة جداً':'Analysis unavailable — call too short'}` +
+        `⚠️ ${reason}` +
         `</div>`;
     } else {
       const sentEmoji = SENTIMENT_EMOJI[ev.sentiment] || '';
@@ -1643,8 +1668,15 @@ function _renderEvent(ev) {
     details += `</div>`;
   }
 
+  if (ev.type === 'next_action') {
+    details += `<div class="tl-details tl-unreliable">⚠️ ${ev.message || (lang==='ar'?'تحتاج متابعة.':'Follow-up needed.')}</div>`;
+  }
+
   if (ev.type === 'account') {
-    details += `<div class="tl-details" style="color:var(--text-light);font-style:italic">${lang==='ar'?'في انتظار ربط نظام CRM — قريباً':'Pending CRM integration — coming soon'}</div>`;
+    const accountText = ev.status === 'converted'
+      ? (lang==='ar'?'تم تحويل العميل.':'Lead is converted.')
+      : `${lang==='ar'?'الحالة الحالية':'Current status'}: ${ev.status || 'pending'}`;
+    details += `<div class="tl-details" style="color:var(--text-light);font-style:italic">${accountText}</div>`;
   }
 
   return `
@@ -1666,10 +1698,23 @@ function _renderJourneyLead(lead, index) {
   const chBadge = _chList.map(ch => `<span style="background:var(--bg);color:var(--text-light);font-size:10px;padding:2px 8px;border-radius:12px;border:1px solid var(--border)">${ch}</span>`).join('');
 
   const timeline = (lead.timeline||[]).map(_renderEvent).join('');
+  const cov = lead.coverage || {};
+  const requiredSummaries = cov.summary_required || 0;
+  const storedInbound = cov.stored_inbound || 0;
+  const storedOutbound = cov.stored_outbound || 0;
+  const coverageHtml = `
+    <div class="journey-coverage">
+      <span class="jc-pill">${cov.calls || lead.total_calls || 0} ${lang==='ar'?'مكالمات':'calls'} · ${cov.answered_calls || lead.answered_calls || 0} ${lang==='ar'?'مجاب':'answered'}</span>
+      <span class="jc-pill">${cov.summaries || 0}/${requiredSummaries} ${lang==='ar'?'ملخصات مكالمات > 30ث':'summaries for calls >30s'}</span>
+      <span class="jc-pill">${cov.transcripts || 0}/${requiredSummaries} ${lang==='ar'?'نصوص مكالمات':'transcripts'}</span>
+      <span class="jc-pill">${storedInbound} ${lang==='ar'?'داخل':'in'} / ${storedOutbound} ${lang==='ar'?'خارج':'out'} WhatsApp</span>
+      ${cov.whatsapp_outbound_missing ? `<span class="jc-pill warn">⚠️ ${lang==='ar'?'ردود الوكيل في واتساب غير محفوظة':'WhatsApp agent replies unavailable'}</span>` : ''}
+    </div>`;
 
   const subStats = [
-    `${lead.total_calls} ${lang==='ar'?'مكالمات':'calls'} (${lead.answered_calls} ${lang==='ar'?'مُجاب':'answered'})`,
-    `${lead.total_messages} ${lang==='ar'?'رسائل واتساب':'WA msgs'}`,
+    `${lead.total_calls} ${lang==='ar'?'مكالمات أولاً':'calls first'}`,
+    `${cov.summaries || 0}/${requiredSummaries} ${lang==='ar'?'ملخصات':'summaries'}`,
+    `${storedInbound} ${lang==='ar'?'داخل':'in'} / ${storedOutbound} ${lang==='ar'?'خارج واتساب':'out WA'}`,
   ].filter(Boolean).join(' &nbsp;·&nbsp; ');
 
   const agentBadge = lead.assigned_agent && lead.assigned_agent !== '—'
@@ -1707,6 +1752,7 @@ function _renderJourneyLead(lead, index) {
         <div class="journey-chevron">▾</div>
       </div>
       <div class="journey-body">
+        ${coverageHtml}
         <div class="timeline">${timeline || `<div style="color:var(--text-light);font-size:12px;padding:8px 0">${lang==='ar'?'لا توجد أحداث':'No events recorded'}</div>`}</div>
         ${convertSection}
       </div>

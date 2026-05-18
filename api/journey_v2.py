@@ -2,6 +2,7 @@ from fastapi import APIRouter, Query
 from supabase import create_client
 from collections import defaultdict
 import os
+import re
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 
@@ -22,6 +23,10 @@ _OUTCOME_COLOR = {
 }
 _SEV_COLOR = {'HIGH': 'red', 'MED': 'orange', 'LOW': 'blue'}
 _STATUS_RANK = {'converted': 5, 'callback': 4, 'engaged': 3, 'new': 2, 'lost': 1}
+_BAD_FIPER_NAMES = re.compile(
+    r'\b(Fiverr|Viber|Faiber|Fiber|Fighter|financial brokerage company|financial brokerage)\b',
+    re.IGNORECASE,
+)
 
 
 def _detect_cc(phone: str) -> str:
@@ -59,6 +64,48 @@ def _dur(seconds) -> str:
     if s < 60:
         return f'{s}s'
     return f'{s // 60}m {s % 60}s'
+
+
+def _clean_fiper_text(text: str | None) -> str:
+    if not text:
+        return ""
+    return _BAD_FIPER_NAMES.sub("Fiper", text)
+
+
+def _localized_call_summary(call: dict, lang: str) -> tuple[str, str]:
+    """Return display summary plus data status for a call."""
+    duration = call.get("duration_seconds") or 0
+    summary = (
+        call.get("summary_ar") or call.get("summary_en") or ""
+        if lang == "ar"
+        else call.get("summary_en") or call.get("summary_ar") or ""
+    )
+    summary = _clean_fiper_text(summary)
+    if summary:
+        return summary, "ok"
+    if duration and duration > 30:
+        if call.get("transcript"):
+            return (
+                "ملخص المكالمة قيد الإنشاء من نص المكالمة."
+                if lang == "ar"
+                else "Call summary is being generated from the transcript."
+            ), "pending"
+        return (
+            "لا يوجد نص متاح لهذه المكالمة، لذلك لا يمكن إنشاء ملخص موثوق."
+            if lang == "ar"
+            else "No transcript is available, so a reliable summary cannot be generated."
+        ), "missing_transcript"
+    return "", "short"
+
+
+def _has_later_activity(call_date: str | None, calls: list[dict], messages: list[dict], last_message_at: str | None) -> bool:
+    if not call_date:
+        return False
+    if any((c.get("called_at") or "") > call_date for c in calls):
+        return True
+    if any((m.get("sent_at") or "") > call_date for m in messages):
+        return True
+    return bool(last_message_at and last_message_at > call_date)
 
 
 def _merge_by_phone(raw_leads: list[dict]) -> list[dict]:
@@ -370,49 +417,73 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
     for lead in page_leads:
         lid = lead["id"]
         timeline = []
+        lead_calls = calls_by[lid]
+        all_msgs = msgs_by[lid]
+        inbound = [m for m in all_msgs if m.get("direction") == "inbound"]
+        outbound = [m for m in all_msgs if m.get("direction") == "outbound"]
+        eligible_calls = [c for c in lead_calls if (c.get("duration_seconds") or 0) > 30]
+        summarized_calls = [
+            c for c in eligible_calls
+            if (c.get("summary_en") or c.get("summary_ar"))
+        ]
+        transcript_calls = [c for c in eligible_calls if c.get("transcript")]
+        lead_last_activity = lead.get("last_message_at")
+        has_whatsapp_activity = bool(lead_last_activity and "whatsapp" in (lead.get("channels") or []))
 
-        for i, c in enumerate(calls_by[lid]):
+        for i, c in enumerate(lead_calls):
             oc = (c.get("outcome") or "unknown").lower()
-            # Pick Maqsam summary in the right language; fall back to the other language
-            if lang == "ar":
-                call_summary = c.get("summary_ar") or c.get("summary_en") or ""
+            duration_seconds = c.get("duration_seconds") or 0
+            call_summary, summary_status = _localized_call_summary(c, lang)
+            if i == 0:
+                title = "First Answered Call" if oc == "completed" else "First Call Attempt"
             else:
-                call_summary = c.get("summary_en") or c.get("summary_ar") or ""
+                title = f"Call Attempt #{i + 1}"
             timeline.append({
                 "type": "call",
                 "date": c.get("called_at"),
                 "color": _OUTCOME_COLOR.get(oc, "gray"),
-                "title": "First Call" if i == 0 else f"Call #{i + 1}",
+                "title": title,
                 "agent": c.get("agent_name") or "—",
-                "duration": _dur(c.get("duration_seconds")),
+                "duration": _dur(duration_seconds),
+                "duration_seconds": duration_seconds,
                 "outcome": oc,
                 "summary": call_summary,
+                "summary_status": summary_status,
+                "summary_required": duration_seconds > 30,
+                "has_transcript": bool(c.get("transcript")),
                 "sentiment": c.get("maqsam_sentiment") or "",
             })
-
-        all_msgs = msgs_by[lid]
-        inbound = [m for m in all_msgs if m.get("direction") == "inbound"]
-        outbound = [m for m in all_msgs if m.get("direction") == "outbound"]
         if inbound:
             m = inbound[0]
             timeline.append({
                 "type": "whatsapp", "date": m.get("sent_at"), "color": "blue",
                 "title": "First WhatsApp Message", "direction": "inbound",
-                "preview": m.get("body") or "", "total": len(all_msgs),
+                "preview": _clean_fiper_text(m.get("body") or ""), "total": len(all_msgs),
             })
         if outbound:
             m = outbound[0]
             timeline.append({
                 "type": "whatsapp", "date": m.get("sent_at"), "color": "blue",
                 "title": "First Agent Reply", "direction": "outbound",
-                "agent": m.get("agent_name") or "—", "preview": m.get("body") or "",
+                "agent": m.get("agent_name") or "—", "preview": _clean_fiper_text(m.get("body") or ""),
+            })
+        elif has_whatsapp_activity and not inbound:
+            timeline.append({
+                "type": "whatsapp", "date": lead_last_activity, "color": "blue",
+                "title": "WhatsApp Conversation Updated", "direction": "activity",
+                "preview": (
+                    "تم تحديث محادثة واتساب، لكن نصوص الرسائل غير محفوظة بالكامل."
+                    if lang == "ar"
+                    else "WhatsApp activity was detected, but stored message bodies are incomplete."
+                ),
+                "activity_only": True,
             })
 
-        lead_calls = calls_by[lid]
         _all_short_no_transcript = bool(lead_calls) and all(
             (c.get("duration_seconds") or 0) < 30 and not c.get("transcript")
             for c in lead_calls
         )
+        _missing_agent_replies = bool(inbound) and not outbound
 
         for a in page_ana_by[lid]:
             ts = a.get("treatment_score") or 0
@@ -424,11 +495,14 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
                 "topics": a.get("topics") or [],
                 "outcome": a.get("outcome") or "",
                 "risk_flags": a.get("risk_flags") or [],
-                "summary": a.get("summary") or "",
+                "summary": _clean_fiper_text(a.get("summary") or ""),
                 "source": a.get("source") or "",
             }
-            if _all_short_no_transcript:
+            if _all_short_no_transcript or _missing_agent_replies:
                 event["unreliable"] = True
+                event["unreliable_reason"] = (
+                    "missing_outbound" if _missing_agent_replies else "short_calls"
+                )
             timeline.append(event)
 
         for al in alerts_by[lid]:
@@ -442,17 +516,44 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
             })
 
         is_conv = lead.get("status") == "converted"
+        latest_eligible = eligible_calls[-1] if eligible_calls else None
+        if latest_eligible and not is_conv and not _has_later_activity(
+            latest_eligible.get("called_at"), lead_calls, all_msgs, lead_last_activity
+        ):
+            timeline.append({
+                "type": "next_action",
+                "date": None,
+                "color": "orange",
+                "title": "Follow-up Needed",
+                "message": (
+                    "آخر مكالمة مؤهلة تجاوزت 30 ثانية ولا توجد متابعة بعدها."
+                    if lang == "ar"
+                    else "Last meaningful call was over 30s and no later follow-up is recorded."
+                ),
+            })
         timeline.append({
             "type": "account", "date": None,
             "color": "green" if is_conv else "gray",
-            "title": "Account Opened", "status": lead.get("status") or "pending",
+            "title": "Account Opened" if is_conv else "Account Status",
+            "status": lead.get("status") or "pending",
         })
 
         timeline.sort(key=lambda x: (x.get("date") is None, x.get("date") or ""))
 
-        total_calls = len(calls_by[lid])
-        answered = sum(1 for c in calls_by[lid] if (c.get("outcome") or "") == "completed")
+        total_calls = len(lead_calls)
+        answered = sum(1 for c in lead_calls if (c.get("outcome") or "") == "completed")
         latest_a = page_ana_by[lid][-1] if page_ana_by[lid] else None
+        coverage = {
+            "calls": total_calls,
+            "answered_calls": answered,
+            "summary_required": len(eligible_calls),
+            "summaries": len(summarized_calls),
+            "transcripts": len(transcript_calls),
+            "stored_inbound": len(inbound),
+            "stored_outbound": len(outbound),
+            "whatsapp_activity": has_whatsapp_activity,
+            "whatsapp_outbound_missing": bool(inbound and not outbound),
+        }
 
         result.append({
             "id": lid,
@@ -469,6 +570,7 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
             "total_messages": len(all_msgs),
             "last_sentiment": latest_a.get("sentiment") if latest_a else None,
             "open_alerts": sum(1 for al in alerts_by[lid] if not al.get("resolved")),
+            "coverage": coverage,
             "timeline": timeline,
         })
 
