@@ -72,14 +72,14 @@ def _clean_fiper_text(text: str | None) -> str:
     return _BAD_FIPER_NAMES.sub("Fiper", text)
 
 
+def _has_arabic(text: str | None) -> bool:
+    return bool(text and re.search(r"[\u0600-\u06FF]", text))
+
+
 def _localized_call_summary(call: dict, lang: str) -> tuple[str, str]:
     """Return display summary plus data status for a call."""
     duration = call.get("duration_seconds") or 0
-    summary = (
-        call.get("summary_ar") or call.get("summary_en") or ""
-        if lang == "ar"
-        else call.get("summary_en") or call.get("summary_ar") or ""
-    )
+    summary = call.get("summary_ar") or "" if lang == "ar" else call.get("summary_en") or ""
     summary = _clean_fiper_text(summary)
     if summary:
         return summary, "ok"
@@ -96,6 +96,20 @@ def _localized_call_summary(call: dict, lang: str) -> tuple[str, str]:
             else "No transcript is available, so a reliable summary cannot be generated."
         ), "missing_transcript"
     return "", "short"
+
+
+def _localized_ai_summary(analysis: dict, lang: str) -> tuple[str, str]:
+    summary = ""
+    if lang == "ar":
+        summary = analysis.get("summary_ar") or ""
+        if not summary and _has_arabic(analysis.get("summary")):
+            summary = analysis.get("summary") or ""
+    else:
+        summary = analysis.get("summary_en") or ""
+        if not summary and not _has_arabic(analysis.get("summary")):
+            summary = analysis.get("summary") or ""
+    summary = _clean_fiper_text(summary)
+    return (summary, "ok") if summary else ("", "missing_language")
 
 
 def _has_later_activity(call_date: str | None, calls: list[dict], messages: list[dict], last_message_at: str | None) -> bool:
@@ -237,14 +251,27 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
 
     # ── 4. Fetch ai_analysis for all raw lead IDs ─────────────────────────────
     raw_lead_ids = [l["id"] for l in raw_leads]
+    ai_select = (
+        "lead_id,outcome,risk_flags,sentiment,treatment_score,topics,summary,"
+        "summary_en,summary_ar,analyzed_at,source"
+    )
     analyses_raw: list[dict] = []
     for batch in _chunks(raw_lead_ids, 500):
-        analyses_raw += (
-            supabase.table("ai_analysis")
-            .select("lead_id,outcome,risk_flags,sentiment,treatment_score,topics,summary,analyzed_at,source")
-            .in_("lead_id", batch)
-            .execute().data or []
-        )
+        try:
+            rows = (
+                supabase.table("ai_analysis")
+                .select(ai_select)
+                .in_("lead_id", batch)
+                .execute().data or []
+            )
+        except Exception:
+            rows = (
+                supabase.table("ai_analysis")
+                .select("lead_id,outcome,risk_flags,sentiment,treatment_score,topics,summary,analyzed_at,source")
+                .in_("lead_id", batch)
+                .execute().data or []
+            )
+        analyses_raw += rows
 
     # Map analyses to merged primary IDs
     analysis_by_lead: dict[str, list] = defaultdict(list)
@@ -424,7 +451,7 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
         eligible_calls = [c for c in lead_calls if (c.get("duration_seconds") or 0) > 30]
         summarized_calls = [
             c for c in eligible_calls
-            if (c.get("summary_en") or c.get("summary_ar"))
+            if (c.get("summary_ar") if lang == "ar" else c.get("summary_en"))
         ]
         transcript_calls = [c for c in eligible_calls if c.get("transcript")]
         lead_last_activity = lead.get("last_message_at")
@@ -488,6 +515,7 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
         for a in page_ana_by[lid]:
             ts = a.get("treatment_score") or 0
             color = "green" if ts >= 70 else "orange" if ts >= 40 else "red"
+            ai_summary, ai_summary_status = _localized_ai_summary(a, lang)
             event: dict = {
                 "type": "ai", "date": a.get("analyzed_at"), "color": color,
                 "title": "AI Analysis", "score": ts,
@@ -495,7 +523,8 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
                 "topics": a.get("topics") or [],
                 "outcome": a.get("outcome") or "",
                 "risk_flags": a.get("risk_flags") or [],
-                "summary": _clean_fiper_text(a.get("summary") or ""),
+                "summary": ai_summary,
+                "summary_status": ai_summary_status,
                 "source": a.get("source") or "",
             }
             if _all_short_no_transcript or _missing_agent_replies:

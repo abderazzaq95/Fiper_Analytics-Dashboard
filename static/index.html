@@ -1656,6 +1656,9 @@ function _renderEvent(ev) {
           (nm3?`<span id="${uid3}_f" style="display:none">${ev.summary} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid3}_f').style.display='none';document.getElementById('${uid3}_s').style.display='inline'">${lang==='ar'?'أقل':'Read less'}</a></span>`:'') +
           `</div>`;
       }
+      if (!ev.summary && ev.summary_status === 'missing_language') {
+        details += `<div class="tl-details tl-unreliable">⚠️ ${lang==='ar'?'ملخص التحليل باللغة العربية قيد الإنشاء.':'AI summary in English is being generated.'}</div>`;
+      }
     }
   }
 

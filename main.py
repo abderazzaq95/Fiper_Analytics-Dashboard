@@ -66,7 +66,9 @@ Respond ONLY in valid JSON. No explanation, no markdown, no extra text.
   "follow_up_needed": true|false,
   "risk_flags": [],
   "treatment_score": 0-100,
-  "summary": "Max 2 sentences in the conversation language. Use the company name Fiper."
+  "summary": "Legacy field. Use the conversation language. Use the company name Fiper.",
+  "summary_en": "Max 2 concise sentences in English. Use the company name Fiper.",
+  "summary_ar": "Max 2 concise sentences in Arabic. Use the company name Fiper."
 }
 
 topics: pricing|product_fit|competitor|technical|follow_up|not_decision_maker|trading_education|account_info|greetings|profit_expectations
@@ -476,6 +478,57 @@ def _clean_fiper_text(text: str | None) -> str:
     return _BAD_FIPER_NAMES.sub("Fiper", text)
 
 
+def _has_arabic(text: str | None) -> bool:
+    return bool(text and re.search(r"[\u0600-\u06FF]", text))
+
+
+def _normalize_ai_result(result: dict) -> dict:
+    """Keep legacy summary plus bilingual display summaries when Claude returns them."""
+    result = dict(result)
+    legacy = _clean_fiper_text(result.get("summary") or "")
+    summary_en = _clean_fiper_text(result.get("summary_en") or "")
+    summary_ar = _clean_fiper_text(result.get("summary_ar") or "")
+
+    if legacy and not summary_ar and _has_arabic(legacy):
+        summary_ar = legacy
+    if legacy and not summary_en and not _has_arabic(legacy):
+        summary_en = legacy
+
+    result["summary_en"] = summary_en
+    result["summary_ar"] = summary_ar
+    result["summary"] = summary_ar or summary_en or legacy
+    return result
+
+
+def _legacy_ai_result(result: dict) -> dict:
+    return {k: v for k, v in result.items() if k not in {"summary_en", "summary_ar"}}
+
+
+def _save_ai_analysis(lead_id: str, source: str, result: dict):
+    existing = (
+        supabase.table("ai_analysis")
+        .select("id")
+        .eq("lead_id", lead_id)
+        .execute().data or []
+    )
+    try:
+        if existing:
+            supabase.table("ai_analysis").update(result).eq("lead_id", lead_id).execute()
+        else:
+            supabase.table("ai_analysis").insert(
+                {"lead_id": lead_id, "source": source, **result}
+            ).execute()
+    except Exception as exc:
+        log.warning(f"AI analysis bilingual columns unavailable; using legacy summary only: {exc}")
+        legacy = _legacy_ai_result(result)
+        if existing:
+            supabase.table("ai_analysis").update(legacy).eq("lead_id", lead_id).execute()
+        else:
+            supabase.table("ai_analysis").insert(
+                {"lead_id": lead_id, "source": source, **legacy}
+            ).execute()
+
+
 async def _call_claude_call_summary_async(call: dict) -> dict:
     """Generate bilingual call summaries for one Fiper call transcript."""
     import httpx as _httpx
@@ -737,23 +790,11 @@ async def run_ai_analysis(hours_back: int = 3):
             continue
 
         try:
-            result = await _call_claude_async(user_msg)
+            result = _normalize_ai_result(await _call_claude_async(user_msg))
             if mq_sentiment:
                 result["sentiment"] = mq_sentiment
 
-            # Upsert: update if exists, insert if not
-            existing = (
-                supabase.table("ai_analysis")
-                .select("id")
-                .eq("lead_id", lead_id)
-                .execute().data or []
-            )
-            if existing:
-                supabase.table("ai_analysis").update(result).eq("lead_id", lead_id).execute()
-            else:
-                supabase.table("ai_analysis").insert(
-                    {"lead_id": lead_id, "source": source, **result}
-                ).execute()
+            _save_ai_analysis(lead_id, source, result)
 
             supabase.table("leads").update({"score": result.get("score")}).eq("id", lead_id).execute()
             ok += 1
@@ -933,16 +974,11 @@ async def _force_reanalyze_top(limit: int = 20):
                 skipped += 1
                 continue
 
-            result = await _call_claude_async(user_msg)
+            result = _normalize_ai_result(await _call_claude_async(user_msg))
             if mq_sentiment:
                 result["sentiment"] = mq_sentiment
 
-            existing = (supabase.table("ai_analysis").select("id")
-                        .eq("lead_id", lid).execute().data or [])
-            if existing:
-                supabase.table("ai_analysis").update(result).eq("lead_id", lid).execute()
-            else:
-                supabase.table("ai_analysis").insert({"lead_id": lid, "source": source, **result}).execute()
+            _save_ai_analysis(lid, source, result)
             supabase.table("leads").update({"score": result.get("score")}).eq("id", lid).execute()
 
             summary = (result.get("summary") or "")[:100]

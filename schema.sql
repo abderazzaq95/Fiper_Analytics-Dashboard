@@ -66,8 +66,13 @@ CREATE TABLE IF NOT EXISTS ai_analysis (
   risk_flags       TEXT[],
   treatment_score  INTEGER,        -- 0-100, how well lead was treated
   summary          TEXT,
+  summary_en       TEXT,
+  summary_ar       TEXT,
   analyzed_at      TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE ai_analysis ADD COLUMN IF NOT EXISTS summary_en TEXT;
+ALTER TABLE ai_analysis ADD COLUMN IF NOT EXISTS summary_ar TEXT;
 
 -- ============================================================
 -- alerts
