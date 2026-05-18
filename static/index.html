@@ -913,9 +913,10 @@ function renderKPI(ov, ch) {
       <div class="kpi-sub">${lang==='ar'?'من إجمالي المكالمات':'of total calls'}</div>
     </div>
     <div class="kpi-card fade-in" style="animation-delay:.15s">
-      <div class="kpi-label" data-en="WhatsApp Messages" data-ar="رسائل واتساب">${lang==='ar'?'رسائل واتساب':'WhatsApp Messages'}</div>
+      <div class="kpi-label" data-en="WhatsApp Activity" data-ar="نشاط واتساب">${lang==='ar'?'نشاط واتساب':'WhatsApp Activity'}</div>
       <div class="kpi-value">${fmt(ov.messages.total)}</div>
-      <div class="kpi-sub">${fmt(ov.messages.inbound)} ${lang==='ar'?'وارد':'in'} · ${fmt(ov.messages.outbound)} ${lang==='ar'?'صادر':'out'}</div>
+      <div class="kpi-sub">${lang==='ar'?'محادثات نشطة':'active chats'}</div>
+      <div class="kpi-sub">${lang==='ar'?'الرسائل المحفوظة':'Stored messages'}: ${fmt(ov.messages.inbound)} ${lang==='ar'?'وارد':'in'} / ${fmt(ov.messages.outbound)} ${lang==='ar'?'صادر':'out'}</div>
       <span class="kpi-badge badge-green">WhatsApp</span>
     </div>
     <div class="kpi-card ${ov.alerts.open>0?'red':''} fade-in" style="animation-delay:.2s">
@@ -954,7 +955,8 @@ function renderChannels(ch, quality) {
       </div>
     </div>
     <div class="ch-row"><span class="ch-row-label" data-en="Total Leads" data-ar="إجمالي العملاء">${lang==='ar'?'إجمالي العملاء':'Total Leads'}</span><span class="ch-row-val">${fmt(ch.whatsapp.leads)}</span></div>
-    <div class="ch-row"><span class="ch-row-label" data-en="Messages" data-ar="الرسائل">${lang==='ar'?'الرسائل':'Messages'}</span><span class="ch-row-val">${fmt(ch.whatsapp.messages)}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Active Chats" data-ar="المحادثات النشطة">${lang==='ar'?'المحادثات النشطة':'Active Chats'}</span><span class="ch-row-val">${fmt(ch.whatsapp.messages)}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Stored Messages" data-ar="الرسائل المحفوظة">${lang==='ar'?'الرسائل المحفوظة':'Stored Messages'}</span><span class="ch-row-val">${fmt(ch.whatsapp.stored_messages ?? ch.whatsapp.messages)}</span></div>
     <div class="ch-row"><span class="ch-row-label" data-en="Avg Response Time" data-ar="متوسط وقت الرد">${lang==='ar'?'متوسط وقت الرد':'Avg Response Time'}</span><span class="ch-row-val">${ch.whatsapp.avg_response_time_min ? fmt(ch.whatsapp.avg_response_time_min,1)+'m' : '—'}</span></div>
     <div class="ch-row"><span class="ch-row-label" data-en="Conversion Rate" data-ar="معدل التحويل">${lang==='ar'?'معدل التحويل':'Conversion Rate'}</span><span class="ch-row-val"><span class="pill ${ch.whatsapp.conversion_rate>0?'pill-green':'pill-gray'}">${pct(ch.whatsapp.conversion_rate)}</span></span></div>`;
 

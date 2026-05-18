@@ -49,6 +49,16 @@ def _channels_inner(range: str):
         supabase.table("messages").select("lead_id,direction,sent_at").gte("sent_at", since).execute().data or []
     )
 
+    wa_activity = _paginate(
+        lambda: supabase.table("leads")
+        .select("id,phone,last_message_at")
+        .eq("channel", "whatsapp")
+        .gte("last_message_at", since)
+    )
+    active_whatsapp_conversations = len({
+        l.get("phone") or l.get("id") for l in wa_activity if l.get("phone") or l.get("id")
+    })
+
     # Calls: use count="exact" for accurate total; sample for avg duration
     calls_res = (
         supabase.table("calls")
@@ -99,7 +109,8 @@ def _channels_inner(range: str):
             "leads": len(wa_leads),
             "converted": wa_converted,
             "conversion_rate": round(wa_converted / len(wa_leads) * 100, 1) if wa_leads else 0,
-            "messages": len(wa_msgs),
+            "messages": active_whatsapp_conversations,
+            "stored_messages": len(wa_msgs),
             "avg_response_time_min": avg_response,
         },
         "maqsam": {

@@ -26,6 +26,7 @@ supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_
 WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "")
 scheduler = AsyncIOScheduler()
 _last_pipeline_run: datetime | None = None
+_last_maqsam_sync: datetime | None = None
 
 # SSE client queues — one per connected dashboard tab
 _sse_clients: set[asyncio.Queue] = set()
@@ -75,6 +76,79 @@ treatment_score: 90-100 excellent, 70-89 good, 50-69 average, 30-49 poor, 0-29 v
 # ---------------------------------------------------------------------------
 # Ingestion pipeline
 # ---------------------------------------------------------------------------
+
+def _chunks(items: list, size: int):
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
+
+
+def _format_maqsam_transcript(call: dict) -> str:
+    """Convert Maqsam transcription segments into a compact QA-friendly text."""
+    raw_transcript = call.get("callTranscription") or []
+    transcript_lines = []
+    for seg in raw_transcript:
+        party = "Agent" if seg.get("party") == "agent" else "Customer"
+        content = (seg.get("content") or "").strip()
+        if content:
+            transcript_lines.append(f"{party}: {content}")
+    return "\n".join(transcript_lines)
+
+
+def _maqsam_phone(call: dict) -> str | None:
+    direction = call.get("direction", "outbound")
+    return call.get("calleeNumber") if direction == "outbound" else call.get("callerNumber")
+
+
+def _maqsam_called_at(call: dict) -> str | None:
+    ts = call.get("timestamp")
+    return datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat() if ts else None
+
+
+def _maqsam_row(call: dict, phone_to_lead: dict[str, str], existing: dict[str, dict]) -> dict:
+    """Build a calls row while preserving previously stored AI fields.
+
+    Maqsam sometimes returns a call before transcription/summary is ready. Because
+    upsert uses merge semantics, sending None for those fields would erase data
+    captured by a later/earlier sync. Keep old values when the fresh payload is
+    empty.
+    """
+    phone = _maqsam_phone(call)
+    maqsam_id = str(call.get("id"))
+    prev = existing.get(maqsam_id) or {}
+
+    summary_obj = call.get("summary") or {}
+    transcript_text = _format_maqsam_transcript(call)
+    auto_tags = call.get("callAutoTags") or None
+
+    return {
+        "maqsam_id": maqsam_id,
+        "lead_id": phone_to_lead.get(phone or ""),
+        "agent_name": maqsam.extract_agent_name(call),
+        "duration_seconds": call.get("duration"),
+        "outcome": call.get("state"),
+        "called_at": _maqsam_called_at(call),
+        "transcript": transcript_text or prev.get("transcript"),
+        "summary_en": summary_obj.get("en") or prev.get("summary_en"),
+        "summary_ar": summary_obj.get("ar") or prev.get("summary_ar"),
+        "maqsam_sentiment": call.get("sentiment") or prev.get("maqsam_sentiment"),
+        "auto_tags": auto_tags or prev.get("auto_tags"),
+    }
+
+
+def _latest_maqsam_called_at() -> datetime | None:
+    rows = (
+        supabase.table("calls")
+        .select("called_at")
+        .order("called_at", desc=True)
+        .limit(1)
+        .execute().data or []
+    )
+    if not rows or not rows[0].get("called_at"):
+        return None
+    try:
+        return datetime.fromisoformat(rows[0]["called_at"].replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
 
 async def ingest_manycontacts(hours_back: int = 2) -> dict:
     """Poll ManyContacts for contacts updated in the last N hours.
@@ -186,27 +260,96 @@ async def ingest_manycontacts(hours_back: int = 2) -> dict:
     return {"contacts": len(contacts), "messages_total": msg_total, "messages_outbound": msg_outbound}
 
 
-async def ingest_maqsam(days_back: int = 3):
-    """Fetch Maqsam calls for the last N days. Defaults to 3 to cover timezone gaps
-    between pipeline runs and to not miss calls from the previous calendar day."""
-    log.info("Maqsam ingestion started")
+async def ingest_manycontacts_activity(days_back: int = 1) -> dict:
+    """Sync ManyContacts conversation activity without message bodies.
+
+    ManyContacts does not expose conversation message history via API, but the
+    contacts endpoint does expose recently updated conversations and last_user_id.
+    This keeps dashboard WhatsApp activity current while message body capture
+    still depends on webhooks.
+    """
+    log.info("ManyContacts activity sync started")
     now = datetime.now(timezone.utc)
     date_from = (now - timedelta(days=days_back)).strftime("%Y-%m-%d")
     date_to = now.strftime("%Y-%m-%d")
+    now_iso = now.isoformat()
 
     try:
-        calls = await maqsam.fetch_calls(date_from, date_to)
+        await whatsapp.fetch_users()
+    except Exception as e:
+        log.warning(f"ManyContacts users sync failed: {e}")
+
+    try:
+        contacts = await whatsapp.fetch_contacts(date_from=date_from, date_to=date_to)
+    except Exception as e:
+        log.error(f"ManyContacts activity fetch failed: {e}")
+        return {"contacts_seen": 0, "contacts_upserted": 0, "error": str(e)}
+
+    rows = []
+    for contact in contacts:
+        mc_id = contact.get("id")
+        phone = contact.get("number") or contact.get("phone")
+        if not (mc_id or phone):
+            continue
+        updated_at = (
+            contact.get("updatedAt") or contact.get("updated_at")
+            or contact.get("updated") or now_iso
+        )
+        last_user_id = contact.get("last_user_id")
+        agent_name = whatsapp.resolve_agent_name(last_user_id) if last_user_id else None
+        open_status = contact.get("open", 1)
+        rows.append({
+            "wa_contact_id": mc_id or phone,
+            "phone": phone,
+            "name": contact.get("name"),
+            "channel": "whatsapp",
+            "status": "engaged" if open_status == 1 else "lost",
+            "last_message_at": updated_at,
+            "updated_at": now_iso,
+            **({"assigned_agent": agent_name} if agent_name else {}),
+        })
+
+    for chunk in _chunks(rows, 200):
+        supabase.table("leads").upsert(chunk, on_conflict="wa_contact_id").execute()
+
+    log.info(f"ManyContacts activity sync done — {len(rows)} contacts")
+    return {"contacts_seen": len(contacts), "contacts_upserted": len(rows)}
+
+
+async def ingest_maqsam(days_back: int = 3, overlap_minutes: int = 30) -> dict:
+    """Fetch Maqsam calls incrementally.
+
+    A frequent sync should not re-read days of calls on every run. We use the
+    latest stored call as the cursor, then step back a little so calls that later
+    gain transcript/summary data are updated.
+    """
+    log.info("Maqsam ingestion started")
+    now = datetime.now(timezone.utc)
+    latest_called_at = _latest_maqsam_called_at()
+    if latest_called_at:
+        since_dt = latest_called_at - timedelta(minutes=overlap_minutes)
+    else:
+        since_dt = now - timedelta(days=days_back)
+    min_since_dt = now - timedelta(days=days_back)
+    if since_dt < min_since_dt:
+        since_dt = min_since_dt
+
+    since_ts = int(since_dt.timestamp())
+    date_from = since_dt.strftime("%Y-%m-%d")
+    date_to = now.strftime("%Y-%m-%d")
+
+    try:
+        calls = await maqsam.fetch_calls(date_from, date_to, since_ts=since_ts)
     except Exception as e:
         log.error(f"Maqsam fetch_calls failed: {e}")
-        return
+        return {"calls_seen": 0, "calls_upserted": 0, "since": since_dt.isoformat(), "error": str(e)}
 
     now_iso = datetime.now(timezone.utc).isoformat()
 
     # Batch-upsert unique leads first, then calls
     unique_phones: dict[str, None] = {}
     for call in calls:
-        direction = call.get("direction", "outbound")
-        phone = call.get("calleeNumber") if direction == "outbound" else call.get("callerNumber")
+        phone = _maqsam_phone(call)
         if phone:
             unique_phones[phone] = None
 
@@ -215,64 +358,38 @@ async def ingest_maqsam(days_back: int = 3):
             {"wa_contact_id": p, "phone": p, "channel": "maqsam", "updated_at": now_iso}
             for p in unique_phones
         ]
-        supabase.table("leads").upsert(lead_rows, on_conflict="wa_contact_id").execute()
+        for chunk in _chunks(lead_rows, 200):
+            supabase.table("leads").upsert(chunk, on_conflict="wa_contact_id").execute()
 
     # Build phone → lead_id map
     phone_to_lead: dict[str, str] = {}
     if unique_phones:
-        result = (
-            supabase.table("leads")
-            .select("id,wa_contact_id")
-            .in_("wa_contact_id", list(unique_phones.keys()))
-            .execute()
+        for phones in _chunks(list(unique_phones.keys()), 500):
+            result = (
+                supabase.table("leads")
+                .select("id,wa_contact_id")
+                .in_("wa_contact_id", phones)
+                .execute()
+            )
+            phone_to_lead.update({r["wa_contact_id"]: r["id"] for r in (result.data or [])})
+
+    # Preserve transcript/summary data if the fresh Maqsam row does not contain it.
+    maqsam_ids = list({str(call.get("id")) for call in calls if call.get("id")})
+    existing_calls: dict[str, dict] = {}
+    for ids in _chunks(maqsam_ids, 500):
+        rows = (
+            supabase.table("calls")
+            .select("maqsam_id,transcript,summary_en,summary_ar,maqsam_sentiment,auto_tags")
+            .in_("maqsam_id", ids)
+            .execute().data or []
         )
-        phone_to_lead = {r["wa_contact_id"]: r["id"] for r in (result.data or [])}
+        existing_calls.update({r["maqsam_id"]: r for r in rows})
 
     # Batch-upsert calls in chunks of 200
     call_rows = []
     for call in calls:
-        direction = call.get("direction", "outbound")
-        phone = call.get("calleeNumber") if direction == "outbound" else call.get("callerNumber")
-        ts = call.get("timestamp")
-        called_at = datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat() if ts else None
-
-        # Maqsam built-in AI fields
-        summary_obj = call.get("summary") or {}
-        summary_en  = summary_obj.get("en") or ""
-        summary_ar  = summary_obj.get("ar") or ""
-        mq_sentiment = call.get("sentiment")
-        auto_tags    = call.get("callAutoTags") or []
-        # Build formatted transcript text from callTranscription segments
-        raw_transcript = call.get("callTranscription") or []
-        transcript_lines = []
-        for seg in raw_transcript:
-            party   = "Agent" if seg.get("party") == "agent" else "Customer"
-            content = (seg.get("content") or "").strip()
-            if content:
-                transcript_lines.append(f"{party}: {content}")
-        transcript_text = "\n".join(transcript_lines)
-
-        row = {
-            "maqsam_id":        str(call.get("id")),
-            "lead_id":          phone_to_lead.get(phone or ""),
-            "agent_name":       maqsam.extract_agent_name(call),
-            "duration_seconds": call.get("duration"),
-            "outcome":          call.get("state"),
-            "called_at":        called_at,
-        }
-        # Store Maqsam AI data when present (new columns added via migration)
-        if transcript_text:
-            row["transcript"] = transcript_text
-        if summary_en:
-            row["summary_en"] = summary_en
-        if summary_ar:
-            row["summary_ar"] = summary_ar
-        if mq_sentiment:
-            row["maqsam_sentiment"] = mq_sentiment
-        if auto_tags:
-            row["auto_tags"] = auto_tags
-
-        call_rows.append(row)
+        if call.get("id"):
+            call_rows.append(_maqsam_row(call, phone_to_lead, existing_calls))
 
     # Deduplicate by maqsam_id (Maqsam can return duplicate IDs across pages)
     call_rows = list({r["maqsam_id"]: r for r in call_rows}.values())
@@ -291,7 +408,17 @@ async def ingest_maqsam(days_back: int = 3):
     for i in range(0, len(call_rows), chunk_size):
         supabase.table("calls").upsert(call_rows[i:i + chunk_size], on_conflict="maqsam_id").execute()
 
-    log.info(f"Maqsam ingestion done — {len(call_rows)} calls")
+    transcript_count = sum(1 for r in call_rows if r.get("transcript"))
+    log.info(
+        f"Maqsam ingestion done — {len(call_rows)} calls "
+        f"({transcript_count} with transcripts), since={since_dt.isoformat()}"
+    )
+    return {
+        "calls_seen": len(calls),
+        "calls_upserted": len(call_rows),
+        "with_transcripts": transcript_count,
+        "since": since_dt.isoformat(),
+    }
 
 
 async def _call_claude_async(user_message: str) -> dict:
@@ -328,8 +455,8 @@ async def _call_claude_async(user_message: str) -> dict:
                 "risk_flags": [], "treatment_score": 50, "summary": "Parse error."}
 
 
-async def run_ai_analysis():
-    """Analyze leads that have no ai_analysis in the last 6 hours.
+async def run_ai_analysis(hours_back: int = 3):
+    """Analyze leads that have no ai_analysis in the selected recent window.
 
     Maqsam leads: uses transcript + maqsam_sentiment from calls table when available.
     WhatsApp leads: uses message bodies as conversation text.
@@ -338,8 +465,9 @@ async def run_ai_analysis():
     from collections import defaultdict
 
     now = datetime.now(timezone.utc)
-    # 3h window (1h buffer over the 2h schedule) to avoid edge-case gaps
-    cutoff_iso = (now - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Default 3h window has a buffer over the 2h full pipeline schedule. Manual
+    # triggers can pass a wider window after a Maqsam catch-up sync.
+    cutoff_iso = (now - timedelta(hours=hours_back)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # ── Leads already analyzed in this window ─────────────────────────────────
     recently_analyzed = {
@@ -374,10 +502,10 @@ async def run_ai_analysis():
     to_analyze = all_lead_ids - recently_analyzed
 
     if not to_analyze:
-        log.info("AI analysis: no new leads to analyze")
-        return
+        log.info(f"AI analysis: no new leads to analyze (hours_back={hours_back})")
+        return {"analyzed": 0, "errors": 0, "skipped": 0}
 
-    log.info(f"AI analysis: {len(to_analyze)} leads to analyze")
+    log.info(f"AI analysis: {len(to_analyze)} leads to analyze (hours_back={hours_back})")
 
     # ── Bulk-fetch calls and messages for those leads ─────────────────────────
     lead_ids_list = list(to_analyze)
@@ -527,6 +655,7 @@ async def run_ai_analysis():
             err += 1
 
     log.info(f"AI analysis done — {ok} analyzed, {err} errors, {skipped} skipped (no data)")
+    return {"analyzed": ok, "errors": err, "skipped": skipped}
 
 
 async def run_pipeline():
@@ -543,6 +672,20 @@ async def run_pipeline():
     _last_pipeline_run = datetime.now(timezone.utc)
     log.info("Pipeline complete")
     await _broadcast("data_updated", {"source": "pipeline"})
+
+
+async def run_maqsam_realtime_sync():
+    """Lightweight high-frequency job for live call totals and transcripts."""
+    global _last_maqsam_sync
+    stats = await ingest_maqsam(days_back=1, overlap_minutes=45)
+    _last_maqsam_sync = datetime.now(timezone.utc)
+    await _broadcast("data_updated", {"source": "maqsam", **stats})
+
+
+async def run_whatsapp_activity_sync():
+    """Lightweight high-frequency job for WhatsApp conversation activity."""
+    stats = await ingest_manycontacts_activity(days_back=1)
+    await _broadcast("data_updated", {"source": "whatsapp_activity", **stats})
 
 
 async def _force_reanalyze_top(limit: int = 20):
@@ -741,10 +884,51 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         log.warning(f"Could not pre-load agent cache: {e}")
 
-    scheduler.add_job(run_pipeline, "interval", hours=2, id="pipeline", replace_existing=True)
+    scheduler.add_job(
+        run_maqsam_realtime_sync,
+        "interval",
+        minutes=2,
+        id="maqsam_realtime",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(timezone.utc),
+    )
+    scheduler.add_job(
+        run_whatsapp_activity_sync,
+        "interval",
+        minutes=2,
+        id="whatsapp_activity",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(timezone.utc),
+    )
+    scheduler.add_job(
+        run_ai_analysis,
+        "interval",
+        minutes=15,
+        id="ai_analysis",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(timezone.utc) + timedelta(minutes=3),
+    )
+    scheduler.add_job(
+        run_pipeline,
+        "interval",
+        hours=2,
+        id="pipeline",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
     scheduler.add_job(_ping_self, "interval", minutes=10, id="keepalive", replace_existing=True)
     scheduler.start()
-    log.info("Scheduler started — pipeline every 2 h, keep-alive ping every 10 min")
+    log.info(
+        "Scheduler started — Maqsam and WhatsApp activity every 2 min, "
+        "AI every 15 min, full pipeline every 2 h, keep-alive ping every 10 min"
+    )
 
     yield
     scheduler.shutdown()
@@ -815,6 +999,43 @@ def _parse_mc_ts(ts) -> str | None:
             return ts
         except (ValueError, TypeError):
             pass
+    return None
+
+
+def _mc_message_direction(raw_type: str | None) -> str | None:
+    msg_type = (raw_type or "").strip().lower()
+    if msg_type in {"sent", "outbound", "out", "agent", "agent_message", "from_me"}:
+        return "outbound"
+    if msg_type in {"received", "inbound", "in", "customer", "contact"}:
+        return "inbound"
+    return None
+
+
+def _find_whatsapp_lead(contact_id: str | None, phone: str | None) -> dict | None:
+    """Find an existing WhatsApp lead by ManyContacts id or phone."""
+    lookups = []
+    if contact_id:
+        lookups.append(("wa_contact_id", contact_id))
+    if phone:
+        lookups.append(("wa_contact_id", phone))
+        lookups.append(("phone", phone))
+
+    seen = set()
+    for col, val in lookups:
+        key = (col, val)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows = (
+            supabase.table("leads")
+            .select("id,wa_contact_id,phone")
+            .eq(col, val)
+            .eq("channel", "whatsapp")
+            .limit(1)
+            .execute().data or []
+        )
+        if rows:
+            return rows[0]
     return None
 
 
@@ -996,6 +1217,119 @@ async def _handle_mc_contact_created(body: dict, now_iso: str) -> None:
     log.info(f"[webhook/mc] contact_created | phone={phone!r} name={name!r} agent={agent_name!r}")
 
 
+async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
+    """ManyContacts native event: a new conversation message.
+
+    Documented shape:
+    {
+      "event": "message_new",
+      "delta": {
+        "contactId": "...",
+        "lastUserId": "...",
+        "message": {"id": "...", "text": "...", "type": "received", "metadata": {"time": "..."}}
+      },
+      "contact": {"id": "...", "number": "...", "last_user_id": "..."}
+    }
+
+    If ManyContacts sends outbound replies with type=sent/outbound/etc., this
+    stores the full agent body, agent name, and timestamp.
+    """
+    delta = body.get("delta") or {}
+    contact = body.get("contact") or {}
+    message = delta.get("message") or body.get("message") or {}
+
+    if not isinstance(delta, dict) or not isinstance(contact, dict) or not isinstance(message, dict):
+        log.warning(f"[webhook/mc] message_new malformed — preview={str(body)[:500]}")
+        return
+
+    contact_id = delta.get("contactId") or contact.get("id")
+    phone = contact.get("number") or contact.get("phone")
+    name = contact.get("name")
+    msg_id = message.get("id") or message.get("wamid")
+    msg_type = message.get("type") or delta.get("type") or body.get("type")
+    direction = _mc_message_direction(msg_type)
+    metadata = message.get("metadata") or {}
+    sent_at = (
+        _parse_mc_ts(metadata.get("time") or message.get("createdAt") or message.get("created_at")
+                     or message.get("timestamp") or delta.get("lastInbound"))
+        or now_iso
+    )
+
+    body_text = (
+        message.get("text") or message.get("body") or message.get("content")
+        or f"[{msg_type or 'message'}]"
+    )
+
+    if not direction:
+        log.warning(
+            f"[webhook/mc] message_new unknown type={msg_type!r} "
+            f"contact={contact_id or phone!r} msg_id={msg_id!r} preview={str(message)[:300]}"
+        )
+        return
+
+    if not (phone or contact_id):
+        log.warning(f"[webhook/mc] message_new missing contact — keys={list(body.keys())}")
+        return
+
+    agent_id = delta.get("lastUserId") or contact.get("last_user_id")
+    agent_name = whatsapp.resolve_agent_name(agent_id) if agent_id else None
+
+    lead_key = contact_id or phone
+    lead_row = {
+        "phone": phone,
+        "name": name or None,
+        "channel": "whatsapp",
+        "last_message_at": sent_at,
+        "updated_at": now_iso,
+        **({"assigned_agent": agent_name} if agent_name else {}),
+    }
+
+    existing_lead = _find_whatsapp_lead(contact_id, phone)
+    if existing_lead:
+        lead_result = (
+            supabase.table("leads")
+            .update({k: v for k, v in lead_row.items() if v is not None})
+            .eq("id", existing_lead["id"])
+            .execute()
+        )
+        lead_id = existing_lead["id"]
+    else:
+        lead_result = supabase.table("leads").upsert({
+            "wa_contact_id": lead_key,
+            **lead_row,
+        }, on_conflict="wa_contact_id").execute()
+        lead_id = lead_result.data[0]["id"] if lead_result.data else None
+
+    if not lead_id:
+        return
+
+    if not msg_id:
+        msg_id = f"mc_{lead_key}_{sent_at}_{direction}"
+
+    row = {
+        "wa_message_id": str(msg_id),
+        "lead_id": lead_id,
+        "direction": direction,
+        "body": str(body_text)[:2000],
+        "sent_at": sent_at,
+    }
+    if direction == "outbound" and agent_name:
+        row["agent_name"] = agent_name
+
+    supabase.table("messages").upsert(row, on_conflict="wa_message_id").execute()
+
+    log.info(
+        f"[webhook/mc] message_new | direction={direction!r} type={msg_type!r} "
+        f"phone={phone!r} agent={agent_name!r} msg_id={msg_id!r} body={str(body_text)[:80]!r}"
+    )
+
+    if direction == "inbound":
+        try:
+            alert_engine.check_no_reply()
+        except Exception as e:
+            log.error(f"no_reply check error: {e}")
+
+
 async def _handle_mc_outbound(body: dict, now_iso: str) -> None:
     """Process ManyContacts native outbound (agent-reply) webhook payload."""
     phone, agent_name, body_text, sent_at, msg_id = _extract_mc_outbound(body)
@@ -1074,6 +1408,9 @@ async def webhook_manycontacts(request: Request):
         elif body.get("event") == "contact_created":
             # ManyContacts native: new contact/lead notification
             await _handle_mc_contact_created(body, now_iso)
+        elif body.get("event") == "message_new":
+            # ManyContacts native: full message event, including outbound if enabled.
+            await _handle_mc_message_new(body, now_iso)
         elif _is_outbound_mc(body):
             # ManyContacts native outbound (agent reply) — if ever enabled
             await _handle_mc_outbound(body, now_iso)
@@ -1120,11 +1457,29 @@ def health():
 
 @app.get("/api/status")
 def pipeline_status():
-    job = scheduler.get_job("pipeline")
-    next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+    pipeline_job = scheduler.get_job("pipeline")
+    maqsam_job = scheduler.get_job("maqsam_realtime")
+    whatsapp_job = scheduler.get_job("whatsapp_activity")
+    ai_job = scheduler.get_job("ai_analysis")
     return {
         "last_pipeline_run": _last_pipeline_run.isoformat() if _last_pipeline_run else None,
-        "next_pipeline_run": next_run,
+        "last_maqsam_sync": _last_maqsam_sync.isoformat() if _last_maqsam_sync else None,
+        "next_pipeline_run": (
+            pipeline_job.next_run_time.isoformat()
+            if pipeline_job and pipeline_job.next_run_time else None
+        ),
+        "next_maqsam_sync": (
+            maqsam_job.next_run_time.isoformat()
+            if maqsam_job and maqsam_job.next_run_time else None
+        ),
+        "next_whatsapp_activity_sync": (
+            whatsapp_job.next_run_time.isoformat()
+            if whatsapp_job and whatsapp_job.next_run_time else None
+        ),
+        "next_ai_analysis": (
+            ai_job.next_run_time.isoformat()
+            if ai_job and ai_job.next_run_time else None
+        ),
     }
 
 
@@ -1134,6 +1489,27 @@ async def trigger_pipeline():
     """Manually trigger the full pipeline (ingest → AI analysis → alerts)."""
     asyncio.create_task(run_pipeline())
     return {"status": "pipeline triggered", "steps": ["ingest_manycontacts", "ingest_maqsam", "run_ai_analysis", "alert_engine"]}
+
+
+@app.post("/api/trigger-ingest-maqsam")
+async def trigger_ingest_maqsam(
+    days_back: int = Query(1, ge=1, le=7),
+    overlap_minutes: int = Query(45, ge=0, le=240),
+):
+    """Run the Maqsam sync now and return counts."""
+    stats = await ingest_maqsam(days_back=days_back, overlap_minutes=overlap_minutes)
+    global _last_maqsam_sync
+    _last_maqsam_sync = datetime.now(timezone.utc)
+    await _broadcast("data_updated", {"source": "maqsam_manual", **stats})
+    return {"status": "done", **stats}
+
+
+@app.post("/api/trigger-ai-analysis")
+async def trigger_ai_analysis(hours_back: int = Query(24, ge=1, le=72)):
+    """Run AI analysis now for recent leads with transcripts/messages."""
+    stats = await run_ai_analysis(hours_back=hours_back)
+    await _broadcast("data_updated", {"source": "ai_analysis_manual", "hours_back": hours_back, **stats})
+    return {"status": "done", "hours_back": hours_back, **stats}
 
 
 @app.get("/api/stream")

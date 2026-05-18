@@ -43,6 +43,11 @@ CREATE TABLE IF NOT EXISTS calls (
   duration_seconds INTEGER,
   outcome          TEXT,
   recording_url    TEXT,
+  transcript       TEXT,
+  summary_en       TEXT,
+  summary_ar       TEXT,
+  maqsam_sentiment TEXT,
+  auto_tags        TEXT[],
   called_at        TIMESTAMPTZ
 );
 

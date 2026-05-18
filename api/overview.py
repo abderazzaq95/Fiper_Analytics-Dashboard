@@ -51,6 +51,19 @@ def _overview_inner(range: str):
         .gte("sent_at", since).execute().data or []
     )
 
+    # WhatsApp activity: ManyContacts exposes updated conversations even when
+    # it does not expose message bodies. This is the honest dashboard number for
+    # live WhatsApp activity; stored message rows remain available as detail.
+    wa_activity = _paginate(
+        lambda: supabase.table("leads")
+        .select("id,phone,last_message_at")
+        .eq("channel", "whatsapp")
+        .gte("last_message_at", since)
+    )
+    active_whatsapp_conversations = len({
+        l.get("phone") or l.get("id") for l in wa_activity if l.get("phone") or l.get("id")
+    })
+
     # Calls: paginate for accurate call-based lead count; count="exact" for total
     calls_res = (
         supabase.table("calls")
@@ -157,7 +170,9 @@ def _overview_inner(range: str):
         "messages": {
             "inbound": inbound,
             "outbound": outbound,
-            "total": len(messages),
+            "stored_total": len(messages),
+            "active_conversations": active_whatsapp_conversations,
+            "total": active_whatsapp_conversations,
         },
         "calls": {
             "total": total_calls,
