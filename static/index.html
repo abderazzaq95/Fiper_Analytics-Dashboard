@@ -457,6 +457,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 
   <div class="header-right">
     <span class="last-upd" id="lastUpd"><span class="live-dot" id="liveDot"></span><span id="lastUpdText">—</span></span>
+    <button class="btn-icon" id="waSyncBtn" onclick="triggerWaSync()" title="Sync WhatsApp messages from ManyContacts">💬 <span data-en="Sync WA" data-ar="مزامنة WA">Sync WA</span></button>
     <button class="btn-icon" id="refreshBtn" onclick="triggerRefresh()">↻ <span data-en="Refresh" data-ar="تحديث">Refresh</span></button>
     <button class="btn-lang" onclick="toggleLang()" id="langBtn">العربية</button>
   </div>
@@ -1796,6 +1797,30 @@ async function triggerRefresh() {
   await loadAll();
   btn.innerHTML = origHTML;
   btn.disabled = false;
+}
+
+async function triggerWaSync() {
+  const btn = document.getElementById('waSyncBtn');
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  const origHTML = btn.innerHTML;
+  btn.innerHTML = `<span style="display:inline-block;animation:spin .8s linear infinite">⟳</span> <span>${lang==='ar'?'جاري المزامنة…':'Syncing…'}</span>`;
+  try {
+    const r = await fetch(`${API}/api/sync/whatsapp?days_back=7`, {method: 'POST'});
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    const saved = data.messages_saved || 0;
+    const inb = data.inbound || 0;
+    alert(lang==='ar'
+      ? `تمت المزامنة: ${saved} رسالة (${inb} واردة)`
+      : `Sync done: ${saved} messages saved (${inb} inbound)`);
+    await loadAll();
+  } catch(e) {
+    alert(`WA sync failed: ${e.message}`);
+  } finally {
+    btn.innerHTML = origHTML;
+    btn.disabled = false;
+  }
 }
 
 async function markConverted(index) {

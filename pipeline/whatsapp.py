@@ -129,29 +129,69 @@ async def fetch_contact(contact_id: str) -> dict:
         return resp.json()
 
 
-async def fetch_contact_messages(contact_id: str) -> list[dict]:
-    """
-    Fetch full conversation history for a contact (both inbound and outbound).
-    Endpoint: GET /v1/contacts/{id}/messages  (note: 'contacts' plural)
-    Returns a list of message dicts. Empty list on 404 or error.
+import logging as _logging
+_log = _logging.getLogger("fiper.whatsapp")
 
-    Expected response fields per message:
-      id        — unique message ID
-      type      — "INBOUND" | "OUTBOUND"
-      text      — message body text (may also be under 'message' or 'body')
-      timestamp — unix timestamp (int or string) or ISO datetime string
-      user_id   — agent user_id for outbound messages
+async def fetch_contact_messages(contact_id: str, phone: str | None = None) -> list[dict]:
     """
+    Fetch full conversation history for a contact.
+    Tries multiple URL patterns and logs the actual HTTP responses.
+    Returns a list of message dicts; empty list on total failure.
+    """
+    candidates = [
+        f"{BASE_URL}/contact/{contact_id}/messages",
+        f"{BASE_URL}/contacts/{contact_id}/messages",
+    ]
+    if phone:
+        candidates += [
+            f"{BASE_URL}/contact/{phone}/messages",
+            f"{BASE_URL}/contacts/{phone}/messages",
+        ]
+
     async with httpx.AsyncClient(timeout=30) as client:
+        for url in candidates:
+            try:
+                resp = await client.get(url, headers=HEADERS)
+                _log.debug(f"[mc] messages {url} → {resp.status_code} ({len(resp.content)}B)")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if isinstance(data, list) and data:
+                        return data
+                    if isinstance(data, dict):
+                        for key in ("messages", "data", "items", "conversations"):
+                            if isinstance(data.get(key), list):
+                                return data[key]
+                elif resp.status_code not in (404, 405, 501):
+                    _log.warning(f"[mc] messages {url} → unexpected {resp.status_code}: {resp.text[:200]}")
+            except Exception as e:
+                _log.debug(f"[mc] messages {url} → error: {e}")
+    return []
+
+
+async def probe_contact(contact_id: str) -> dict:
+    """Probe a single contact: return detail + messages endpoint raw responses for debugging."""
+    async with httpx.AsyncClient(timeout=30) as client:
+        result: dict = {"contact_id": contact_id, "urls_tried": []}
+        # Contact detail
         try:
-            resp = await client.get(
-                f"{BASE_URL}/contact/{contact_id}/messages",
-                headers=HEADERS,
-            )
-            if resp.status_code == 404:
-                return []
-            resp.raise_for_status()
-            data = resp.json()
-            return data if isinstance(data, list) else []
-        except Exception:
-            return []
+            r = await client.get(f"{BASE_URL}/contact/{contact_id}", headers=HEADERS)
+            result["contact_status"] = r.status_code
+            result["contact_keys"] = list(r.json().keys()) if r.status_code == 200 else r.text[:300]
+        except Exception as e:
+            result["contact_error"] = str(e)
+
+        # Try all message URL patterns
+        for path in (
+            f"/contact/{contact_id}/messages",
+            f"/contacts/{contact_id}/messages",
+            f"/contact/{contact_id}/conversation",
+            f"/contact/{contact_id}/chat",
+        ):
+            url = BASE_URL + path
+            try:
+                r = await client.get(url, headers=HEADERS)
+                entry = {"url": url, "status": r.status_code, "body": r.text[:400]}
+                result["urls_tried"].append(entry)
+            except Exception as e:
+                result["urls_tried"].append({"url": url, "error": str(e)})
+        return result

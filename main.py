@@ -222,7 +222,7 @@ async def ingest_manycontacts(hours_back: int = 2) -> dict:
             continue
 
         # ── Fetch + save full message history ────────────────────────────────
-        raw_msgs = await whatsapp.fetch_contact_messages(mc_id)
+        raw_msgs = await whatsapp.fetch_contact_messages(mc_id, phone=phone)
         msg_rows = []
         for msg in raw_msgs:
             sent_at = _parse_mc_ts(
@@ -1738,6 +1738,127 @@ def pipeline_status():
 def debug_webhooks():
     """Return the last 5 raw webhook payloads received — use to diagnose format issues."""
     return {"count": len(_last_webhook_payloads), "payloads": _last_webhook_payloads}
+
+
+@app.get("/api/debug/mc-probe")
+async def debug_mc_probe(contact_id: str = Query(None)):
+    """
+    Probe ManyContacts API for a given contact ID (or the first contact if omitted).
+    Returns raw HTTP responses from all known message URL patterns — use to discover
+    which endpoint actually works.
+    """
+    cid = contact_id
+    if not cid:
+        try:
+            contacts = await whatsapp.fetch_contacts()
+            if contacts:
+                cid = str(contacts[0].get("id") or contacts[0].get("number") or "")
+        except Exception as e:
+            return {"error": f"fetch_contacts failed: {e}"}
+    if not cid:
+        return {"error": "no contact_id and no contacts found"}
+    result = await whatsapp.probe_contact(cid)
+    return result
+
+
+@app.post("/api/sync/whatsapp")
+async def manual_whatsapp_sync(days_back: int = Query(7, ge=1, le=90)):
+    """
+    Manually trigger a full WhatsApp message backfill for the last N days.
+    Runs synchronously and returns stats — may take up to a minute for large accounts.
+    """
+    log.info(f"[sync/whatsapp] manual trigger days_back={days_back}")
+    now = datetime.now(timezone.utc)
+    date_from = (now - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    date_to = now.strftime("%Y-%m-%d")
+    msg_cutoff = (now - timedelta(days=days_back)).isoformat()
+    now_iso = now.isoformat()
+
+    try:
+        await whatsapp.fetch_users()
+    except Exception as e:
+        log.warning(f"[sync/whatsapp] fetch_users failed: {e}")
+
+    try:
+        contacts = await whatsapp.fetch_contacts(date_from=date_from, date_to=date_to)
+    except Exception as e:
+        return {"error": str(e), "contacts": 0, "messages_saved": 0}
+
+    msg_total = 0
+    msg_inbound = 0
+    msg_outbound = 0
+    contacts_with_messages = 0
+
+    for contact in contacts:
+        mc_id = contact.get("id")
+        phone = contact.get("number", "")
+        name = contact.get("name")
+        last_user_id = contact.get("last_user_id")
+        agent_name = whatsapp.resolve_agent_name(last_user_id)
+        updated_at = contact.get("updatedAt")
+        open_status = contact.get("open", 1)
+
+        lead_res = supabase.table("leads").upsert({
+            "wa_contact_id": mc_id,
+            "phone": phone,
+            "name": name,
+            "channel": "whatsapp",
+            "status": "engaged" if open_status == 1 else "lost",
+            "assigned_agent": agent_name,
+            "last_message_at": updated_at,
+            "updated_at": now_iso,
+        }, on_conflict="wa_contact_id").execute()
+        lead_id = lead_res.data[0]["id"] if lead_res.data else None
+        if not (lead_id and mc_id):
+            continue
+
+        raw_msgs = await whatsapp.fetch_contact_messages(mc_id, phone=phone)
+        if not raw_msgs:
+            continue
+        contacts_with_messages += 1
+        msg_rows = []
+        for msg in raw_msgs:
+            sent_at = _parse_mc_ts(
+                msg.get("timestamp") or msg.get("createdAt") or msg.get("created_at")
+            )
+            if not sent_at or sent_at < msg_cutoff:
+                continue
+            direction = (
+                "outbound"
+                if (msg.get("type") or msg.get("direction") or "").upper() in ("OUTBOUND", "OUT")
+                else "inbound"
+            )
+            body_text = (
+                msg.get("text") or msg.get("message") or msg.get("body")
+                or msg.get("content") or f"[{direction}]"
+            )
+            msg_id = str(msg.get("id") or msg.get("wamid") or "")
+            if not msg_id:
+                continue
+            row = {"wa_message_id": msg_id, "lead_id": lead_id, "direction": direction,
+                   "body": str(body_text)[:2000], "sent_at": sent_at}
+            if direction == "outbound":
+                row["agent_name"] = whatsapp.resolve_agent_name(msg.get("user_id")) or agent_name
+                msg_outbound += 1
+            else:
+                msg_inbound += 1
+            msg_rows.append(row)
+            msg_total += 1
+
+        for i in range(0, len(msg_rows), 100):
+            supabase.table("messages").upsert(
+                msg_rows[i:i + 100], on_conflict="wa_message_id"
+            ).execute()
+
+    await _broadcast("data_updated", {"source": "whatsapp_manual_sync"})
+    return {
+        "days_back": days_back,
+        "contacts_scanned": len(contacts),
+        "contacts_with_messages": contacts_with_messages,
+        "messages_saved": msg_total,
+        "inbound": msg_inbound,
+        "outbound": msg_outbound,
+    }
 
 
 @app.post("/api/run-pipeline")
