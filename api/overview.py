@@ -54,13 +54,10 @@ def overview(range: str = Query("7d", pattern="^(today|7d|30d)$")):
 def _overview_inner(range: str):
     since = _since(range)
 
-    # Messages: always look back at least 7 days so "today" range still shows
-    # message counts even when the last sync was yesterday.
-    now = datetime.now(timezone.utc)
-    msg_since = min(since, (now - timedelta(days=7)).isoformat())
+    # Messages
     messages = (
         supabase.table("messages").select("id,direction,lead_id,sent_at")
-        .gte("sent_at", msg_since).execute().data or []
+        .gte("sent_at", since).execute().data or []
     )
 
     # WhatsApp activity: ManyContacts exposes updated conversations even when
