@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, HTTPException, Query
+from fastapi import FastAPI, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
@@ -1126,7 +1126,17 @@ def dashboard():
 # ManyContacts webhook (real-time messages)
 # ---------------------------------------------------------------------------
 
+def _verify_webhook_challenge(hub_mode: str | None, hub_verify_token: str | None, hub_challenge: str | None):
+    if hub_mode == "subscribe" and hub_challenge:
+        if not WA_VERIFY_TOKEN or hub_verify_token == WA_VERIFY_TOKEN:
+            return int(hub_challenge)
+    return {"status": "ok"}
+
+
 @app.get("/webhook/manycontacts")
+@app.get("/webhook/whatsapp")
+@app.get("/webhook/meta")
+@app.get("/webhook/wa")
 async def webhook_manycontacts_verify(
     hub_mode: str = Query(None, alias="hub.mode"),
     hub_verify_token: str = Query(None, alias="hub.verify_token"),
@@ -1134,10 +1144,7 @@ async def webhook_manycontacts_verify(
 ):
     """Meta webhook verification — echoes hub.challenge back when token matches."""
     log.info(f"[webhook/mc] GET | hub_mode={hub_mode!r} hub_challenge={hub_challenge!r}")
-    if hub_mode == "subscribe" and hub_challenge:
-        if not WA_VERIFY_TOKEN or hub_verify_token == WA_VERIFY_TOKEN:
-            return int(hub_challenge)
-    return {"status": "ok"}
+    return _verify_webhook_challenge(hub_mode, hub_verify_token, hub_challenge)
 
 
 def _ts_to_iso(raw_ts, fallback: str) -> str:
@@ -1612,10 +1619,15 @@ async def _handle_mc_outbound(body: dict, now_iso: str) -> None:
 
 
 @app.post("/webhook/manycontacts")
+@app.post("/webhook/whatsapp")
+@app.post("/webhook/meta")
+@app.post("/webhook/wa")
+@app.post("/webhook/manycontacts/message_new")
+@app.post("/webhook/manycontacts/messages")
 async def webhook_manycontacts(request: Request):
     raw = await request.body()
     ct = request.headers.get("content-type", "")
-    log.info(f"[webhook/mc] POST | size={len(raw)} | ct={ct!r}")
+    log.info(f"[webhook/mc] POST {request.url.path} | size={len(raw)} | ct={ct!r}")
 
     try:
         body = json.loads(raw)
@@ -1627,7 +1639,13 @@ async def webhook_manycontacts(request: Request):
         return {"status": "ok"}
 
     # Store last 5 payloads for debugging
-    _last_webhook_payloads.append({"at": datetime.now(timezone.utc).isoformat(), "event": body.get("event"), "keys": list(body.keys()), "preview": str(body)[:500]})
+    _last_webhook_payloads.append({
+        "at": datetime.now(timezone.utc).isoformat(),
+        "path": request.url.path,
+        "event": body.get("event"),
+        "keys": list(body.keys()),
+        "preview": str(body)[:500],
+    })
     if len(_last_webhook_payloads) > 5:
         _last_webhook_payloads.pop(0)
 
@@ -1656,21 +1674,6 @@ async def webhook_manycontacts(request: Request):
 
     asyncio.create_task(_broadcast("data_updated", {"source": "webhook"}))
     return {"status": "ok"}
-
-
-# ---------------------------------------------------------------------------
-# Meta webhook (kept only for webhook verification handshake)
-# ---------------------------------------------------------------------------
-
-@app.get("/webhook/whatsapp")
-async def webhook_meta_verify(
-    hub_mode: str = Query(None, alias="hub.mode"),
-    hub_verify_token: str = Query(None, alias="hub.verify_token"),
-    hub_challenge: str = Query(None, alias="hub.challenge"),
-):
-    if hub_mode == "subscribe" and hub_verify_token == WA_VERIFY_TOKEN:
-        return int(hub_challenge)
-    raise HTTPException(status_code=403, detail="Verification failed")
 
 
 # ---------------------------------------------------------------------------
@@ -1719,6 +1722,15 @@ def pipeline_status():
             if ai_job and ai_job.next_run_time else None
         ),
         "webhook_url": f"{base_url}/webhook/manycontacts",
+        "accepted_webhook_urls": [
+            f"{base_url}/webhook/manycontacts",
+            f"{base_url}/webhook/whatsapp",
+            f"{base_url}/webhook/meta",
+            f"{base_url}/webhook/wa",
+            f"{base_url}/webhook/manycontacts/message_new",
+            f"{base_url}/webhook/manycontacts/messages",
+            f"{base_url}/webhook/n8n/messages",
+        ],
     }
 
 
