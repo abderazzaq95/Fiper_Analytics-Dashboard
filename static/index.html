@@ -2056,34 +2056,41 @@ async function exportJourneyCSV() {
     const filters = _journeyFiltersFromControls();
     const pageSize = 20;
     const fetchRows = async (activeFilters) => {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 20000);
-      try {
-        const first = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(1, pageSize, activeFilters)}`, {signal:controller.signal}).then(r => {
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          return r.json();
-        });
-        const pages = Math.max(1, first.pages || 1);
-        const rows = [...(first.leads || [])];
-        for (let page = 2; page <= pages; page++) {
-          const data = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(page, pageSize, activeFilters)}`, {signal:controller.signal}).then(r => {
+      const fetchPage = async (page) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 30000);
+        try {
+          return await fetch(`${API}/api/leads/journey/v2?${_journeyParams(page, pageSize, activeFilters)}`, {signal:controller.signal}).then(r => {
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             return r.json();
           });
-          rows.push(...(data.leads || []));
+        } finally {
+          clearTimeout(timer);
         }
-        return rows;
-      } finally {
-        clearTimeout(timer);
+      };
+
+      const first = await fetchPage(1);
+      const pages = Math.max(1, first.pages || _jPages || 1);
+      const rows = [...(first.leads || [])];
+      for (let page = 2; page <= pages; page++) {
+        const data = await fetchPage(page);
+        rows.push(...(data.leads || []));
       }
+      return rows;
     };
 
     let all = [];
     try {
       all = await fetchRows(filters);
     } catch(e) {
-      console.warn('Full CSV export failed; exporting visible journey rows.', e);
-      all = _journeyLeads.length ? [..._journeyLeads] : [];
+      console.warn('Full CSV export failed; retrying applied filters.', e);
+      if (_jAppliedFilters) {
+        all = await fetchRows(_jAppliedFilters);
+      }
+    }
+
+    if (!all.length && _journeyLeads.length) {
+      all = [..._journeyLeads];
     }
 
     if (!all.length) {
