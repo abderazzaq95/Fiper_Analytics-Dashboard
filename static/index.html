@@ -2028,7 +2028,7 @@ function _journeyParams(page=1, limit=20) {
 
 async function exportJourneyCSV() {
   try {
-    const pageSize = 200;
+    const pageSize = 100;
     const first = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(1, pageSize)}`).then(r => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json();
