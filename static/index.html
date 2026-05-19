@@ -715,7 +715,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
     <div class="jfilter-actions">
       <button class="btn-primary jfilter-apply" onclick="applyJourneyFilters()">🔍 <span data-en="Apply Filters" data-ar="تطبيق الفلاتر">Apply Filters</span></button>
       <a href="#" class="jfilter-reset" onclick="resetJourneyFilters(event)" data-en="Reset" data-ar="إعادة تعيين">Reset</a>
-      <button class="btn-icon" onclick="exportJourneyCSV()" title="Export CSV">📥 <span data-en="Export CSV" data-ar="تصدير CSV">Export CSV</span></button>
+      <button class="btn-icon" id="journeyExportBtn" onclick="exportJourneyCSV(event)" title="Export CSV">📥 <span data-en="Export CSV" data-ar="تصدير CSV">Export CSV</span></button>
     </div>
   </div>
 
@@ -1885,6 +1885,22 @@ function _copyJourneyFilters(filters) {
   };
 }
 
+function _journeyFiltersFromControls() {
+  const checked = id => [...document.querySelectorAll(`#${id} input[type=checkbox]:checked`)].map(cb => cb.value);
+  return {
+    phone_search: document.getElementById('jSearch')?.value || '',
+    countries: checked('jmsCountry'),
+    min_score: parseInt(document.getElementById('jMinScore')?.value || '0', 10),
+    max_score: parseInt(document.getElementById('jMaxScore')?.value || '100', 10),
+    channel: document.getElementById('jChannel')?.value || '',
+    outcomes: checked('jmsOutcome'),
+    agents: checked('jmsAgent'),
+    high_risk_only: !!document.getElementById('jHighRisk')?.classList.contains('active'),
+    sort_by: document.getElementById('jSort')?.value || 'score',
+    page: jFilters.page || 1,
+  };
+}
+
 async function applyJourneyFilters() {
   jFilters.page = 1;
   const btn = document.querySelector('.jfilter-apply');
@@ -2030,22 +2046,35 @@ function _journeyParams(page=1, limit=20, filters=jFilters) {
 }
 
 async function exportJourneyCSV() {
+  const btn = document.getElementById('journeyExportBtn');
+  const span = btn?.querySelector('span');
+  const oldText = span?.textContent;
   try {
+    if (btn) btn.disabled = true;
+    if (span) span.textContent = lang==='ar' ? 'جاري التصدير...' : 'Exporting...';
+
     const pageSize = 20;
-    const filters = _jAppliedFilters || _copyJourneyFilters(jFilters);
-    const first = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(1, pageSize, filters)}`).then(r => {
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    });
-    const pages = Math.max(1, first.pages || 1);
-    const all = [...(first.leads || [])];
-    for (let page = 2; page <= pages; page++) {
-      const data = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(page, pageSize, filters)}`).then(r => {
+    let filters = _jAppliedFilters || _copyJourneyFilters(jFilters);
+    const fetchRows = async (activeFilters) => {
+      const first = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(1, pageSize, activeFilters)}`).then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       });
-      all.push(...(data.leads || []));
-    }
+      const pages = Math.max(1, first.pages || 1);
+      const rows = [...(first.leads || [])];
+      for (let page = 2; page <= pages; page++) {
+        const data = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(page, pageSize, activeFilters)}`).then(r => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.json();
+        });
+        rows.push(...(data.leads || []));
+      }
+      return rows;
+    };
+
+    let all = await fetchRows(filters);
+    if (!all.length) all = await fetchRows(_journeyFiltersFromControls());
+    if (!all.length && _journeyLeads.length) all = [..._journeyLeads];
 
     if (!all.length) {
       alert(lang==='ar'?'لا توجد بيانات للتصدير':'No data to export');
@@ -2076,6 +2105,9 @@ async function exportJourneyCSV() {
     URL.revokeObjectURL(a.href);
   } catch(e) {
     alert(`Export failed: ${e.message}`);
+  } finally {
+    if (span) span.textContent = oldText || (lang==='ar' ? 'تصدير CSV' : 'Export CSV');
+    if (btn) btn.disabled = false;
   }
 }
 
