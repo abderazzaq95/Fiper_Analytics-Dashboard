@@ -2070,7 +2070,7 @@ async function exportJourneyCSV() {
       };
 
       const first = await fetchPage(1);
-      const pages = Math.max(1, first.pages || _jPages || 1);
+      const pages = Math.max(1, first.pages || 0, _jPages || 0);
       const rows = [...(first.leads || [])];
       for (let page = 2; page <= pages; page++) {
         const data = await fetchPage(page);
