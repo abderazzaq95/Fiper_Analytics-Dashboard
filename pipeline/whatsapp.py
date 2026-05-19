@@ -145,7 +145,7 @@ async def fetch_contact_messages(contact_id: str) -> list[dict]:
     async with httpx.AsyncClient(timeout=30) as client:
         try:
             resp = await client.get(
-                f"{BASE_URL}/contacts/{contact_id}/messages",
+                f"{BASE_URL}/contact/{contact_id}/messages",
                 headers=HEADERS,
             )
             if resp.status_code == 404:

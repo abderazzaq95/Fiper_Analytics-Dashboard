@@ -1127,9 +1127,16 @@ def dashboard():
 # ---------------------------------------------------------------------------
 
 @app.get("/webhook/manycontacts")
-async def webhook_manycontacts_verify():
-    """Handles GET verification pings some webhook platforms send before activating."""
-    log.info("[webhook/mc] GET verification hit")
+async def webhook_manycontacts_verify(
+    hub_mode: str = Query(None, alias="hub.mode"),
+    hub_verify_token: str = Query(None, alias="hub.verify_token"),
+    hub_challenge: str = Query(None, alias="hub.challenge"),
+):
+    """Meta webhook verification — echoes hub.challenge back when token matches."""
+    log.info(f"[webhook/mc] GET | hub_mode={hub_mode!r} hub_challenge={hub_challenge!r}")
+    if hub_mode == "subscribe" and hub_challenge:
+        if not WA_VERIFY_TOKEN or hub_verify_token == WA_VERIFY_TOKEN:
+            return int(hub_challenge)
     return {"status": "ok"}
 
 
