@@ -2012,8 +2012,8 @@ async function loadJourneyV2() {
   }
 }
 
-function exportJourneyCSV() {
-  const p = new URLSearchParams({ page:1, limit:1000, sort_by:jFilters.sort_by });
+function _journeyParams(page=1, limit=20) {
+  const p = new URLSearchParams({ page, limit, sort_by:jFilters.sort_by });
   if (jFilters.phone_search)     p.set('phone_search', jFilters.phone_search);
   if (jFilters.countries.length) p.set('country', jFilters.countries.join(','));
   if (jFilters.min_score > 0)    p.set('min_score', jFilters.min_score);
@@ -2023,15 +2023,56 @@ function exportJourneyCSV() {
   if (jFilters.agents.length)    p.set('agent', jFilters.agents.join(','));
   if (jFilters.high_risk_only)   p.set('high_risk_only', 'true');
   p.set('lang', lang);
-  fetch(`${API}/api/leads/journey/v2?${p}`).then(r=>r.json()).then(data=>{
-    const ls = data.leads || [];
-    if (!ls.length) { alert(lang==='ar'?'لا توجد بيانات للتصدير':'No data to export'); return; }
-    const hdrs = ['Phone','Name','Score','Status','Channel','Agent','Calls','Messages','Alerts'];
-    const rows = ls.map(l=>[fmtPhone(l.phone),l.name,l.score,l.status,l.channel,l.assigned_agent,l.total_calls,l.total_messages,l.open_alerts]);
+  return p;
+}
+
+async function exportJourneyCSV() {
+  try {
+    const pageSize = 200;
+    const first = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(1, pageSize)}`).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    });
+    const pages = Math.max(1, first.pages || 1);
+    const all = [...(first.leads || [])];
+    for (let page = 2; page <= pages; page++) {
+      const data = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(page, pageSize)}`).then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      });
+      all.push(...(data.leads || []));
+    }
+
+    if (!all.length) {
+      alert(lang==='ar'?'لا توجد بيانات للتصدير':'No data to export');
+      return;
+    }
+
+    const hdrs = ['Phone','Name','Score','Status','Channels','Agent','Calls','Answered Calls','Messages','Alerts','Last Sentiment'];
+    const rows = all.map(l=>[
+      fmtPhone(l.phone),
+      l.name,
+      l.score,
+      l.status,
+      (l.channels || [l.channel]).filter(Boolean).join('|'),
+      l.assigned_agent,
+      l.total_calls,
+      l.answered_calls,
+      l.total_messages,
+      l.open_alerts,
+      l.last_sentiment || '',
+    ]);
     const csv = [hdrs,...rows].map(r=>r.map(v=>`"${(v??'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
-    const a = Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([csv],{type:'text/csv'})),download:`fiper_leads_${new Date().toISOString().slice(0,10)}.csv`});
+    const blob = new Blob(['\ufeff' + csv], {type:'text/csv;charset=utf-8'});
+    const a = Object.assign(document.createElement('a'),{
+      href:URL.createObjectURL(blob),
+      download:`fiper_lead_journey_${new Date().toISOString().slice(0,10)}.csv`,
+    });
     a.click();
-  }).catch(e=>alert(`Export failed: ${e.message}`));
+    URL.revokeObjectURL(a.href);
+  } catch(e) {
+    alert(`Export failed: ${e.message}`);
+  }
 }
 
 // ── Load all ──────────────────────────────────────────────────────────────────
