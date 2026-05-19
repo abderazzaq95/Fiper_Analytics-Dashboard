@@ -2053,13 +2053,21 @@ async function exportJourneyCSV() {
     if (btn) btn.disabled = true;
     if (span) span.textContent = lang==='ar' ? 'جاري التصدير...' : 'Exporting...';
 
-    // Use the exact filters from the last applied load, fetch everything in one shot
     const exportFilters = _jAppliedFilters || jFilters;
-    const p = _journeyParams(1, 2000, exportFilters);
-    const r = await fetch(`${API}/api/leads/journey/v2?${p}`);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
-    let all = data.leads || [];
+    const PAGE = 500;
+    let all = [], pg = 1, totalPages = 1;
+    do {
+      const p = _journeyParams(pg, PAGE, exportFilters);
+      const r = await fetch(`${API}/api/leads/journey/v2?${p}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      all = all.concat(data.leads || []);
+      totalPages = data.pages || 1;
+      if (span) span.textContent = lang==='ar'
+        ? `جاري التصدير... ${all.length}`
+        : `Exporting... ${all.length}`;
+      pg++;
+    } while (pg <= totalPages);
 
     if (!all.length && _journeyLeads.length) {
       all = [..._journeyLeads];
