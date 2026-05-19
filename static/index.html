@@ -2053,41 +2053,37 @@ async function exportJourneyCSV() {
     if (btn) btn.disabled = true;
     if (span) span.textContent = lang==='ar' ? 'جاري التصدير...' : 'Exporting...';
 
-    const filters = _jAppliedFilters || _journeyFiltersFromControls();
-    const exportUrl = `${API}/api/leads/journey/v2/export?${_journeyParams(1, 20, filters)}`;
-    const response = await fetch(exportUrl);
-
-    if (response.ok) {
-      const blob = await response.blob();
-      const a = Object.assign(document.createElement('a'),{
-        href:URL.createObjectURL(blob),
-        download:`fiper_lead_journey_${new Date().toISOString().slice(0,10)}.csv`,
-      });
-      a.click();
-      URL.revokeObjectURL(a.href);
-      return;
-    }
-
-    let all = _journeyLeads.length ? [..._journeyLeads] : [];
-    if (!all.length) {
-      const pageSize = 20;
-      const fetchRows = async (activeFilters) => {
-        const first = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(1, pageSize, activeFilters)}`).then(r => {
+    const filters = _journeyFiltersFromControls();
+    const pageSize = 20;
+    const fetchRows = async (activeFilters) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20000);
+      try {
+        const first = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(1, pageSize, activeFilters)}`, {signal:controller.signal}).then(r => {
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           return r.json();
         });
         const pages = Math.max(1, first.pages || 1);
         const rows = [...(first.leads || [])];
         for (let page = 2; page <= pages; page++) {
-          const data = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(page, pageSize, activeFilters)}`).then(r => {
+          const data = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(page, pageSize, activeFilters)}`, {signal:controller.signal}).then(r => {
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
             return r.json();
           });
           rows.push(...(data.leads || []));
         }
         return rows;
+      } finally {
+        clearTimeout(timer);
       }
-      all = await fetchRows(_journeyFiltersFromControls());
+    };
+
+    let all = [];
+    try {
+      all = await fetchRows(filters);
+    } catch(e) {
+      console.warn('Full CSV export failed; exporting visible journey rows.', e);
+      all = _journeyLeads.length ? [..._journeyLeads] : [];
     }
 
     if (!all.length) {
