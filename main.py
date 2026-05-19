@@ -838,6 +838,13 @@ async def run_whatsapp_activity_sync():
     await _broadcast("data_updated", {"source": "whatsapp_activity", **stats})
 
 
+async def run_whatsapp_message_sync():
+    """Full WhatsApp message sync — pulls message bodies for contacts active in the last hour.
+    Runs every 5 minutes so in/out counts stay fresh without waiting for the 2-hour pipeline."""
+    stats = await ingest_manycontacts(hours_back=1)
+    await _broadcast("data_updated", {"source": "whatsapp_messages", **stats})
+
+
 async def _force_reanalyze_top(limit: int = 20):
     """Re-run AI analysis on the top `limit` leads by score, bypassing the
     recency guard.  Used once to backfill corrected summaries after a prompt fix.
@@ -1050,6 +1057,16 @@ async def lifespan(app: FastAPI):
         next_run_time=datetime.now(timezone.utc),
     )
     scheduler.add_job(
+        run_whatsapp_message_sync,
+        "interval",
+        minutes=5,
+        id="whatsapp_messages",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(timezone.utc),
+    )
+    scheduler.add_job(
         run_ai_analysis,
         "interval",
         minutes=15,
@@ -1071,8 +1088,8 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_ping_self, "interval", minutes=10, id="keepalive", replace_existing=True)
     scheduler.start()
     log.info(
-        "Scheduler started — Maqsam and WhatsApp activity every 2 min, "
-        "AI every 15 min, full pipeline every 2 h, keep-alive ping every 10 min"
+        "Scheduler started — Maqsam every 2 min, WA activity every 2 min, "
+        "WA messages every 5 min, AI every 15 min, full pipeline every 2 h"
     )
 
     yield
@@ -1656,13 +1673,15 @@ def health():
 
 @app.get("/api/status")
 def pipeline_status():
-    pipeline_job = scheduler.get_job("pipeline")
-    maqsam_job = scheduler.get_job("maqsam_realtime")
-    whatsapp_job = scheduler.get_job("whatsapp_activity")
-    ai_job = scheduler.get_job("ai_analysis")
+    pipeline_job  = scheduler.get_job("pipeline")
+    maqsam_job    = scheduler.get_job("maqsam_realtime")
+    whatsapp_job  = scheduler.get_job("whatsapp_activity")
+    wa_msg_job    = scheduler.get_job("whatsapp_messages")
+    ai_job        = scheduler.get_job("ai_analysis")
+    base_url      = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000").rstrip("/")
     return {
         "last_pipeline_run": _last_pipeline_run.isoformat() if _last_pipeline_run else None,
-        "last_maqsam_sync": _last_maqsam_sync.isoformat() if _last_maqsam_sync else None,
+        "last_maqsam_sync":  _last_maqsam_sync.isoformat()  if _last_maqsam_sync  else None,
         "next_pipeline_run": (
             pipeline_job.next_run_time.isoformat()
             if pipeline_job and pipeline_job.next_run_time else None
@@ -1670,6 +1689,10 @@ def pipeline_status():
         "next_maqsam_sync": (
             maqsam_job.next_run_time.isoformat()
             if maqsam_job and maqsam_job.next_run_time else None
+        ),
+        "next_whatsapp_message_sync": (
+            wa_msg_job.next_run_time.isoformat()
+            if wa_msg_job and wa_msg_job.next_run_time else None
         ),
         "next_whatsapp_activity_sync": (
             whatsapp_job.next_run_time.isoformat()
@@ -1679,6 +1702,7 @@ def pipeline_status():
             ai_job.next_run_time.isoformat()
             if ai_job and ai_job.next_run_time else None
         ),
+        "webhook_url": f"{base_url}/webhook/manycontacts",
     }
 
 
