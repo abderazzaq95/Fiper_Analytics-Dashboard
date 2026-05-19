@@ -1823,6 +1823,7 @@ let _jTotal = 0, _jPages = 1;
 let _jDebounce = null;
 let _journeyLeads = [];
 const _openJourneyLeadIds = new Set();
+let _jAppliedFilters = null;
 
 // ── Multi-select dropdown helpers ─────────────────────────────────────────────
 function toggleJms(wrapId) {
@@ -1873,6 +1874,15 @@ function fmtPhone(phone) {
 
 function jFilterChange(key, value) {
   jFilters[key] = value;
+}
+
+function _copyJourneyFilters(filters) {
+  return {
+    ...filters,
+    countries: [...filters.countries],
+    outcomes: [...filters.outcomes],
+    agents: [...filters.agents],
+  };
 }
 
 async function applyJourneyFilters() {
@@ -1975,16 +1985,8 @@ function _syncAgentDropdown(agents) {
 }
 
 async function loadJourneyV2() {
-  const p = new URLSearchParams({ page: jFilters.page, limit: 20, sort_by: jFilters.sort_by });
-  if (jFilters.phone_search)       p.set('phone_search', jFilters.phone_search);
-  if (jFilters.countries.length)   p.set('country', jFilters.countries.join(','));
-  if (jFilters.min_score > 0)      p.set('min_score', jFilters.min_score);
-  if (jFilters.max_score < 100)    p.set('max_score', jFilters.max_score);
-  if (jFilters.channel)            p.set('channel', jFilters.channel);
-  if (jFilters.outcomes.length)    p.set('outcome', jFilters.outcomes.join(','));
-  if (jFilters.agents.length)      p.set('agent', jFilters.agents.join(','));
-  if (jFilters.high_risk_only)     p.set('high_risk_only', 'true');
-  p.set('lang', lang);
+  const requestFilters = _copyJourneyFilters(jFilters);
+  const p = _journeyParams(requestFilters.page, 20, requestFilters);
 
   const wrap = document.getElementById('journeySection');
   try {
@@ -1994,6 +1996,7 @@ async function loadJourneyV2() {
     const r = await fetch(`${API}/api/leads/journey/v2?${p}`);
     const data = await r.json();
     const leads = data.leads || [];
+    _jAppliedFilters = requestFilters;
     _syncJourneyPagination(data.total || 0, data.pages || 1, data.page || 1);
     _syncAgentDropdown((data.meta || {}).agents || []);
     if (!leads.length) {
@@ -2012,31 +2015,32 @@ async function loadJourneyV2() {
   }
 }
 
-function _journeyParams(page=1, limit=20) {
-  const p = new URLSearchParams({ page, limit, sort_by:jFilters.sort_by });
-  if (jFilters.phone_search)     p.set('phone_search', jFilters.phone_search);
-  if (jFilters.countries.length) p.set('country', jFilters.countries.join(','));
-  if (jFilters.min_score > 0)    p.set('min_score', jFilters.min_score);
-  if (jFilters.max_score < 100)  p.set('max_score', jFilters.max_score);
-  if (jFilters.channel)          p.set('channel', jFilters.channel);
-  if (jFilters.outcomes.length)  p.set('outcome', jFilters.outcomes.join(','));
-  if (jFilters.agents.length)    p.set('agent', jFilters.agents.join(','));
-  if (jFilters.high_risk_only)   p.set('high_risk_only', 'true');
+function _journeyParams(page=1, limit=20, filters=jFilters) {
+  const p = new URLSearchParams({ page, limit, sort_by:filters.sort_by });
+  if (filters.phone_search)     p.set('phone_search', filters.phone_search);
+  if (filters.countries.length) p.set('country', filters.countries.join(','));
+  if (filters.min_score > 0)    p.set('min_score', filters.min_score);
+  if (filters.max_score < 100)  p.set('max_score', filters.max_score);
+  if (filters.channel)          p.set('channel', filters.channel);
+  if (filters.outcomes.length)  p.set('outcome', filters.outcomes.join(','));
+  if (filters.agents.length)    p.set('agent', filters.agents.join(','));
+  if (filters.high_risk_only)   p.set('high_risk_only', 'true');
   p.set('lang', lang);
   return p;
 }
 
 async function exportJourneyCSV() {
   try {
-    const pageSize = 100;
-    const first = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(1, pageSize)}`).then(r => {
+    const pageSize = 20;
+    const filters = _jAppliedFilters || _copyJourneyFilters(jFilters);
+    const first = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(1, pageSize, filters)}`).then(r => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json();
     });
     const pages = Math.max(1, first.pages || 1);
     const all = [...(first.leads || [])];
     for (let page = 2; page <= pages; page++) {
-      const data = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(page, pageSize)}`).then(r => {
+      const data = await fetch(`${API}/api/leads/journey/v2?${_journeyParams(page, pageSize, filters)}`).then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       });
