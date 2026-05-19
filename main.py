@@ -28,6 +28,7 @@ WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "")
 scheduler = AsyncIOScheduler()
 _last_pipeline_run: datetime | None = None
 _last_maqsam_sync: datetime | None = None
+_last_webhook_payloads: list[dict] = []  # ring buffer — last 5 raw webhook bodies
 
 # SSE client queues — one per connected dashboard tab
 _sse_clients: set[asyncio.Queue] = set()
@@ -1613,7 +1614,15 @@ async def webhook_manycontacts(request: Request):
         body = json.loads(raw)
     except Exception:
         log.warning(f"[webhook/mc] non-JSON body: {raw[:500]!r}")
+        _last_webhook_payloads.append({"at": datetime.now(timezone.utc).isoformat(), "raw": raw[:1000].decode("utf-8", "replace"), "parsed": False})
+        if len(_last_webhook_payloads) > 5:
+            _last_webhook_payloads.pop(0)
         return {"status": "ok"}
+
+    # Store last 5 payloads for debugging
+    _last_webhook_payloads.append({"at": datetime.now(timezone.utc).isoformat(), "event": body.get("event"), "keys": list(body.keys()), "preview": str(body)[:500]})
+    if len(_last_webhook_payloads) > 5:
+        _last_webhook_payloads.pop(0)
 
     now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -1704,6 +1713,12 @@ def pipeline_status():
         ),
         "webhook_url": f"{base_url}/webhook/manycontacts",
     }
+
+
+@app.get("/api/debug/webhooks")
+def debug_webhooks():
+    """Return the last 5 raw webhook payloads received — use to diagnose format issues."""
+    return {"count": len(_last_webhook_payloads), "payloads": _last_webhook_payloads}
 
 
 @app.post("/api/run-pipeline")
