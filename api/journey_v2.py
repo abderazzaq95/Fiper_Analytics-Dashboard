@@ -615,6 +615,155 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
     }
 
 
+def _export_rows_light(phone_search, country, min_score, max_score,
+                       channel, outcome, agent, high_risk_only, sort_by):
+    since_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+
+    call_rows = _paginate(
+        lambda: supabase.table("calls")
+        .select("lead_id,outcome,called_at")
+        .gte("called_at", since_7d)
+    )
+    call_lead_ids: set[str] = set()
+    call_counts: dict[str, int] = defaultdict(int)
+    answered_counts: dict[str, int] = defaultdict(int)
+    for c in call_rows:
+        lid = c.get("lead_id")
+        if not lid:
+            continue
+        call_lead_ids.add(lid)
+        call_counts[lid] += 1
+        if (c.get("outcome") or "") == "completed":
+            answered_counts[lid] += 1
+
+    msg_lead_rows = (
+        supabase.table("leads").select("id")
+        .gte("last_message_at", since_7d)
+        .execute().data or []
+    )
+    msg_lead_ids = {r["id"] for r in msg_lead_rows if r.get("id")}
+    all_active_ids = list(call_lead_ids | msg_lead_ids)
+    if not all_active_ids:
+        return []
+
+    raw_leads: list[dict] = []
+    for batch in _chunks(all_active_ids, 500):
+        raw_leads += (
+            supabase.table("leads")
+            .select("id,phone,name,score,status,assigned_agent,channel,last_message_at")
+            .in_("id", batch)
+            .execute().data or []
+        )
+    all_leads = _merge_by_phone(raw_leads)
+
+    raw_to_primary: dict[str, str] = {}
+    for merged in all_leads:
+        for sid in merged["lead_ids"]:
+            raw_to_primary[sid] = merged["id"]
+
+    raw_lead_ids = [l["id"] for l in raw_leads if l.get("id")]
+    analyses_raw: list[dict] = []
+    for batch in _chunks(raw_lead_ids, 500):
+        analyses_raw += (
+            supabase.table("ai_analysis")
+            .select("lead_id,outcome,risk_flags,sentiment,analyzed_at")
+            .in_("lead_id", batch)
+            .execute().data or []
+        )
+
+    analysis_by_lead: dict[str, list] = defaultdict(list)
+    for a in analyses_raw:
+        raw_lid = a.get("lead_id")
+        if raw_lid:
+            analysis_by_lead[raw_to_primary.get(raw_lid, raw_lid)].append(a)
+    for items in analysis_by_lead.values():
+        items.sort(key=lambda a: a.get("analyzed_at") or "")
+
+    filtered = list(all_leads)
+    if phone_search:
+        filtered = [l for l in filtered if phone_search in (l.get("phone") or "")]
+    if country:
+        countries = {c.strip() for c in country.split(",") if c.strip()}
+        filtered = [l for l in filtered if _detect_cc(l.get("phone")) in countries]
+    if min_score > 0 or max_score < 100:
+        filtered = [l for l in filtered if min_score <= (l.get("score") or 0) <= max_score]
+    if channel == "both":
+        filtered = [
+            l for l in filtered
+            if "maqsam" in l.get("channels", []) and "whatsapp" in l.get("channels", [])
+        ]
+    elif channel:
+        filtered = [l for l in filtered if channel in l.get("channels", [])]
+    if outcome:
+        outcomes = {o.strip() for o in outcome.split(",") if o.strip()}
+        filtered = [
+            l for l in filtered
+            if any(a.get("outcome") in outcomes for a in analysis_by_lead.get(l["id"], []))
+        ]
+    if agent:
+        agents = {a.strip() for a in agent.split(",") if a.strip()}
+        filtered = [
+            l for l in filtered
+            if ("__unassigned__" in agents and not l.get("assigned_agent"))
+            or l.get("assigned_agent") in agents
+        ]
+    if high_risk_only:
+        filtered = [
+            l for l in filtered
+            if any(bool(a.get("risk_flags")) for a in analysis_by_lead.get(l["id"], []))
+        ]
+
+    if sort_by == "score":
+        filtered.sort(key=lambda l: l.get("score") or 0, reverse=True)
+    elif sort_by == "recent":
+        filtered.sort(key=lambda l: l.get("last_message_at") or "", reverse=True)
+    elif sort_by == "waiting":
+        filtered.sort(key=lambda l: l.get("last_message_at") or "")
+    elif sort_by == "calls":
+        filtered.sort(
+            key=lambda l: sum(call_counts.get(sid, 0) for sid in l["lead_ids"]),
+            reverse=True,
+        )
+
+    filtered_raw_ids = [sid for lead in filtered for sid in lead["lead_ids"]]
+    message_counts: dict[str, int] = defaultdict(int)
+    alert_counts: dict[str, int] = defaultdict(int)
+    for batch in _chunks(filtered_raw_ids, 500):
+        for m in (supabase.table("messages").select("lead_id").in_("lead_id", batch).execute().data or []):
+            primary = raw_to_primary.get(m.get("lead_id"), m.get("lead_id"))
+            if primary:
+                message_counts[primary] += 1
+        for al in (
+            supabase.table("alerts").select("lead_id,resolved")
+            .in_("lead_id", batch)
+            .execute().data or []
+        ):
+            if not al.get("resolved"):
+                primary = raw_to_primary.get(al.get("lead_id"), al.get("lead_id"))
+                if primary:
+                    alert_counts[primary] += 1
+
+    rows = []
+    for lead in filtered:
+        lid = lead["id"]
+        latest_a = analysis_by_lead.get(lid, [])[-1] if analysis_by_lead.get(lid) else None
+        rows.append({
+            "phone": lead.get("phone") or "",
+            "name": lead.get("name") or "",
+            "score": lead.get("score") or 0,
+            "status": lead.get("status") or "new",
+            "channels": lead.get("channels") or [],
+            "channel": lead.get("channel") or "",
+            "assigned_agent": lead.get("assigned_agent") or "",
+            "total_calls": sum(call_counts.get(sid, 0) for sid in lead["lead_ids"]),
+            "answered_calls": sum(answered_counts.get(sid, 0) for sid in lead["lead_ids"]),
+            "total_messages": message_counts[lid],
+            "open_alerts": alert_counts[lid],
+            "last_sentiment": latest_a.get("sentiment") if latest_a else "",
+        })
+    return rows
+
+
 @router.get("/api/leads/journey/v2/export")
 def leads_journey_v2_export(
     phone_search: str = Query(""),
@@ -626,23 +775,11 @@ def leads_journey_v2_export(
     agent: str = Query(""),
     high_risk_only: bool = Query(False),
     sort_by: str = Query("score"),
-    lang: str = Query("en"),
 ):
-    page_size = 20
-    first = _inner(
-        1, page_size, phone_search, country, min_score, max_score,
-        channel, outcome, agent, high_risk_only, sort_by, lang,
+    rows = _export_rows_light(
+        phone_search, country, min_score, max_score,
+        channel, outcome, agent, high_risk_only, sort_by,
     )
-    rows = list(first.get("leads") or [])
-    pages = max(1, int(first.get("pages") or 1))
-
-    for page in range(2, pages + 1):
-        data = _inner(
-            page, page_size, phone_search, country, min_score, max_score,
-            channel, outcome, agent, high_risk_only, sort_by, lang,
-        )
-        rows.extend(data.get("leads") or [])
-
     if not rows:
         return Response("No data to export", status_code=404, media_type="text/plain; charset=utf-8")
 
