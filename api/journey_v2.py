@@ -1,8 +1,11 @@
 from fastapi import APIRouter, Query
+from fastapi.responses import Response
 from supabase import create_client
 from collections import defaultdict
 import os
 import re
+import csv
+import io
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 
@@ -610,3 +613,63 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
         "pages": pages,
         "meta": {"agents": all_agents},
     }
+
+
+@router.get("/api/leads/journey/v2/export")
+def leads_journey_v2_export(
+    phone_search: str = Query(""),
+    country: str = Query(""),
+    min_score: int = Query(0, ge=0, le=100),
+    max_score: int = Query(100, ge=0, le=100),
+    channel: str = Query(""),
+    outcome: str = Query(""),
+    agent: str = Query(""),
+    high_risk_only: bool = Query(False),
+    sort_by: str = Query("score"),
+    lang: str = Query("en"),
+):
+    page_size = 20
+    first = _inner(
+        1, page_size, phone_search, country, min_score, max_score,
+        channel, outcome, agent, high_risk_only, sort_by, lang,
+    )
+    rows = list(first.get("leads") or [])
+    pages = max(1, int(first.get("pages") or 1))
+
+    for page in range(2, pages + 1):
+        data = _inner(
+            page, page_size, phone_search, country, min_score, max_score,
+            channel, outcome, agent, high_risk_only, sort_by, lang,
+        )
+        rows.extend(data.get("leads") or [])
+
+    if not rows:
+        return Response("No data to export", status_code=404, media_type="text/plain; charset=utf-8")
+
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow([
+        "Phone", "Name", "Score", "Status", "Channels", "Agent",
+        "Calls", "Answered Calls", "Messages", "Alerts", "Last Sentiment",
+    ])
+    for lead in rows:
+        writer.writerow([
+            lead.get("phone") or "",
+            lead.get("name") or "",
+            lead.get("score") or 0,
+            lead.get("status") or "",
+            "|".join(lead.get("channels") or [lead.get("channel") or ""]),
+            lead.get("assigned_agent") or "",
+            lead.get("total_calls") or 0,
+            lead.get("answered_calls") or 0,
+            lead.get("total_messages") or 0,
+            lead.get("open_alerts") or 0,
+            lead.get("last_sentiment") or "",
+        ])
+
+    body = "\ufeff" + out.getvalue()
+    return Response(
+        body,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=fiper_lead_journey.csv"},
+    )
