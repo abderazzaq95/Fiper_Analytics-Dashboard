@@ -1620,6 +1620,7 @@ async def _handle_mc_outbound(body: dict, now_iso: str) -> None:
 
 @app.post("/webhook/manycontacts")
 @app.post("/webhook/whatsapp")
+@app.post("/webhook/manycontacts")
 @app.post("/webhook/meta")
 @app.post("/webhook/wa")
 @app.post("/webhook/manycontacts/message_new")
