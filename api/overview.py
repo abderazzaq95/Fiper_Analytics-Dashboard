@@ -54,10 +54,13 @@ def overview(range: str = Query("7d", pattern="^(today|7d|30d)$")):
 def _overview_inner(range: str):
     since = _since(range)
 
-    # Messages: small dataset
+    # Messages: always look back at least 7 days so "today" range still shows
+    # message counts even when the last sync was yesterday.
+    now = datetime.now(timezone.utc)
+    msg_since = min(since, (now - timedelta(days=7)).isoformat())
     messages = (
         supabase.table("messages").select("id,direction,lead_id,sent_at")
-        .gte("sent_at", since).execute().data or []
+        .gte("sent_at", msg_since).execute().data or []
     )
 
     # WhatsApp activity: ManyContacts exposes updated conversations even when
@@ -160,12 +163,8 @@ def _overview_inner(range: str):
     scored_leads = [l for l in leads if l.get("score") is not None]
     avg_score = round(sum(l["score"] for l in scored_leads) / len(scored_leads), 1) if scored_leads else 0
 
-    active_chat_messages = [
-        m for m in messages
-        if m.get("lead_id") in active_whatsapp_lead_ids
-    ]
-    inbound = sum(1 for m in active_chat_messages if m.get("direction") == "inbound")
-    outbound = sum(1 for m in active_chat_messages if m.get("direction") == "outbound")
+    inbound = sum(1 for m in messages if m.get("direction") == "inbound")
+    outbound = sum(1 for m in messages if m.get("direction") == "outbound")
     latest_stored_message = max(
         (m.get("sent_at") or "" for m in messages),
         default="",
