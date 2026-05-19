@@ -184,7 +184,7 @@ def _merge_by_phone(raw_leads: list[dict]) -> list[dict]:
 @router.get("/api/leads/journey/v2")
 def leads_journey_v2(
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=5000),
     phone_search: str = Query(""),
     country: str = Query(""),
     min_score: int = Query(0, ge=0, le=100),
