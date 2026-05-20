@@ -917,11 +917,11 @@ function renderKPI(ov, ch) {
       <div class="kpi-sub">${lang==='ar'?'من إجمالي المكالمات':'of total calls'}</div>
     </div>
     <div class="kpi-card fade-in" style="animation-delay:.15s">
-      <div class="kpi-label" data-en="WhatsApp Activity" data-ar="نشاط واتساب">${lang==='ar'?'نشاط واتساب':'WhatsApp Activity'}</div>
-      <div class="kpi-value">${fmt(ov.messages.total)}</div>
-      <div class="kpi-sub">${lang==='ar'?'محادثات نشطة':'active chats'}</div>
-      <div class="kpi-sub">${fmt(ov.messages.inbound)} ${lang==='ar'?'وارد':'in'} / ${fmt(ov.messages.outbound)} ${lang==='ar'?'صادر':'out'}</div>
-      <span class="kpi-badge badge-green">WhatsApp</span>
+      <div class="kpi-label" data-en="WhatsApp Webhook Messages" data-ar="رسائل واتساب عبر الويب هوك">${lang==='ar'?'رسائل واتساب عبر الويب هوك':'WhatsApp Webhook Messages'}</div>
+      <div class="kpi-value">${fmt(ov.messages.inbound)}</div>
+      <div class="kpi-sub">${lang==='ar'?'وارد فقط · العميل ← فايبر':'inbound only · customer → Fiper'}</div>
+      <div class="kpi-sub">${fmt(ov.messages.active_conversations ?? ov.messages.total)} ${lang==='ar'?'محادثات نشطة في ManyContacts':'active chats in ManyContacts'}</div>
+      <span class="kpi-badge badge-green">ManyContacts</span>
     </div>
     <div class="kpi-card ${ov.alerts.open>0?'red':''} fade-in" style="animation-delay:.2s">
       <div class="kpi-label" data-en="Open Alerts" data-ar="التنبيهات المفتوحة">${lang==='ar'?'التنبيهات المفتوحة':'Open Alerts'}</div>
