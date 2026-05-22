@@ -1377,8 +1377,10 @@ function sparkline(trend) {
 
 // ── Agents table ──────────────────────────────────────────────────────────────
 let agentSortKey = 'calls_handled', agentSortAsc = false;
+let _agentAlertDetails = {};
 function renderAgents(data) {
   const agents = (data.agents||[]).slice();
+  _agentAlertDetails = {};
   document.getElementById('agentCount').textContent = `(${agents.length} ${lang==='ar'?'وكيل':'agents'})`;
 
   if (!agents.length) {
@@ -1403,6 +1405,7 @@ function renderAgents(data) {
   const thead = cols.map(c=>`<th ${c.sort?`onclick="sortAgents('${c.key}')" `:''}class="${c.sort?'':'no-sort'}${agentSortKey===c.key?' sorted':''}">${lang==='ar'?c.ar:c.en}${agentSortKey===c.key?(agentSortAsc?' ↑':' ↓'):''}</th>`).join('');
 
   const rows = agents.map(a=>{
+    _agentAlertDetails[a.agent || ''] = a.alert_details || [];
     const s = a.sentiment||{};
     const tot = (s.positive||0)+(s.neutral||0)+(s.negative||0);
     const sentPill = tot===0 ? `<span class="pill pill-gray">${lang==='ar'?'لا بيانات':'No data'}</span>`
@@ -1458,12 +1461,15 @@ async function openAgentAlerts(agent) {
   const body = document.getElementById('agentAlertsBody');
   if (!modal || !title || !body) return;
   title.textContent = `${agent} · ${lang==='ar'?'التنبيهات':'Alerts'}`;
-  body.innerHTML = `<div class="skeleton" style="height:80px;margin:16px"></div>`;
+  body.innerHTML = `<div class="empty-state"><div class="skeleton" style="height:56px;margin:0 auto 12px;max-width:360px"></div><div class="empty-text">${lang==='ar'?'جاري تحميل التنبيهات...':'Downloading alerts...'}</div></div>`;
   modal.classList.add('open');
 
   try {
-    const data = await get(`/api/agents/alerts?agent=${encodeURIComponent(agent)}`);
-    const alerts = data.alerts || [];
+    let alerts = _agentAlertDetails[agent] || [];
+    if (!alerts.length) {
+      const data = await get(`/api/agents/alerts?agent=${encodeURIComponent(agent)}`);
+      alerts = data.alerts || [];
+    }
     if (!alerts.length) {
       body.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">${lang==='ar'?'لا توجد تنبيهات مفتوحة':'No open alerts'}</div></div>`;
       return;

@@ -68,11 +68,17 @@ def agents(range: str = Query("7d", pattern="^(today|7d|30d)$")):
 def _agents_inner(range: str):
     since = _since(range)
 
-    leads    = _paginate(lambda: supabase.table("leads").select("id,assigned_agent,status,score"))
+    leads    = _paginate(lambda: supabase.table("leads").select("id,phone,name,assigned_agent,status,score"))
     messages = _paginate(lambda: supabase.table("messages").select("agent_name,direction,sent_at,lead_id").gte("sent_at", since))
     calls    = _paginate(lambda: supabase.table("calls").select("agent_name,lead_id,duration_seconds,called_at").gte("called_at", since))
     analyses = _paginate(lambda: supabase.table("ai_analysis").select("lead_id,sentiment,treatment_score,source,analyzed_at,outcome"))
-    alerts   = supabase.table("alerts").select("agent_name,lead_id,severity,resolved").eq("resolved", False).execute().data or []
+    alerts   = (
+        supabase.table("alerts")
+        .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
+        .eq("resolved", False)
+        .order("created_at", desc=True)
+        .execute().data or []
+    )
     # All-time call→lead→agent map for alert attribution (unfiltered by date)
     all_calls_for_alerts = _paginate(lambda: supabase.table("calls").select("agent_name,lead_id"))
 
@@ -108,6 +114,7 @@ def _agents_inner(range: str):
         lead_analysis[a["lead_id"]].append(a)
 
     # Alert attribution: normalized agent_name → list of alerts
+    lead_by_id = {l["id"]: l for l in leads if l.get("id")}
     lead_agent_map = {l["id"]: _norm(l.get("assigned_agent")) for l in leads}
 
     # All-time lead → agent fallback (uses unfiltered calls so old leads are covered)
@@ -136,7 +143,17 @@ def _agents_inner(range: str):
             or (lead_to_agent_fallback.get(lid) if lid else None)
         )
         if agent and agent.lower() not in ("team", "unknown"):
-            agent_alerts[agent].append(a)
+            lead = lead_by_id.get(lid, {})
+            agent_alerts[agent].append({
+                "id": a.get("id"),
+                "lead_id": lid,
+                "lead_phone": lead.get("phone"),
+                "lead_name": lead.get("name"),
+                "severity": a.get("severity") or "MED",
+                "type": a.get("type") or "alert",
+                "message": a.get("message") or "",
+                "created_at": a.get("created_at"),
+            })
 
     # All agents: WhatsApp (leads + messages) + Maqsam (calls)
     all_agents = set(agent_leads.keys()) | set(agent_msgs.keys()) | set(agent_calls.keys())
@@ -226,6 +243,7 @@ def _agents_inner(range: str):
             "avg_treatment_score":      round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else 0,
             "sentiment":                sentiment_summary,
             "open_alerts":              len(agent_alerts.get(agent, [])),
+            "alert_details":            agent_alerts.get(agent, []),
             "quality_trend":            quality_trend,
             # Conversion data intentionally omitted — requires CRM integration
         })
@@ -241,6 +259,15 @@ def agent_alerts(agent: str = Query(...)):
     Uses the same attribution rules as the leaderboard: explicit alert agent,
     then lead assigned_agent, then all-time call/message fallback.
     """
+    try:
+        return _agent_alerts_inner(agent)
+    except Exception as e:
+        import logging
+        logging.getLogger("fiper").error(f"/api/agents/alerts error ({agent}): {e}", exc_info=True)
+        return {"agent": _norm(agent) or agent, "alerts": []}
+
+
+def _agent_alerts_inner(agent: str):
     target = _norm(agent)
     if not target:
         return {"agent": agent, "alerts": []}
