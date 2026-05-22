@@ -818,9 +818,13 @@ const ago   = ts => {
   return lang==='ar' ? `منذ ${Math.round(diff/86400)} ي` : `${Math.round(diff/86400)}d ago`;
 };
 async function get(path) {
-  const r = await fetch(`${API}${path}?range=${range}`);
+  const sep = path.includes('?') ? '&' : '?';
+  const r = await fetch(`${API}${path}${sep}range=${range}`);
   if (!r.ok) throw new Error(r.status);
   return r.json();
+}
+function esc(str) {
+  return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function destroyChart(id) {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
