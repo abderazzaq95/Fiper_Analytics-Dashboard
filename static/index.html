@@ -1458,34 +1458,52 @@ function sortAgents(key) {
   else loadAll();
 }
 
-// ── Alerts list ───────────────────────────────────────────────────────────────
+// ── Agent alert popup ─────────────────────────────────────────────────────────
 async function openAgentAlerts(agent) {
   const modal = document.getElementById('agentAlertsModal');
   const title = document.getElementById('agentAlertsTitle');
-  const body = document.getElementById('agentAlertsBody');
-  if (!modal || !title || !body) return;
+  const body  = document.getElementById('agentAlertsBody');
+  if (!modal || !title || !body) { console.error('[alerts] modal elements missing'); return; }
+
   title.textContent = `${agent} · ${lang==='ar'?'التنبيهات':'Alerts'}`;
   body.innerHTML = `<div class="empty-state"><div class="skeleton" style="height:56px;margin:0 auto 12px;max-width:360px"></div><div class="empty-text">${lang==='ar'?'جاري تحميل التنبيهات...':'Downloading alerts...'}</div></div>`;
   modal.classList.add('open');
 
+  let alerts = [];
   try {
-    let alerts = _agentAlertDetails[agent] || [];
-    if (!alerts.length) {
-      const data = await get(`/api/agents/alerts?agent=${encodeURIComponent(agent)}`);
-      alerts = data.alerts || [];
+    // Try cached data from agents response first
+    const cached = _agentAlertDetails[agent];
+    if (Array.isArray(cached) && cached.length) {
+      alerts = cached;
+    } else {
+      // Direct fetch — avoid get() to prevent query-string issues
+      const url = `${API}/api/agents/alerts?agent=${encodeURIComponent(agent)}`;
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      alerts = Array.isArray(data.alerts) ? data.alerts : [];
     }
-    if (!alerts.length) {
-      body.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">${lang==='ar'?'لا توجد تنبيهات مفتوحة':'No open alerts'}</div></div>`;
-      return;
-    }
+  } catch(e) {
+    console.error('[alerts] fetch error:', e);
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">${lang==='ar'?'فشل تحميل التنبيهات':'Failed to load alerts'}</div><div class="empty-sub">${esc(String(e))}</div></div>`;
+    return;
+  }
+
+  if (!alerts.length) {
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">${lang==='ar'?'لا توجد تنبيهات مفتوحة':'No open alerts'}</div></div>`;
+    return;
+  }
+
+  try {
     body.innerHTML = alerts.map(a => {
-      const sev = (a.severity || 'MED').toUpperCase();
+      const sev    = (a.severity || 'MED').toUpperCase();
       const sevCls = sev === 'HIGH' ? 'pill-red' : sev === 'LOW' ? 'pill-blue' : 'pill-warn';
-      const phone = a.lead_phone ? fmtPhone(a.lead_phone) : (lang==='ar'?'عميل غير معروف':'Unknown lead');
-      const created = a.created_at ? new Date(a.created_at).toLocaleString(lang==='ar'?'ar':'en', {dateStyle:'medium', timeStyle:'short'}) : '—';
+      const phone  = a.lead_phone ? fmtPhone(a.lead_phone) : (lang==='ar'?'عميل غير معروف':'Unknown lead');
+      let created  = '—';
+      try { created = a.created_at ? new Date(a.created_at).toLocaleString() : '—'; } catch(_){}
       return `<div class="agent-alert-card">
         <div class="agent-alert-top">
-          <span class="pill ${sevCls}">${sev}</span>
+          <span class="pill ${sevCls}">${esc(sev)}</span>
           <span class="agent-alert-title">${esc((a.type || 'alert').replace(/_/g,' '))}</span>
         </div>
         <div class="agent-alert-msg">${esc(a.message || '')}</div>
@@ -1493,7 +1511,8 @@ async function openAgentAlerts(agent) {
       </div>`;
     }).join('');
   } catch(e) {
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">${lang==='ar'?'فشل تحميل التنبيهات':'Failed to load alerts'}</div><div class="empty-sub">${esc(e.message)}</div></div>`;
+    console.error('[alerts] render error:', e);
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Render error: ${esc(String(e))}</div></div>`;
   }
 }
 
