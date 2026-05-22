@@ -232,3 +232,67 @@ def _agents_inner(range: str):
 
     result.sort(key=lambda x: x["calls_handled"], reverse=True)
     return {"range": range, "agents": result}
+
+
+@router.get("/api/agents/alerts")
+def agent_alerts(agent: str = Query(...)):
+    """Return open alerts attributed to one normalized agent.
+
+    Uses the same attribution rules as the leaderboard: explicit alert agent,
+    then lead assigned_agent, then all-time call/message fallback.
+    """
+    target = _norm(agent)
+    if not target:
+        return {"agent": agent, "alerts": []}
+
+    leads = _paginate(lambda: supabase.table("leads").select("id,phone,name,assigned_agent"))
+    alerts = (
+        supabase.table("alerts")
+        .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
+        .eq("resolved", False)
+        .order("created_at", desc=True)
+        .execute().data or []
+    )
+    messages = _paginate(lambda: supabase.table("messages").select("agent_name,direction,lead_id"))
+    calls = _paginate(lambda: supabase.table("calls").select("agent_name,lead_id"))
+
+    lead_by_id = {l["id"]: l for l in leads if l.get("id")}
+    lead_agent_map = {l["id"]: _norm(l.get("assigned_agent")) for l in leads if l.get("id")}
+    lead_to_agent_fallback: dict[str, str] = {}
+    for m in messages:
+        lid = m.get("lead_id")
+        ag = _norm(m.get("agent_name"))
+        if lid and m.get("direction") == "outbound" and ag:
+            lead_to_agent_fallback.setdefault(lid, ag)
+    for c in calls:
+        lid = c.get("lead_id")
+        ag = _norm(c.get("agent_name"))
+        if lid and ag:
+            lead_to_agent_fallback.setdefault(lid, ag)
+
+    rows = []
+    for alert in alerts:
+        lid = alert.get("lead_id")
+        raw_alert_agent = _norm(alert.get("agent_name"))
+        if raw_alert_agent and raw_alert_agent.lower() in ("unknown", "team", "n/a"):
+            raw_alert_agent = None
+        attributed_agent = (
+            raw_alert_agent
+            or (lead_agent_map.get(lid) if lid else None)
+            or (lead_to_agent_fallback.get(lid) if lid else None)
+        )
+        if attributed_agent != target:
+            continue
+        lead = lead_by_id.get(lid, {})
+        rows.append({
+            "id": alert.get("id"),
+            "lead_id": lid,
+            "lead_phone": lead.get("phone"),
+            "lead_name": lead.get("name"),
+            "severity": alert.get("severity") or "MED",
+            "type": alert.get("type") or "alert",
+            "message": alert.get("message") or "",
+            "created_at": alert.get("created_at"),
+        })
+
+    return {"agent": target, "alerts": rows}

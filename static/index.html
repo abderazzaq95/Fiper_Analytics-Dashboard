@@ -140,6 +140,20 @@ tr:hover td{background:#fafbff}
 .alert-badge{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:10px;font-weight:800}
 .alert-badge.has-alerts{background:var(--red-light);color:var(--red)}
 .alert-badge.no-alerts{background:#f1f3f9;color:var(--text-light)}
+.alert-badge.clickable{border:none;cursor:pointer;font-family:inherit}
+.alert-badge.clickable:hover{box-shadow:0 0 0 3px rgba(255,0,3,.08)}
+.modal-backdrop{position:fixed;inset:0;background:rgba(45,60,88,.38);display:none;align-items:center;justify-content:center;z-index:500;padding:20px}
+.modal-backdrop.open{display:flex}
+.modal-panel{width:min(720px,100%);max-height:82vh;overflow:hidden;background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:0 18px 60px rgba(45,60,88,.22);display:flex;flex-direction:column}
+.modal-head{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:14px}
+.modal-title{font-size:14px;font-weight:800;color:var(--navy)}
+.modal-close{border:none;background:var(--bg);color:var(--text);width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:18px;line-height:1}
+.modal-body{padding:8px 0;overflow:auto}
+.agent-alert-card{padding:14px 20px;border-bottom:1px solid var(--border)}
+.agent-alert-card:last-child{border-bottom:none}
+.agent-alert-top{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.agent-alert-title{font-size:13px;font-weight:800;color:var(--navy)}
+.agent-alert-msg{font-size:13px;color:var(--text);line-height:1.45}
 
 /* ── Alert list ── */
 .alert-item{display:flex;align-items:flex-start;gap:14px;padding:14px 22px;border-bottom:1px solid var(--border);border-left:4px solid transparent;transition:background .15s}
@@ -616,7 +630,17 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
     <div style="padding:18px 22px 14px;border-bottom:1px solid var(--border)">
       <div class="card-head" style="margin:0" data-en="Open Alerts" data-ar="التنبيهات المفتوحة">Open Alerts</div>
     </div>
-    <div id="alertsList"><div class="skeleton" style="height:80px;margin:16px"></div></div>
+  <div id="alertsList"><div class="skeleton" style="height:80px;margin:16px"></div></div>
+  </div>
+
+  <div class="modal-backdrop" id="agentAlertsModal" onclick="closeAgentAlertsModal(event)">
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="agentAlertsTitle" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <div class="modal-title" id="agentAlertsTitle">Agent Alerts</div>
+        <button class="modal-close" type="button" onclick="closeAgentAlertsModal()" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body" id="agentAlertsBody"></div>
+    </div>
   </div>
 
   <!-- Lead Journey Tracker v2 -->
@@ -1392,8 +1416,9 @@ function renderAgents(data) {
       : ts>=50 ? `<span class="pill pill-warn">${fmt(ts)}</span>`
       : `<span class="pill pill-red">${fmt(ts)}</span>`;
 
+    const agentArg = JSON.stringify(a.agent || '');
     const alBadge = (a.open_alerts||0)>0
-      ? `<span class="alert-badge has-alerts">${a.open_alerts}</span>`
+      ? `<button class="alert-badge has-alerts clickable" type="button" onclick='openAgentAlerts(${agentArg})'>${a.open_alerts}</button>`
       : `<span class="alert-badge no-alerts">0</span>`;
 
     const avgDur = a.avg_call_duration_seconds||0;
@@ -1427,6 +1452,46 @@ function sortAgents(key) {
 }
 
 // ── Alerts list ───────────────────────────────────────────────────────────────
+async function openAgentAlerts(agent) {
+  const modal = document.getElementById('agentAlertsModal');
+  const title = document.getElementById('agentAlertsTitle');
+  const body = document.getElementById('agentAlertsBody');
+  if (!modal || !title || !body) return;
+  title.textContent = `${agent} · ${lang==='ar'?'التنبيهات':'Alerts'}`;
+  body.innerHTML = `<div class="skeleton" style="height:80px;margin:16px"></div>`;
+  modal.classList.add('open');
+
+  try {
+    const data = await get(`/api/agents/alerts?agent=${encodeURIComponent(agent)}`);
+    const alerts = data.alerts || [];
+    if (!alerts.length) {
+      body.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">${lang==='ar'?'لا توجد تنبيهات مفتوحة':'No open alerts'}</div></div>`;
+      return;
+    }
+    body.innerHTML = alerts.map(a => {
+      const sev = (a.severity || 'MED').toUpperCase();
+      const sevCls = sev === 'HIGH' ? 'pill-red' : sev === 'LOW' ? 'pill-blue' : 'pill-warn';
+      const phone = a.lead_phone ? fmtPhone(a.lead_phone) : (lang==='ar'?'عميل غير معروف':'Unknown lead');
+      const created = a.created_at ? new Date(a.created_at).toLocaleString(lang==='ar'?'ar':'en', {dateStyle:'medium', timeStyle:'short'}) : '—';
+      return `<div class="agent-alert-card">
+        <div class="agent-alert-top">
+          <span class="pill ${sevCls}">${sev}</span>
+          <span class="agent-alert-title">${esc((a.type || 'alert').replace(/_/g,' '))}</span>
+        </div>
+        <div class="agent-alert-msg">${esc(a.message || '')}</div>
+        <div class="alert-meta">👤 ${esc(phone)} · ${esc(created)}</div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">${lang==='ar'?'فشل تحميل التنبيهات':'Failed to load alerts'}</div><div class="empty-sub">${esc(e.message)}</div></div>`;
+  }
+}
+
+function closeAgentAlertsModal(ev) {
+  if (ev && ev.target !== ev.currentTarget) return;
+  document.getElementById('agentAlertsModal')?.classList.remove('open');
+}
+
 function renderAlerts(quality) {
   const list = (quality?.alerts?.list||[]).filter(a=>!a.resolved);
   const el = document.getElementById('alertsList');
