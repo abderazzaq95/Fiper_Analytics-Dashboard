@@ -1458,6 +1458,48 @@ function sortAgents(key) {
   else loadAll();
 }
 
+// ── Alert i18n helpers ────────────────────────────────────────────────────────
+const _ALERT_TYPE_AR = {
+  no_reply:            'لا رد',
+  stale_callback:      'مكالمة عودة متأخرة',
+  slow_response:       'استجابة بطيئة',
+  negative_sentiment:  'مشاعر سلبية',
+  poor_treatment:      'معالجة سيئة',
+  beginner_risk:       'خطر المبتدئ',
+  profit_expectations: 'توقعات أرباح غير واقعية',
+  weak_engagement:     'تفاعل ضعيف',
+};
+const _ALERT_SEV_AR = { HIGH: 'عالي', MED: 'متوسط', LOW: 'منخفض' };
+
+function _alertTypeLabel(type) {
+  if (lang !== 'ar') return (type || 'alert').replace(/_/g,' ');
+  return _ALERT_TYPE_AR[type] || (type || 'تنبيه').replace(/_/g,' ');
+}
+function _alertSevLabel(sev) {
+  if (lang !== 'ar') return sev;
+  return _ALERT_SEV_AR[sev] || sev;
+}
+function _alertMsgAr(msg) {
+  if (!msg) return '';
+  // Dynamic patterns — extract numbers and re-build in Arabic
+  let m;
+  if ((m = msg.match(/unanswered for (\d+) minutes/)))
+    return `رسالة واردة لم يتم الرد عليها منذ ${m[1]} دقيقة.`;
+  if ((m = msg.match(/not contacted in (\d+) hours/)))
+    return `لم يتم التواصل مع العميل منذ ${m[1]} ساعة.`;
+  if ((m = msg.match(/response time is (\d+) minutes/)))
+    return `متوسط وقت الاستجابة ${m[1]} دقيقة (الحد: 15 دقيقة).`;
+  if ((m = msg.match(/Low treatment score \((\d+)\/100\)/)))
+    return `درجة المعالجة منخفضة (${m[1]}/100). جودة التفاعل تحتاج مراجعة.`;
+  if (msg.includes('negative sentiment'))
+    return 'اكتشف الذكاء الاصطناعي مشاعر سلبية في هذه المحادثة.';
+  if (msg.includes('Beginner lead'))
+    return 'عميل مبتدئ لم يُقدَّم له تعليم في التداول.';
+  if (msg.includes('profit expectations'))
+    return 'العميل لديه توقعات أرباح غير واقعية. يلزم تدريب.';
+  return msg; // fallback: keep original
+}
+
 // ── Agent alert popup ─────────────────────────────────────────────────────────
 async function openAgentAlerts(agent) {
   const modal = document.getElementById('agentAlertsModal');
@@ -1501,12 +1543,15 @@ async function openAgentAlerts(agent) {
       const phone  = a.lead_phone ? fmtPhone(a.lead_phone) : (lang==='ar'?'عميل غير معروف':'Unknown lead');
       let created  = '—';
       try { created = a.created_at ? new Date(a.created_at).toLocaleString() : '—'; } catch(_){}
+      const typeLabel = _alertTypeLabel(a.type);
+      const sevLabel  = _alertSevLabel(sev);
+      const msgText   = lang==='ar' ? _alertMsgAr(a.message) : (a.message || '');
       return `<div class="agent-alert-card">
         <div class="agent-alert-top">
-          <span class="pill ${sevCls}">${esc(sev)}</span>
-          <span class="agent-alert-title">${esc((a.type || 'alert').replace(/_/g,' '))}</span>
+          <span class="pill ${sevCls}">${esc(sevLabel)}</span>
+          <span class="agent-alert-title">${esc(typeLabel)}</span>
         </div>
-        <div class="agent-alert-msg">${esc(a.message || '')}</div>
+        <div class="agent-alert-msg">${esc(msgText)}</div>
         <div class="alert-meta">👤 ${esc(phone)} · ${esc(created)}</div>
       </div>`;
     }).join('');
