@@ -1227,6 +1227,50 @@ def _find_whatsapp_lead(contact_id: str | None, phone: str | None) -> dict | Non
     return None
 
 
+def _message_duplicate_exists(
+    lead_id: str | None,
+    phone: str | None,
+    direction: str,
+    body_text: str,
+    sent_at: str,
+) -> bool:
+    """Detect same WhatsApp message delivered by both Meta and ManyContacts.
+
+    The two webhook formats can describe the same inbound message with different
+    IDs (wamid vs ManyContacts UUID), so wa_message_id alone cannot dedupe it.
+    """
+    if not sent_at:
+        return False
+
+    lead_ids = set()
+    if lead_id:
+        lead_ids.add(lead_id)
+    if phone:
+        rows = (
+            supabase.table("leads")
+            .select("id")
+            .eq("channel", "whatsapp")
+            .eq("phone", phone)
+            .execute().data or []
+        )
+        lead_ids.update(r["id"] for r in rows if r.get("id"))
+
+    if not lead_ids:
+        return False
+
+    rows = (
+        supabase.table("messages")
+        .select("id")
+        .in_("lead_id", list(lead_ids))
+        .eq("direction", direction)
+        .eq("sent_at", sent_at)
+        .eq("body", str(body_text)[:2000])
+        .limit(1)
+        .execute().data or []
+    )
+    return bool(rows)
+
+
 def _is_outbound_mc(body: dict) -> bool:
     """Return True if the payload looks like a ManyContacts outbound/agent message."""
     if body.get("direction") == "outbound":
@@ -1359,6 +1403,13 @@ async def _handle_meta_format(body: dict, now_iso: str) -> None:
                 lead_id = lead_result.data[0]["id"] if lead_result.data else None
 
                 if msg_id and lead_id:
+                    if _message_duplicate_exists(lead_id, phone, "inbound", body_text, sent_at):
+                        log.info(
+                            f"[webhook/mc] inbound duplicate skipped | from={phone!r} "
+                            f"msg_id={msg_id!r} sent_at={sent_at!r}"
+                        )
+                        continue
+
                     supabase.table("messages").upsert({
                         "wa_message_id": msg_id,
                         "lead_id": lead_id,
@@ -1546,6 +1597,13 @@ async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
     }
     if direction == "outbound" and agent_name:
         row["agent_name"] = agent_name
+
+    if _message_duplicate_exists(lead_id, phone, direction, body_text, sent_at):
+        log.info(
+            f"[webhook/mc] message_new duplicate skipped | direction={direction!r} "
+            f"phone={phone!r} msg_id={msg_id!r} sent_at={sent_at!r}"
+        )
+        return
 
     supabase.table("messages").upsert(row, on_conflict="wa_message_id").execute()
 
