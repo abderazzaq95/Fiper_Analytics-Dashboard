@@ -193,6 +193,9 @@ async def ingest_manycontacts(hours_back: int = 2) -> dict:
         log.error(f"ManyContacts fetch_contacts failed: {e}")
         return {"contacts": 0, "messages_total": 0, "messages_outbound": 0}
 
+    msg_total = 0
+    msg_outbound = 0
+
     for contact in contacts:
         mc_id = contact.get("id")
         phone = contact.get("number", "")
@@ -203,7 +206,7 @@ async def ingest_manycontacts(hours_back: int = 2) -> dict:
         updated_at = contact.get("updatedAt")
         status = "engaged" if open_status == 1 else "lost"
 
-        supabase.table("leads").upsert({
+        lead_res = supabase.table("leads").upsert({
             "wa_contact_id": mc_id,
             "phone": phone,
             "name": name,
@@ -213,11 +216,66 @@ async def ingest_manycontacts(hours_back: int = 2) -> dict:
             "last_message_at": updated_at,
             "updated_at": now_iso,
         }, on_conflict="wa_contact_id").execute()
+        lead_id = lead_res.data[0]["id"] if lead_res.data else None
 
-    # Messages come via the ManyContacts webhook in real-time — the API has no
-    # /messages endpoint (always 404). Do not call fetch_contact_messages here.
-    log.info(f"ManyContacts ingestion done — {len(contacts)} contacts")
-    return {"contacts": len(contacts), "messages_total": 0, "messages_outbound": 0}
+        if not (lead_id and mc_id):
+            continue
+
+        # ── Fetch + save full message history ────────────────────────────────
+        raw_msgs = await whatsapp.fetch_contact_messages(mc_id, phone=phone)
+        msg_rows = []
+        for msg in raw_msgs:
+            sent_at = _parse_mc_ts(
+                msg.get("timestamp") or msg.get("createdAt") or msg.get("created_at")
+            )
+            if not sent_at:
+                continue
+            # Skip messages older than msg_cutoff
+            if sent_at < msg_cutoff:
+                continue
+
+            direction = (
+                "outbound"
+                if (msg.get("type") or msg.get("direction") or "").upper() in ("OUTBOUND", "OUT")
+                else "inbound"
+            )
+            body_text = (
+                msg.get("text") or msg.get("message") or msg.get("body")
+                or msg.get("content") or f"[{(msg.get('type') or 'message').lower()}]"
+            )
+            msg_id = str(msg.get("id") or msg.get("wamid") or "")
+            if not msg_id:
+                continue
+
+            # For outbound: agent comes from message's user_id, fall back to contact's assigned agent
+            msg_agent = None
+            if direction == "outbound":
+                msg_agent = whatsapp.resolve_agent_name(msg.get("user_id")) or agent_name
+                msg_outbound += 1
+
+            row = {
+                "wa_message_id": msg_id,
+                "lead_id": lead_id,
+                "direction": direction,
+                "body": str(body_text)[:2000],
+                "sent_at": sent_at,
+            }
+            if msg_agent:
+                row["agent_name"] = msg_agent
+            msg_rows.append(row)
+            msg_total += 1
+
+        # Upsert in chunks of 100 to stay within Supabase request limits
+        for i in range(0, len(msg_rows), 100):
+            supabase.table("messages").upsert(
+                msg_rows[i:i + 100], on_conflict="wa_message_id"
+            ).execute()
+
+    log.info(
+        f"ManyContacts ingestion done — {len(contacts)} contacts | "
+        f"{msg_total} messages ({msg_outbound} outbound)"
+    )
+    return {"contacts": len(contacts), "messages_total": msg_total, "messages_outbound": msg_outbound}
 
 
 async def ingest_manycontacts_activity(days_back: int = 1) -> dict:
@@ -1747,6 +1805,11 @@ async def manual_whatsapp_sync(days_back: int = Query(7, ge=1, le=90)):
     except Exception as e:
         return {"error": str(e), "contacts": 0, "messages_saved": 0}
 
+    msg_total = 0
+    msg_inbound = 0
+    msg_outbound = 0
+    contacts_with_messages = 0
+
     for contact in contacts:
         mc_id = contact.get("id")
         phone = contact.get("number", "")
@@ -1756,7 +1819,7 @@ async def manual_whatsapp_sync(days_back: int = Query(7, ge=1, le=90)):
         updated_at = contact.get("updatedAt")
         open_status = contact.get("open", 1)
 
-        supabase.table("leads").upsert({
+        lead_res = supabase.table("leads").upsert({
             "wa_contact_id": mc_id,
             "phone": phone,
             "name": name,
@@ -1766,13 +1829,56 @@ async def manual_whatsapp_sync(days_back: int = Query(7, ge=1, le=90)):
             "last_message_at": updated_at,
             "updated_at": now_iso,
         }, on_conflict="wa_contact_id").execute()
+        lead_id = lead_res.data[0]["id"] if lead_res.data else None
+        if not (lead_id and mc_id):
+            continue
 
-    # ManyContacts has no /messages API endpoint — messages arrive via webhook only.
+        raw_msgs = await whatsapp.fetch_contact_messages(mc_id, phone=phone)
+        if not raw_msgs:
+            continue
+        contacts_with_messages += 1
+        msg_rows = []
+        for msg in raw_msgs:
+            sent_at = _parse_mc_ts(
+                msg.get("timestamp") or msg.get("createdAt") or msg.get("created_at")
+            )
+            if not sent_at or sent_at < msg_cutoff:
+                continue
+            direction = (
+                "outbound"
+                if (msg.get("type") or msg.get("direction") or "").upper() in ("OUTBOUND", "OUT")
+                else "inbound"
+            )
+            body_text = (
+                msg.get("text") or msg.get("message") or msg.get("body")
+                or msg.get("content") or f"[{direction}]"
+            )
+            msg_id = str(msg.get("id") or msg.get("wamid") or "")
+            if not msg_id:
+                continue
+            row = {"wa_message_id": msg_id, "lead_id": lead_id, "direction": direction,
+                   "body": str(body_text)[:2000], "sent_at": sent_at}
+            if direction == "outbound":
+                row["agent_name"] = whatsapp.resolve_agent_name(msg.get("user_id")) or agent_name
+                msg_outbound += 1
+            else:
+                msg_inbound += 1
+            msg_rows.append(row)
+            msg_total += 1
+
+        for i in range(0, len(msg_rows), 100):
+            supabase.table("messages").upsert(
+                msg_rows[i:i + 100], on_conflict="wa_message_id"
+            ).execute()
+
     await _broadcast("data_updated", {"source": "whatsapp_manual_sync"})
     return {
         "days_back": days_back,
         "contacts_scanned": len(contacts),
-        "note": "Messages are delivered via webhook only — no API message backfill available",
+        "contacts_with_messages": contacts_with_messages,
+        "messages_saved": msg_total,
+        "inbound": msg_inbound,
+        "outbound": msg_outbound,
     }
 
 
