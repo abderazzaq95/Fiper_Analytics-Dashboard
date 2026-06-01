@@ -175,9 +175,10 @@ def _overview_inner(range: str):
         and (not latest_stored_message or capture_lag_min > 10)
     )
 
+    answered_calls = [c for c in calls_sample if (c.get("duration_seconds") or 0) > 0]
     avg_call_duration = round(
-        sum(c.get("duration_seconds") or 0 for c in calls_sample) / len(calls_sample), 1
-    ) if calls_sample else 0
+        sum(c["duration_seconds"] for c in answered_calls) / len(answered_calls), 1
+    ) if answered_calls else 0
 
     open_alerts = sum(1 for a in alerts if not a.get("resolved"))
     high_alerts = sum(1 for a in alerts if a.get("severity") == "HIGH" and not a.get("resolved"))

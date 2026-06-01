@@ -41,8 +41,13 @@ def channels(range: str = Query("7d", pattern="^(today|7d|30d)$")):
 def _channels_inner(range: str):
     since = _since(range)
 
-    # Leads: paginate — no date filter intentional (show channel totals all-time)
-    leads = _paginate(lambda: supabase.table("leads").select("id,channel,status"))
+    # WhatsApp leads: active in period (last_message_at within range)
+    wa_leads_raw = _paginate(
+        lambda: supabase.table("leads")
+        .select("id,channel,status")
+        .eq("channel", "whatsapp")
+        .gte("last_message_at", since)
+    )
 
     # Messages: small dataset
     messages = (
@@ -69,17 +74,31 @@ def _channels_inner(range: str):
     total_calls_maqsam = calls_res.count if calls_res.count is not None else len(calls_res.data or [])
     calls_sample = calls_res.data or []
 
-    wa_leads = [l for l in leads if l.get("channel") == "whatsapp"]
-    mq_leads = [l for l in leads if l.get("channel") == "maqsam"]
+    # Maqsam leads: unique leads with calls in period
+    mq_lead_ids: set[str] = {c["lead_id"] for c in calls_sample if c.get("lead_id")}
+    if total_calls_maqsam > len(calls_sample):
+        mq_lead_ids = set(
+            c["lead_id"]
+            for c in _paginate(
+                lambda: supabase.table("calls").select("lead_id").gte("called_at", since)
+            )
+            if c.get("lead_id")
+        )
+    mq_leads: list[dict] = []
+    if mq_lead_ids:
+        id_list = list(mq_lead_ids)
+        for i in range(0, len(id_list), 500):
+            batch = (
+                supabase.table("leads").select("id,status")
+                .in_("id", id_list[i:i + 500]).execute().data or []
+            )
+            mq_leads.extend(batch)
 
+    wa_leads = wa_leads_raw
     wa_converted = sum(1 for l in wa_leads if l.get("status") == "converted")
     mq_converted = sum(1 for l in mq_leads if l.get("status") == "converted")
 
-    lead_ids_by_channel = {
-        "whatsapp": {l["id"] for l in wa_leads},
-    }
-
-    wa_msgs = [m for m in messages if m.get("lead_id") in lead_ids_by_channel["whatsapp"]]
+    wa_msgs = [m for m in messages if m.get("lead_id") in {l["id"] for l in wa_leads}]
     response_times = []
     by_lead: dict[str, list] = {}
     for m in wa_msgs:
@@ -99,9 +118,10 @@ def _channels_inner(range: str):
                 last_in = None
 
     avg_response = round(sum(response_times) / len(response_times), 1) if response_times else 0
+    answered_calls = [c for c in calls_sample if (c.get("duration_seconds") or 0) > 0]
     avg_call_dur = round(
-        sum(c.get("duration_seconds") or 0 for c in calls_sample) / len(calls_sample), 1
-    ) if calls_sample else 0
+        sum(c["duration_seconds"] for c in answered_calls) / len(answered_calls), 1
+    ) if answered_calls else 0
 
     return {
         "range": range,
