@@ -935,12 +935,8 @@ function _syncBadge() {
 
 // ── KPI ───────────────────────────────────────────────────────────────────────
 function renderKPI(ov, ch) {
-  const answerRate = ch.maqsam.calls
-    ? Math.round(((ch.maqsam.calls - (ch.maqsam.calls * 0)) / ch.maqsam.calls) * 100)
-    : 0;
-  // We'll calculate answer rate properly from quality data; approximate here
-  const ar_color = answerRate > 50 ? 'green' : answerRate > 30 ? 'warn' : 'red';
-  const ar_badge = answerRate > 50 ? 'badge-green' : answerRate > 30 ? 'badge-warn' : 'badge-red';
+  const answerRate = 0;
+  const ar_color = 'red';
   const waManyContactsLabel = lang==='ar' ? 'من ManyContacts' : 'from ManyContacts';
 
   document.getElementById('kpiGrid').innerHTML = `
@@ -958,9 +954,9 @@ function renderKPI(ov, ch) {
       <span class="kpi-badge badge-blue">${lang==='ar'?'مقصام':'Maqsam'}</span>
     </div>
     <div class="kpi-card ${ar_color} fade-in" style="animation-delay:.1s" id="kpiAnswerRate">
-      <div class="kpi-label" data-en="Call Answer Rate" data-ar="معدل الرد على المكالمات">${lang==='ar'?'معدل الرد على المكالمات':'Call Answer Rate'}</div>
+      <div class="kpi-label" data-en="Pickup Rate" data-ar="معدل الرد">${lang==='ar'?'معدل الرد':'Pickup Rate'}</div>
       <div class="kpi-value" id="answerRateVal">—</div>
-      <div class="kpi-sub">${lang==='ar'?'من إجمالي المكالمات':'of total calls'}</div>
+      <div class="kpi-sub">${lang==='ar'?'مثل Maqsam':'Maqsam formula'}</div>
     </div>
     <div class="kpi-card fade-in" style="animation-delay:.15s">
       <div class="kpi-label" data-en="WhatsApp Activity" data-ar="نشاط واتساب">${lang==='ar'?'نشاط واتساب':'WhatsApp Activity'}</div>
@@ -988,13 +984,18 @@ function renderChannels(ch, quality) {
   // Compute answer rate from quality call outcomes
   const outcomes = quality?.call_outcomes || {};
   const completed = outcomes.completed || 0;
-  const total_calls = ch.maqsam.calls || 1;
-  const answerRate = ch.maqsam.calls ? Math.round(completed / ch.maqsam.calls * 100) : 0;
+  const pickupBase = completed + (outcomes.no_answer || 0) + (outcomes.busy || 0);
+  const answerRate = pickupBase ? Math.round(completed / pickupBase * 1000) / 10 : 0;
   const ar_color = answerRate > 50 ? 'var(--green)' : answerRate > 30 ? 'var(--warn)' : 'var(--red)';
 
   // Update answer rate card
   const arEl = document.getElementById('answerRateVal');
   if (arEl) { arEl.textContent = pct(answerRate); arEl.style.color = ar_color; }
+  const arCard = document.getElementById('kpiAnswerRate');
+  if (arCard) {
+    arCard.classList.remove('green', 'warn', 'red');
+    arCard.classList.add(answerRate > 50 ? 'green' : answerRate > 30 ? 'warn' : 'red');
+  }
 
   document.getElementById('waCard').innerHTML = `
     <div class="card-head">
