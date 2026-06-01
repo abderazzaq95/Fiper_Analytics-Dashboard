@@ -788,7 +788,7 @@ async def run_whatsapp_activity_sync():
 async def run_whatsapp_message_sync():
     """Full WhatsApp message sync — pulls message bodies for contacts active in the last hour.
     Runs every 5 minutes so in/out counts stay fresh without waiting for the 2-hour pipeline."""
-    stats = await ingest_manycontacts(hours_back=1)
+    stats = {"contacts": 0, "messages_total": 0, "messages_outbound": 0, "mode": "webhook_only"}
     await _broadcast("data_updated", {"source": "whatsapp_messages", **stats})
 
 
@@ -1384,18 +1384,20 @@ async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
         delta.get("chat"),
     )
 
-    if not isinstance(delta, dict) or not isinstance(contact, dict) or not isinstance(message, dict):
+    if not isinstance(message, dict) or not message:
         log.warning(f"[webhook/mc] message_new malformed — preview={str(body)[:500]}")
         return
 
     contact_id = (
         delta.get("contactId") or delta.get("contact_id")
         or root.get("contactId") or root.get("contact_id")
+        or message.get("contactId") or message.get("contact_id")
         or contact.get("id")
     )
     phone = (
         contact.get("number") or contact.get("phone") or contact.get("wa_id")
-        or message.get("from") or message.get("to")
+        or message.get("from") or message.get("to") or message.get("number") or message.get("phone")
+        or delta.get("number") or delta.get("phone")
         or root.get("number") or root.get("phone")
     )
     if isinstance(phone, str) and "@" in phone:
@@ -1411,6 +1413,9 @@ async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
     if not direction and (message.get("fromMe") is True or message.get("from_me") is True):
         direction = "outbound"
     if not direction and (message.get("fromMe") is False or message.get("from_me") is False):
+        direction = "inbound"
+    if not direction and not _is_outbound_mc(root):
+        # Some ManyContacts message_new payloads omit type/direction for inbound messages.
         direction = "inbound"
     metadata = message.get("metadata") or {}
     sent_at = (
@@ -1596,16 +1601,20 @@ async def webhook_manycontacts(request: Request):
         _last_webhook_payloads.pop(0)
 
     now_iso = datetime.now(timezone.utc).isoformat()
+    event_name = str(body.get("event") or body.get("type") or "").lower().replace("-", "_").replace(".", "_")
 
     try:
         if "entry" in body:
             # Meta WhatsApp Cloud API — inbound messages + delivery statuses
             await _handle_meta_format(body, now_iso)
-        elif body.get("event") == "contact_created":
+        elif event_name == "contact_created":
             # ManyContacts native: new contact/lead notification
             await _handle_mc_contact_created(body, now_iso)
-        elif body.get("event") == "message_new":
+        elif event_name in {"message_new", "message_created", "new_message"} or "message_new" in event_name:
             # ManyContacts native: full message event, including outbound if enabled.
+            await _handle_mc_message_new(body, now_iso)
+        elif "message" in body or "messages" in body:
+            # Some forwarders omit an explicit event name.
             await _handle_mc_message_new(body, now_iso)
         elif _is_outbound_mc(body):
             # ManyContacts native outbound (agent reply) — if ever enabled
