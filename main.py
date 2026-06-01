@@ -47,7 +47,7 @@ async def _broadcast(event_type: str, payload: dict | None = None):
         _sse_clients.discard(q)
 
 _ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-_CLAUDE_MODEL  = "claude-haiku-4-5"
+_CLAUDE_MODEL  = "claude-haiku-4-5-20251001"
 
 _AI_SYSTEM_PROMPT = """You are a quality assurance analyst for Fiper, a trading broker in Arabic-speaking markets.
 Analyze the call transcript(s) between Fiper agents and leads.
@@ -460,8 +460,6 @@ async def _call_claude_async(user_message: str) -> dict:
             },
             content=_json.dumps(payload),
         )
-        if not resp.is_success:
-            log.error(f"[claude] {resp.status_code} — {resp.text[:500]}")
         resp.raise_for_status()
         raw = resp.json()["content"][0]["text"].strip()
 
@@ -560,8 +558,6 @@ async def _call_claude_call_summary_async(call: dict) -> dict:
             },
             content=_json.dumps(payload),
         )
-        if not resp.is_success:
-            log.error(f"[claude] {resp.status_code} — {resp.text[:500]}")
         resp.raise_for_status()
         raw = resp.json()["content"][0]["text"].strip()
 
