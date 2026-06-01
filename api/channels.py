@@ -41,40 +41,34 @@ def channels(range: str = Query("7d", pattern="^(today|7d|30d)$")):
 def _channels_inner(range: str):
     since = _since(range)
 
-    # WhatsApp leads: active in period (last_message_at within range)
-    wa_leads_raw = _paginate(
+    # WhatsApp leads active in period — single query, all needed fields
+    wa_leads = _paginate(
         lambda: supabase.table("leads")
-        .select("id,channel,status")
-        .eq("channel", "whatsapp")
-        .gte("last_message_at", since)
-    )
-
-    # Messages: small dataset
-    messages = (
-        supabase.table("messages").select("lead_id,direction,sent_at").gte("sent_at", since).execute().data or []
-    )
-
-    wa_activity = _paginate(
-        lambda: supabase.table("leads")
-        .select("id,phone,last_message_at")
+        .select("id,phone,status")
         .eq("channel", "whatsapp")
         .gte("last_message_at", since)
     )
     active_whatsapp_conversations = len({
-        l.get("phone") or l.get("id") for l in wa_activity if l.get("phone") or l.get("id")
+        l.get("phone") or l.get("id") for l in wa_leads if l.get("phone") or l.get("id")
     })
 
-    # Calls: use count="exact" for accurate total; sample for avg duration
+    # Messages in period (for stored message count + response-time calc)
+    messages = (
+        supabase.table("messages").select("lead_id,direction,sent_at")
+        .gte("sent_at", since).execute().data or []
+    )
+
+    # Calls in period — include lead_id so we can derive Maqsam lead count
     calls_res = (
         supabase.table("calls")
-        .select("id,duration_seconds,called_at", count="exact")
+        .select("id,lead_id,duration_seconds", count="exact")
         .gte("called_at", since)
         .execute()
     )
-    total_calls_maqsam = calls_res.count if calls_res.count is not None else len(calls_res.data or [])
+    total_calls_maqsam = calls_res.count if calls_res.count is not None else 0
     calls_sample = calls_res.data or []
 
-    # Maqsam leads: unique leads with calls in period
+    # Maqsam leads: unique leads that had calls in period
     mq_lead_ids: set[str] = {c["lead_id"] for c in calls_sample if c.get("lead_id")}
     if total_calls_maqsam > len(calls_sample):
         mq_lead_ids = set(
@@ -94,11 +88,11 @@ def _channels_inner(range: str):
             )
             mq_leads.extend(batch)
 
-    wa_leads = wa_leads_raw
     wa_converted = sum(1 for l in wa_leads if l.get("status") == "converted")
     mq_converted = sum(1 for l in mq_leads if l.get("status") == "converted")
 
-    wa_msgs = [m for m in messages if m.get("lead_id") in {l["id"] for l in wa_leads}]
+    wa_lead_ids = {l["id"] for l in wa_leads}
+    wa_msgs = [m for m in messages if m.get("lead_id") in wa_lead_ids]
     response_times = []
     by_lead: dict[str, list] = {}
     for m in wa_msgs:
