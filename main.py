@@ -1436,23 +1436,6 @@ async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
         )
         return
 
-    # Inbound messages arrive via the Meta-format webhook too (with proper wamid).
-    # Saving them here would create a duplicate with a different (ManyContacts) ID.
-    # Only handle outbound messages here; Meta format handles inbound.
-    if direction == "inbound":
-        # Still upsert the lead so new contacts appear immediately.
-        if phone or contact_id:
-            lead_key = contact_id or phone
-            supabase.table("leads").upsert({
-                "wa_contact_id": lead_key,
-                "phone": phone,
-                "name": name or None,
-                "channel": "whatsapp",
-                "last_message_at": sent_at,
-                "updated_at": now_iso,
-            }, on_conflict="wa_contact_id").execute()
-        return
-
     if not (phone or contact_id):
         log.warning(f"[webhook/mc] message_new missing contact — keys={list(body.keys())}")
         return
