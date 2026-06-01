@@ -1400,14 +1400,9 @@ function sparkline(trend) {
 // ── Agents table ──────────────────────────────────────────────────────────────
 let agentSortKey = 'calls_handled', agentSortAsc = false;
 let _agentAlertDetails = {};
-let _agentOpenAlertCounts = {};
-function _agentKey(agent) {
-  return String(agent || '').trim().toLowerCase();
-}
 function renderAgents(data) {
   const agents = (data.agents||[]).slice();
   _agentAlertDetails = {};
-  _agentOpenAlertCounts = {};
   document.getElementById('agentCount').textContent = `(${agents.length} ${lang==='ar'?'وكيل':'agents'})`;
 
   if (!agents.length) {
@@ -1432,10 +1427,7 @@ function renderAgents(data) {
   const thead = cols.map(c=>`<th ${c.sort?`onclick="sortAgents('${c.key}')" `:''}class="${c.sort?'':'no-sort'}${agentSortKey===c.key?' sorted':''}">${lang==='ar'?c.ar:c.en}${agentSortKey===c.key?(agentSortAsc?' ↑':' ↓'):''}</th>`).join('');
 
   const rows = agents.map(a=>{
-    const agentName = a.agent || '';
-    const agentKey = _agentKey(agentName);
-    _agentAlertDetails[agentKey] = Array.isArray(a.alert_details) ? a.alert_details : [];
-    _agentOpenAlertCounts[agentKey] = a.open_alerts || 0;
+    _agentAlertDetails[a.agent || ''] = a.alert_details || [];
     const s = a.sentiment||{};
     const tot = (s.positive||0)+(s.neutral||0)+(s.negative||0);
     const sentPill = tot===0 ? `<span class="pill pill-gray">${lang==='ar'?'لا بيانات':'No data'}</span>`
@@ -1449,9 +1441,9 @@ function renderAgents(data) {
       : ts>=50 ? `<span class="pill pill-warn">${fmt(ts)}</span>`
       : `<span class="pill pill-red">${fmt(ts)}</span>`;
 
-    const agentArg = JSON.stringify(agentName);
+    const agentArg = JSON.stringify(a.agent || '');
     const alBadge = (a.open_alerts||0)>0
-      ? `<button class="alert-badge has-alerts clickable" type="button" onclick='openAgentAlerts(${agentArg}, ${Number(a.open_alerts || 0)})'>${a.open_alerts}</button>`
+      ? `<button class="alert-badge has-alerts clickable" type="button" onclick='openAgentAlerts(${agentArg})'>${a.open_alerts}</button>`
       : `<span class="alert-badge no-alerts">0</span>`;
 
     const avgDur = a.avg_call_duration_seconds||0;
@@ -1586,85 +1578,6 @@ async function openAgentAlerts(agent) {
     body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Render error: ${esc(String(e))}</div></div>`;
   }
 }
-
-function _renderAgentAlertsImmediate(body, alerts, expectedCount=0) {
-  if (!alerts.length) {
-    const countText = expectedCount > 0
-      ? (lang==='ar'
-          ? `يوجد ${expectedCount} تنبيهات في الجدول، لكن لم ترجع تفاصيلها. جرّب Refresh.`
-          : `${expectedCount} alerts are counted, but their details were not returned. Try Refresh.`)
-      : 'No open alerts';
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">${expectedCount > 0 ? '!' : 'OK'}</div><div class="empty-text">${esc(countText)}</div></div>`;
-    return;
-  }
-
-  body.innerHTML = alerts.map(a => {
-    const sev    = (a.severity || 'MED').toUpperCase();
-    const sevCls = sev === 'HIGH' ? 'pill-red' : sev === 'LOW' ? 'pill-blue' : 'pill-warn';
-    const phone  = a.lead_phone ? fmtPhone(a.lead_phone) : 'Unknown lead';
-    let created  = '-';
-    try { created = a.created_at ? new Date(a.created_at).toLocaleString() : '-'; } catch(_){}
-    const typeLabel = _alertTypeLabel(a.type);
-    const sevLabel  = _alertSevLabel(sev);
-    const msgText   = lang==='ar' ? _alertMsgAr(a.message) : (a.message || '');
-    return `<div class="agent-alert-card">
-      <div class="agent-alert-top">
-        <span class="pill ${sevCls}">${esc(sevLabel)}</span>
-        <span class="agent-alert-title">${esc(typeLabel)}</span>
-      </div>
-      <div class="agent-alert-msg">${esc(msgText)}</div>
-      <div class="alert-meta">${esc(phone)} - ${esc(created)}</div>
-    </div>`;
-  }).join('');
-}
-
-async function _fetchAgentAlertsWithTimeout(agent, timeoutMs=8000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const url = `${API}/api/agents/alerts?agent=${encodeURIComponent(agent)}`;
-    const r = await fetch(url, { signal: controller.signal });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = await r.json();
-    return Array.isArray(data.alerts) ? data.alerts : [];
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-openAgentAlerts = async function(agent, expectedCount=null) {
-  const modal = document.getElementById('agentAlertsModal');
-  const title = document.getElementById('agentAlertsTitle');
-  const body  = document.getElementById('agentAlertsBody');
-  if (!modal || !title || !body) { console.error('[alerts] modal elements missing'); return; }
-
-  const key = _agentKey(agent);
-  const knownCount = expectedCount == null ? (_agentOpenAlertCounts[key] || 0) : Number(expectedCount || 0);
-  title.textContent = `${agent} - Alerts`;
-  modal.classList.add('open');
-
-  const cached = _agentAlertDetails[key];
-  if (Array.isArray(cached) && cached.length) {
-    try {
-      _renderAgentAlertsImmediate(body, cached, knownCount);
-    } catch(e) {
-      console.error('[alerts] cached render error:', e);
-      body.innerHTML = `<div class="empty-state"><div class="empty-icon">!</div><div class="empty-text">Render error: ${esc(String(e))}</div></div>`;
-    }
-    return;
-  }
-
-  body.innerHTML = `<div class="empty-state"><div class="skeleton" style="height:56px;margin:0 auto 12px;max-width:360px"></div><div class="empty-text">Downloading alerts...</div></div>`;
-
-  try {
-    const alerts = await _fetchAgentAlertsWithTimeout(agent);
-    _agentAlertDetails[key] = alerts;
-    _renderAgentAlertsImmediate(body, alerts, knownCount);
-  } catch(e) {
-    console.error('[alerts] fetch error:', e);
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">!</div><div class="empty-text">Failed to load alerts</div><div class="empty-sub">${esc(String(e))}</div></div>`;
-  }
-};
 
 function closeAgentAlertsModal(ev) {
   if (ev && ev.target !== ev.currentTarget) return;
