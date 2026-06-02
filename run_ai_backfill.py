@@ -18,8 +18,9 @@ load_dotenv()
 
 SB_URL        = os.getenv("SUPABASE_URL")
 SB_KEY        = os.getenv("SUPABASE_SERVICE_KEY")
-ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
-CLAUDE_MODEL  = "claude-haiku-4-5-20251001"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 supabase = create_client(SB_URL, SB_KEY)
 
@@ -50,24 +51,33 @@ risk_flags: unanswered|profit_expectations|beginner_risk|stale_callback|negative
 treatment_score: 90-100 excellent, 70-89 good, 50-69 average, 30-49 poor, 0-29 very poor"""
 
 
-async def call_claude(user_message: str) -> dict:
+async def call_gemini(user_message: str) -> dict:
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY is missing")
+
     async with httpx.AsyncClient(timeout=40) as client:
         resp = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": ANTHROPIC_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
+            f"{GEMINI_URL}?key={GEMINI_API_KEY}",
+            headers={"content-type": "application/json"},
             content=json.dumps({
-                "model": CLAUDE_MODEL,
-                "max_tokens": 512,
-                "system": SYSTEM_PROMPT,
-                "messages": [{"role": "user", "content": user_message}],
+                "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+                "contents": [{"role": "user", "parts": [{"text": user_message}]}],
+                "generationConfig": {
+                    "temperature": 0.1,
+                    "maxOutputTokens": 700,
+                    "responseMimeType": "application/json",
+                },
             }),
         )
         resp.raise_for_status()
-        raw = resp.json()["content"][0]["text"].strip()
+        raw = (
+            resp.json()
+            .get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [{}])[0]
+            .get("text", "")
+            .strip()
+        )
 
     try:
         return json.loads(raw)
@@ -138,9 +148,9 @@ async def reanalyze_lead(lead: dict, calls_by: dict, msgs_by: dict, dry_run: boo
     if dry_run:
         return f"  DRY   {phone} (channel={channel}, score={lead.get('score')})"
 
-    result = await call_claude(user_msg)
+    result = await call_gemini(user_msg)
     if not result:
-        return f"  ERROR {phone} — empty Claude response"
+        return f"  ERROR {phone} — empty AI response"
 
     if mq_sentiment:
         result["sentiment"] = mq_sentiment
@@ -213,7 +223,7 @@ async def main(limit: int, dry_run: bool):
         elif "DRY"  in line: skip += 1
         else:                err  += 1
         if not dry_run:
-            await asyncio.sleep(0.5)  # stay within Claude rate limits
+            await asyncio.sleep(0.5)  # stay within AI rate limits
 
     print(f"\nDone — {ok} updated, {skip} skipped, {err} errors")
 

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Query
 from supabase import create_client
-import anthropic
 import os
+import requests
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from collections import Counter
@@ -9,8 +9,9 @@ from collections import Counter
 load_dotenv()
 router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
-ai_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-MODEL = "claude-sonnet-4-20250514"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 
 
 def _paginate(build_query) -> list:
@@ -247,13 +248,33 @@ Common topics: {list({t for a in analyses for t in (a.get('topics') or [])})}
 Avg treatment score: {round(sum(a.get('treatment_score') or 0 for a in analyses) / len(analyses), 1) if analyses else 'N/A'}
 """
 
-    response = ai_client.messages.create(
-        model=MODEL,
-        max_tokens=400,
-        messages=[{
-            "role": "user",
-            "content": f"You are a CRM analytics assistant for Fiper, a trading broker. Write a concise weekly quality summary (3-4 bullet points) for the management team based on this data. Be direct and actionable. Use English.\n\n{context}"
-        }]
+    if not GEMINI_API_KEY:
+        return {"range": range, "summary": "GEMINI_API_KEY is missing."}
+
+    response = requests.post(
+        f"{GEMINI_URL}?key={GEMINI_API_KEY}",
+        headers={"content-type": "application/json"},
+        json={
+            "contents": [{
+                "role": "user",
+                "parts": [{
+                    "text": f"You are a CRM analytics assistant for Fiper, a trading broker. Write a concise weekly quality summary (3-4 bullet points) for the management team based on this data. Be direct and actionable. Use English.\n\n{context}"
+                }],
+            }],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 500,
+            },
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    summary = (
+        response.json()
+        .get("candidates", [{}])[0]
+        .get("content", {})
+        .get("parts", [{}])[0]
+        .get("text", "")
     )
 
-    return {"range": range, "summary": response.content[0].text}
+    return {"range": range, "summary": summary}

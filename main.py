@@ -46,8 +46,9 @@ async def _broadcast(event_type: str, payload: dict | None = None):
     for q in dead:
         _sse_clients.discard(q)
 
-_ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-_CLAUDE_MODEL  = "claude-haiku-4-5-20251001"
+_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
+_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+_GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{_GEMINI_MODEL}:generateContent"
 
 _AI_SYSTEM_PROMPT = """You are a quality assurance analyst for Fiper, a trading broker in Arabic-speaking markets.
 Analyze the call transcript(s) between Fiper agents and leads.
@@ -439,38 +440,61 @@ async def ingest_maqsam(days_back: int = 3, overlap_minutes: int = 30) -> dict:
     }
 
 
-async def _call_claude_async(user_message: str) -> dict:
-    """Call Claude Haiku via async httpx. Returns parsed JSON result dict."""
-    import httpx as _httpx
+def _parse_ai_json(raw: str, fallback: dict | None = None) -> dict:
     import json as _json
 
-    payload = {
-        "model": _CLAUDE_MODEL,
-        "max_tokens": 512,
-        "system": _AI_SYSTEM_PROMPT,
-        "messages": [{"role": "user", "content": user_message}],
+    fallback = fallback or {
+        "score": 0,
+        "topics": [],
+        "outcome": "ongoing",
+        "follow_up_needed": False,
+        "risk_flags": [],
+        "treatment_score": 50,
+        "summary": "Parse error.",
     }
-    async with _httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": _ANTHROPIC_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            content=_json.dumps(payload),
-        )
-        resp.raise_for_status()
-        raw = resp.json()["content"][0]["text"].strip()
-
+    raw = (raw or "").strip()
     try:
         return _json.loads(raw)
     except _json.JSONDecodeError:
         start, end = raw.find("{"), raw.rfind("}") + 1
-        if start != -1:
+        if start != -1 and end > start:
             return _json.loads(raw[start:end])
-        return {"score": 0, "topics": [], "outcome": "ongoing", "follow_up_needed": False,
-                "risk_flags": [], "treatment_score": 50, "summary": "Parse error."}
+        return fallback
+
+
+async def _call_gemini_async(user_message: str) -> dict:
+    """Call Gemini via async httpx. Returns parsed JSON result dict."""
+    import httpx as _httpx
+    import json as _json
+
+    if not _GEMINI_KEY:
+        raise RuntimeError("GEMINI_API_KEY is missing")
+
+    payload = {
+        "systemInstruction": {"parts": [{"text": _AI_SYSTEM_PROMPT}]},
+        "contents": [{"role": "user", "parts": [{"text": user_message}]}],
+        "generationConfig": {
+            "temperature": 0.1,
+            "maxOutputTokens": 700,
+            "responseMimeType": "application/json",
+        },
+    }
+    async with _httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            f"{_GEMINI_URL}?key={_GEMINI_KEY}",
+            headers={"content-type": "application/json"},
+            content=_json.dumps(payload),
+        )
+        resp.raise_for_status()
+        raw = (
+            resp.json()
+            .get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [{}])[0]
+            .get("text", "")
+        )
+
+    return _parse_ai_json(raw)
 
 
 def _clean_fiper_text(text: str | None) -> str:
@@ -484,7 +508,7 @@ def _has_arabic(text: str | None) -> bool:
 
 
 def _normalize_ai_result(result: dict) -> dict:
-    """Keep legacy summary plus bilingual display summaries when Claude returns them."""
+    """Keep legacy summary plus bilingual display summaries when the AI returns them."""
     result = dict(result)
     legacy = _clean_fiper_text(result.get("summary") or "")
     summary_en = _clean_fiper_text(result.get("summary_en") or "")
@@ -530,10 +554,13 @@ def _save_ai_analysis(lead_id: str, source: str, result: dict):
             ).execute()
 
 
-async def _call_claude_call_summary_async(call: dict) -> dict:
+async def _call_gemini_call_summary_async(call: dict) -> dict:
     """Generate bilingual call summaries for one Fiper call transcript."""
     import httpx as _httpx
     import json as _json
+
+    if not _GEMINI_KEY:
+        raise RuntimeError("GEMINI_API_KEY is missing")
 
     transcript = (call.get("transcript") or "").strip()
     user_message = (
@@ -543,29 +570,30 @@ async def _call_claude_call_summary_async(call: dict) -> dict:
         f"Transcript:\n{transcript[:5000]}"
     )
     payload = {
-        "model": _CLAUDE_MODEL,
-        "max_tokens": 350,
-        "system": _CALL_SUMMARY_SYSTEM_PROMPT,
-        "messages": [{"role": "user", "content": user_message}],
+        "systemInstruction": {"parts": [{"text": _CALL_SUMMARY_SYSTEM_PROMPT}]},
+        "contents": [{"role": "user", "parts": [{"text": user_message}]}],
+        "generationConfig": {
+            "temperature": 0.1,
+            "maxOutputTokens": 500,
+            "responseMimeType": "application/json",
+        },
     }
     async with _httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": _ANTHROPIC_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
+            f"{_GEMINI_URL}?key={_GEMINI_KEY}",
+            headers={"content-type": "application/json"},
             content=_json.dumps(payload),
         )
         resp.raise_for_status()
-        raw = resp.json()["content"][0]["text"].strip()
+        raw = (
+            resp.json()
+            .get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [{}])[0]
+            .get("text", "")
+        )
 
-    try:
-        parsed = _json.loads(raw)
-    except _json.JSONDecodeError:
-        start, end = raw.find("{"), raw.rfind("}") + 1
-        parsed = _json.loads(raw[start:end]) if start != -1 and end > start else {}
+    parsed = _parse_ai_json(raw, fallback={})
 
     return {
         "summary_en": _clean_fiper_text(parsed.get("summary_en") or ""),
@@ -575,8 +603,8 @@ async def _call_claude_call_summary_async(call: dict) -> dict:
 
 async def backfill_call_summaries(hours_back: int = 6, limit: int = 30) -> dict:
     """Fill missing summaries for calls over 30s when a transcript exists."""
-    if not _ANTHROPIC_KEY:
-        log.info("Call summary backfill skipped: ANTHROPIC_API_KEY is missing")
+    if not _GEMINI_KEY:
+        log.info("Call summary backfill skipped: GEMINI_API_KEY is missing")
         return {"summarized": 0, "errors": 0, "skipped": 0}
 
     cutoff_iso = (datetime.now(timezone.utc) - timedelta(hours=hours_back)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -598,7 +626,7 @@ async def backfill_call_summaries(hours_back: int = 6, limit: int = 30) -> dict:
     ok = err = skipped = 0
     for call in candidates:
         try:
-            summary = await _call_claude_call_summary_async(call)
+            summary = await _call_gemini_call_summary_async(call)
             update = {
                 k: v for k, v in summary.items()
                 if v and not call.get(k)
@@ -791,7 +819,7 @@ async def run_ai_analysis(hours_back: int = 3):
             continue
 
         try:
-            result = _normalize_ai_result(await _call_claude_async(user_msg))
+            result = _normalize_ai_result(await _call_gemini_async(user_msg))
             if mq_sentiment:
                 result["sentiment"] = mq_sentiment
 
@@ -799,7 +827,7 @@ async def run_ai_analysis(hours_back: int = 3):
 
             supabase.table("leads").update({"score": result.get("score")}).eq("id", lead_id).execute()
             ok += 1
-            await asyncio.sleep(0.3)  # stay within Claude rate limits
+            await asyncio.sleep(0.3)  # stay within AI rate limits
 
         except Exception as e:
             log.error(f"AI analysis failed for lead {lead_id}: {e}")
@@ -982,7 +1010,7 @@ async def _force_reanalyze_top(limit: int = 20):
                 skipped += 1
                 continue
 
-            result = _normalize_ai_result(await _call_claude_async(user_msg))
+            result = _normalize_ai_result(await _call_gemini_async(user_msg))
             if mq_sentiment:
                 result["sentiment"] = mq_sentiment
 

@@ -1,12 +1,13 @@
 import os
 import json
-import anthropic
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-MODEL = "claude-sonnet-4-20250514"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 
 SYSTEM_PROMPT = """You are an analytics engine for Fiper, a trading broker in Arabic-speaking markets.
 Analyze the conversation between a Fiper agent and a lead.
@@ -49,19 +50,36 @@ def analyze_conversation(messages: list[dict]) -> dict:
     if not conversation_text.strip():
         return _empty_result()
 
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=512,
-        system=SYSTEM_PROMPT,
-        messages=[
-            {
-                "role": "user",
-                "content": f"Analyze this conversation:\n\n{conversation_text}",
-            }
-        ],
-    )
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY is missing")
 
-    raw = response.content[0].text.strip()
+    response = requests.post(
+        f"{GEMINI_URL}?key={GEMINI_API_KEY}",
+        headers={"content-type": "application/json"},
+        json={
+            "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+            "contents": [{
+                "role": "user",
+                "parts": [{"text": f"Analyze this conversation:\n\n{conversation_text}"}],
+            }],
+            "generationConfig": {
+                "temperature": 0.1,
+                "maxOutputTokens": 700,
+                "responseMimeType": "application/json",
+            },
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+
+    raw = (
+        response.json()
+        .get("candidates", [{}])[0]
+        .get("content", {})
+        .get("parts", [{}])[0]
+        .get("text", "")
+        .strip()
+    )
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
