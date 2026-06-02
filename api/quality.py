@@ -79,7 +79,7 @@ def _quality_inner(range: str):
 
     analyses = (
         supabase.table("ai_analysis")
-        .select("sentiment,topics,treatment_score,risk_flags,analyzed_at,source")
+        .select("lead_id,sentiment,topics,treatment_score,risk_flags,analyzed_at,source,summary,summary_en,summary_ar")
         .gte("analyzed_at", since)
         .execute()
         .data
@@ -98,7 +98,13 @@ def _quality_inner(range: str):
     ) or []
 
     sentiments = [a["sentiment"] for a in analyses if a.get("sentiment")]
-    all_topics = [t for a in analyses for t in (a.get("topics") or [])]
+    excluded_topics = {"greetings", "no_answer"}
+    all_topics = [
+        t
+        for a in analyses
+        for t in (a.get("topics") or [])
+        if t not in excluded_topics
+    ]
     all_risk_flags = [f for a in analyses for f in (a.get("risk_flags") or [])]
     # Exclude maqsam entries with treatment_score=0 (no-answer call artifacts)
     treatment_scores = [
@@ -126,8 +132,37 @@ def _quality_inner(range: str):
         "profit_expectations":{"en": "Profit Expectations", "ar": "توقعات الربح"},
         "technical":          {"en": "Technical",           "ar": "تقني"},
     }
+    _TOPIC_LABELS.update({
+        "risk_management":    {"en": "Risk Management",     "ar": "Risk Management"},
+        "withdrawal":         {"en": "Withdrawal",          "ar": "Withdrawal"},
+        "objection_handling": {"en": "Objection Handling",  "ar": "Objection Handling"},
+        "deposit":            {"en": "Deposit",             "ar": "Deposit"},
+        "leverage":           {"en": "Leverage",            "ar": "Leverage"},
+    })
     topic_counter = Counter(all_topics)
     total_topic_count = sum(topic_counter.values())
+    topic_examples: dict[str, list[dict]] = {}
+    for analysis in analyses:
+        summary = (
+            analysis.get("summary_en")
+            or analysis.get("summary")
+            or analysis.get("summary_ar")
+            or ""
+        ).strip()
+        if not summary:
+            continue
+        if len(summary) > 260:
+            summary = summary[:257].rstrip() + "..."
+        for topic in analysis.get("topics") or []:
+            if topic in excluded_topics:
+                continue
+            examples = topic_examples.setdefault(topic, [])
+            if len(examples) >= 3:
+                continue
+            if any(e.get("text") == summary for e in examples):
+                continue
+            examples.append({"lead_id": analysis.get("lead_id"), "text": summary})
+
     faq_topics = [
         {
             "key":   topic,
@@ -135,6 +170,7 @@ def _quality_inner(range: str):
             "pct":   round(count / total_topic_count * 100, 1) if total_topic_count else 0,
             "en":    _TOPIC_LABELS.get(topic, {}).get("en", topic.replace("_", " ").title()),
             "ar":    _TOPIC_LABELS.get(topic, {}).get("ar", topic),
+            "examples": topic_examples.get(topic, []),
         }
         for topic, count in topic_counter.most_common(10)
     ]
@@ -156,7 +192,7 @@ def _quality_inner(range: str):
             "neutral": sentiments.count("neutral"),
             "negative": sentiments.count("negative"),
         },
-        "top_topics": dict(Counter(all_topics).most_common(10)),
+        "top_topics": dict(topic_counter.most_common(10)),
         "top_risk_flags": dict(Counter(all_risk_flags).most_common(10)),
         "faq_topics": faq_topics,
         "avg_treatment_score": round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else 0,

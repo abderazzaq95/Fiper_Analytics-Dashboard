@@ -263,6 +263,12 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 .topic-bar-pct{font-size:11px;color:var(--text-light);font-weight:700}
 .topic-bar-track{background:var(--bg);border-radius:4px;height:8px;overflow:hidden}
 .topic-bar-fill{height:100%;border-radius:4px;background:var(--blue-grad);transition:width .8s ease}
+.topic-example-list{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.topic-example{font-size:12px;line-height:1.45;color:var(--text);background:#F8FAFF;border:1px solid var(--border);border-radius:6px;padding:8px 10px}
+.topic-example-label{font-size:10px;font-weight:800;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-top:6px}
+.topic-risk-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:900px){.topic-risk-grid{grid-template-columns:1fr}}
+.topic-risk-title{font-size:12px;font-weight:800;color:var(--navy);margin-bottom:10px}
 
 /* ── Hot leads ── */
 .hot-lead-row{display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--border);transition:background .15s}
@@ -1378,6 +1384,47 @@ function renderFAQ(quality) {
 }
 
 // ── Sparkline ─────────────────────────────────────────────────────────────────
+function renderFAQ(quality) {
+  const faq = quality.faq_topics || [];
+  const section = document.getElementById('faqSection');
+  if (!faq.length) { section.style.display = 'none'; return; }
+  section.style.display = 'block';
+  const maxCount = faq[0]?.count || 1;
+  const riskRaw = quality?.top_risk_flags || {};
+  const riskKeys = Object.keys(riskRaw).slice(0,10);
+  const riskLabels = {
+    unanswered: lang === 'ar' ? 'Unanswered' : 'Unanswered',
+    profit_expectations: lang === 'ar' ? 'Profit Expectations' : 'Profit Expectations',
+    beginner_risk: lang === 'ar' ? 'Beginner Risk' : 'Beginner Risk',
+    stale_callback: lang === 'ar' ? 'Stale Callback' : 'Stale Callback',
+    negative_sentiment: lang === 'ar' ? 'Negative Sentiment' : 'Negative Sentiment',
+    slow_response: lang === 'ar' ? 'Slow Response' : 'Slow Response'
+  };
+  const topicHtml = faq.slice(0,10).map(t => {
+    const examples = (t.examples || []).slice(0,2);
+    return `<div class="faq-bar-row">
+      <div class="topic-bar-meta">
+        <span class="topic-bar-label">${esc(lang === 'ar' ? t.ar : t.en)}</span>
+        <span class="topic-bar-pct">${fmt(t.count)} · ${t.pct}%</span>
+      </div>
+      <div class="topic-bar-track"><div class="topic-bar-fill" style="width:${Math.round((t.count || 0) / maxCount * 100)}%"></div></div>
+      ${examples.length ? `<div class="topic-example-label">Examples</div><div class="topic-example-list">${examples.map(ex=>`<div class="topic-example">${esc(ex.text)}</div>`).join('')}</div>` : ''}
+    </div>`;
+  }).join('');
+  const riskHtml = riskKeys.length
+    ? riskKeys.map(k=>`<div class="risk-item"><span class="risk-name">${esc(riskLabels[k] || k.replaceAll('_',' '))}</span><span class="risk-count">${fmt(riskRaw[k])}</span></div>`).join('')
+    : `<div style="color:var(--text-light);font-size:12px">No risk flags detected</div>`;
+  document.getElementById('faqList').innerHTML = `
+    <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:14px">Business topics from analyzed conversations</div>
+    <div class="topic-risk-grid">
+      <div>${topicHtml}</div>
+      <div>
+        <div class="topic-risk-title">Risk Flags</div>
+        ${riskHtml}
+      </div>
+    </div>`;
+}
+
 function sparkline(trend) {
   if (!trend || trend.length < 2) return '';
   const W = 60, H = 22, PAD = 2;
