@@ -89,22 +89,13 @@ def _quality_inner(range: str):
     try:
         topic_example_rows = (
             supabase.table("ai_analysis")
-            .select("lead_id,topics,summary,summary_en,summary_ar")
+            .select("lead_id,topics,summary")
             .gte("analyzed_at", since)
             .execute()
             .data
         ) or []
     except Exception:
-        try:
-            topic_example_rows = (
-                supabase.table("ai_analysis")
-                .select("lead_id,topics,summary")
-                .gte("analyzed_at", since)
-                .execute()
-                .data
-            ) or []
-        except Exception:
-            topic_example_rows = []
+        topic_example_rows = []
 
     calls = _paginate(
         lambda: supabase.table("calls").select("id,outcome").gte("called_at", since)
