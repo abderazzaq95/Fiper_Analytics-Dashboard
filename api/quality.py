@@ -28,12 +28,17 @@ def _since(range_: str) -> str:
     now = datetime.now(timezone.utc)
     if range_ == "today":
         return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    deltas = {"7d": timedelta(days=7), "30d": timedelta(days=30)}
-    return (now - deltas.get(range_, timedelta(days=7))).isoformat()
+    if range_ in ("week", "7d"):
+        start = now - timedelta(days=now.weekday())
+        return start.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    if range_ in ("month", "30d"):
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    start = now - timedelta(days=now.weekday())
+    return start.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
 
 
 @router.get("/api/quality")
-def quality(range: str = Query("7d", pattern="^(today|7d|30d)$")):
+def quality(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
     try:
         return _quality_inner(range)
     except Exception as e:
@@ -164,7 +169,7 @@ def _quality_inner(range: str):
 
 
 @router.get("/api/quality/summary")
-def quality_summary(range: str = Query("7d", pattern="^(today|7d|30d)$")):
+def quality_summary(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
     since = _since(range)
 
     analyses = (

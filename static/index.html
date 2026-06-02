@@ -466,8 +466,8 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 
   <div class="tabs">
     <button onclick="setRange('today')" data-en="Today" data-ar="اليوم">Today</button>
-    <button onclick="setRange('7d')" class="active" data-en="7 Days" data-ar="7 أيام">7 Days</button>
-    <button onclick="setRange('30d')" data-en="30 Days" data-ar="30 يوم">30 Days</button>
+    <button onclick="setRange('week')" class="active" data-en="This Week" data-ar="هذا الأسبوع">This Week</button>
+    <button onclick="setRange('month')" data-en="This Month" data-ar="هذا الشهر">This Month</button>
   </div>
 
   <div class="header-right">
@@ -523,7 +523,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   <!-- Channel Traffic -->
   <div class="card" style="margin-top:18px;padding:0;overflow:hidden">
     <div style="padding:16px 22px 12px;border-bottom:1px solid var(--border)">
-      <div class="card-head" style="margin:0" data-en="Channel Traffic — Today / 2d / 7d" data-ar="حركة القنوات — اليوم / يومان / 7 أيام">Channel Traffic — Today / 2d / 7d</div>
+      <div class="card-head" style="margin:0" data-en="Channel Traffic — Today / This Week / This Month" data-ar="حركة القنوات — اليوم / هذا الأسبوع / هذا الشهر">Channel Traffic — Today / This Week / This Month</div>
     </div>
     <div id="trafficTable"><div class="skeleton" style="height:80px;margin:16px;border-radius:6px"></div></div>
   </div>
@@ -766,7 +766,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 
 <script>
 const API = '';
-let range = '7d';
+let range = 'week';
 let lang  = localStorage.getItem('fiper_lang') || 'en';
 let charts = {};
 let allLeads = [];
@@ -1162,7 +1162,7 @@ function renderTopics(quality) {
 function renderTraffic(traffic) {
   const el = document.getElementById('trafficTable');
   if (!traffic) { el.innerHTML=''; return; }
-  const pLabels = {today:{en:'Today',ar:'اليوم'},'2d':{en:'2 Days',ar:'يومان'},'7d':{en:'7 Days',ar:'7 أيام'}};
+  const pLabels = {today:{en:'Today',ar:'اليوم'},week:{en:'This Week',ar:'هذا الأسبوع'},month:{en:'This Month',ar:'هذا الشهر'}};
   function trendArrow(todayV,ydayV) {
     if(!ydayV) return['→','trend-flat'];
     const r=todayV/ydayV;
@@ -1174,7 +1174,7 @@ function renderTraffic(traffic) {
     {ch:'maqsam',icon:'📞',label:{en:'Maqsam Leads',ar:'عملاء مقسم'},metric:'leads'},
     {ch:'maqsam',icon:'📞',label:{en:'Maqsam Calls',ar:'مكالمات مقسم'},metric:'calls'},
   ];
-  const periods=['today','2d','7d'];
+  const periods=['today','week','month'];
   const thead=`<tr><th>${lang==='ar'?'القناة':'Channel'}</th>${periods.map(p=>`<th style="text-align:right">${lang==='ar'?pLabels[p].ar:pLabels[p].en}</th>`).join('')}<th style="text-align:center">${lang==='ar'?'الاتجاه':'Trend'}</th></tr>`;
   const tbody=rows.map(r=>{
     const vals=periods.map(p=>traffic[p]?.[r.ch]?.[r.metric]||0);

@@ -13,8 +13,13 @@ def _since(range_: str) -> str:
     now = datetime.now(timezone.utc)
     if range_ == "today":
         return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    deltas = {"7d": timedelta(days=7), "30d": timedelta(days=30)}
-    return (now - deltas.get(range_, timedelta(days=7))).isoformat()
+    if range_ in ("week", "7d"):
+        start = now - timedelta(days=now.weekday())
+        return start.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    if range_ in ("month", "30d"):
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    start = now - timedelta(days=now.weekday())
+    return start.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
 
 
 def _paginate(build_query) -> list:
@@ -29,7 +34,7 @@ def _paginate(build_query) -> list:
 
 
 @router.get("/api/channels")
-def channels(range: str = Query("7d", pattern="^(today|7d|30d)$")):
+def channels(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
     try:
         return _channels_inner(range)
     except Exception as e:
@@ -134,13 +139,13 @@ def _channels_inner(range: str):
 
 _EMPTY_TRAFFIC = {
     p: {"whatsapp": {"leads": 0, "messages": 0}, "maqsam": {"leads": 0, "calls": 0}}
-    for p in ("today", "2d", "7d")
+    for p in ("today", "week", "month")
 }
 
 
 @router.get("/api/channels/traffic")
 def channels_traffic():
-    """Multi-period traffic breakdown: today / 2d / 7d for each channel."""
+    """Multi-period traffic breakdown: today / this week / this month."""
     try:
         return _channels_traffic_inner()
     except Exception as e:
@@ -151,12 +156,15 @@ def channels_traffic():
 
 def _channels_traffic_inner():
     now = datetime.now(timezone.utc)
-    since_7d = (now - timedelta(days=7)).isoformat()
+    start_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    since_month = start_month.isoformat()
 
     leads = (
         supabase.table("leads")
         .select("id,channel,created_at")
-        .gte("created_at", since_7d)
+        .gte("created_at", since_month)
         .execute()
         .data
     ) or []
@@ -166,18 +174,15 @@ def _channels_traffic_inner():
     messages = (
         supabase.table("messages")
         .select("lead_id,sent_at")
-        .gte("sent_at", since_7d)
+        .gte("sent_at", since_month)
         .execute()
         .data
     ) or []
 
     # Use count="exact" per period to avoid row cap
     result: dict = {}
-    for label, delta in [("today", None), ("2d", timedelta(days=2)), ("7d", timedelta(days=7))]:
-        if delta is None:
-            cutoff = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-        else:
-            cutoff = (now - delta).isoformat()
+    for label, cutoff_dt in [("today", start_today), ("week", start_week), ("month", start_month)]:
+        cutoff = cutoff_dt.isoformat()
         p_leads = [l for l in leads if (l.get("created_at") or "") >= cutoff]
         wa = sum(1 for l in p_leads if l.get("channel") == "whatsapp")
         mq = sum(1 for l in p_leads if l.get("channel") == "maqsam")

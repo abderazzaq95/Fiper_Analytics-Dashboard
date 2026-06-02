@@ -16,8 +16,13 @@ def _since(range_: str) -> str:
     if range_ == "today":
         # Calendar day — since midnight UTC, not rolling 24h
         return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    deltas = {"7d": timedelta(days=7), "30d": timedelta(days=30)}
-    return (now - deltas.get(range_, timedelta(days=7))).isoformat()
+    if range_ in ("week", "7d"):
+        start = now - timedelta(days=now.weekday())
+        return start.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    if range_ in ("month", "30d"):
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    start = now - timedelta(days=now.weekday())
+    return start.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
 
 
 def _minutes_between(later: str, earlier: str) -> float:
@@ -42,7 +47,7 @@ def _paginate(build_query) -> list:
 
 
 @router.get("/api/overview")
-def overview(range: str = Query("7d", pattern="^(today|7d|30d)$")):
+def overview(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
     try:
         return _overview_inner(range)
     except Exception as e:
@@ -110,8 +115,8 @@ def _overview_inner(range: str):
     for batch in [calls_sample]:  # first 1000 covers today/7d well; paginate for 30d
         call_lead_ids.update(c["lead_id"] for c in batch if c.get("lead_id"))
 
-    # For 30d, paginate all call lead_ids (up to ~40k calls)
-    if range == "30d" and total_calls > 1000:
+    # Paginate all call lead_ids when the selected range exceeds Supabase's first-page cap.
+    if total_calls > 1000:
         call_lead_ids = set(
             c["lead_id"]
             for c in _paginate(
