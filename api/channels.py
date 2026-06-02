@@ -76,7 +76,8 @@ def _channels_inner(range: str):
     mq_call_lead_ids = {c["lead_id"] for c in calls if c.get("lead_id")}
     mq_call_leads = []
     mq_ids = list(mq_call_lead_ids)
-    for idx in range(0, len(mq_ids), 500):
+    idx = 0
+    while idx < len(mq_ids):
         batch_ids = mq_ids[idx:idx + 500]
         mq_call_leads.extend(
             supabase.table("leads")
@@ -84,6 +85,7 @@ def _channels_inner(range: str):
             .in_("id", batch_ids)
             .execute().data or []
         )
+        idx += 500
     mq_unique_people = {
         l.get("phone") or l.get("id")
         for l in mq_call_leads
