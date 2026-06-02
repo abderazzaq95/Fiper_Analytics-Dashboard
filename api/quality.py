@@ -79,11 +79,32 @@ def _quality_inner(range: str):
 
     analyses = (
         supabase.table("ai_analysis")
-        .select("lead_id,sentiment,topics,treatment_score,risk_flags,analyzed_at,source,summary,summary_en,summary_ar")
+        .select("lead_id,sentiment,topics,treatment_score,risk_flags,analyzed_at,source")
         .gte("analyzed_at", since)
         .execute()
         .data
     ) or []
+
+    topic_example_rows = []
+    try:
+        topic_example_rows = (
+            supabase.table("ai_analysis")
+            .select("lead_id,topics,summary,summary_en,summary_ar")
+            .gte("analyzed_at", since)
+            .execute()
+            .data
+        ) or []
+    except Exception:
+        try:
+            topic_example_rows = (
+                supabase.table("ai_analysis")
+                .select("lead_id,topics,summary")
+                .gte("analyzed_at", since)
+                .execute()
+                .data
+            ) or []
+        except Exception:
+            topic_example_rows = []
 
     calls = _paginate(
         lambda: supabase.table("calls").select("id,outcome").gte("called_at", since)
@@ -142,7 +163,7 @@ def _quality_inner(range: str):
     topic_counter = Counter(all_topics)
     total_topic_count = sum(topic_counter.values())
     topic_examples: dict[str, list[dict]] = {}
-    for analysis in analyses:
+    for analysis in topic_example_rows:
         summary = (
             analysis.get("summary_en")
             or analysis.get("summary")
