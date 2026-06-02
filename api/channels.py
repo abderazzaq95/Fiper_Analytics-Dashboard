@@ -41,8 +41,9 @@ def channels(range: str = Query("7d", pattern="^(today|7d|30d)$")):
 def _channels_inner(range: str):
     since = _since(range)
 
-    # Leads: paginate — no date filter intentional (show channel totals all-time)
-    leads = _paginate(lambda: supabase.table("leads").select("id,channel,status"))
+    # Leads are fetched as lookup data; Maqsam lead totals are derived from
+    # calls in the selected range below.
+    leads = _paginate(lambda: supabase.table("leads").select("id,phone,channel,status"))
 
     # Messages: small dataset
     messages = (
@@ -59,21 +60,29 @@ def _channels_inner(range: str):
         l.get("phone") or l.get("id") for l in wa_activity if l.get("phone") or l.get("id")
     })
 
-    # Calls: use count="exact" for accurate total; sample for avg duration
-    calls_res = (
-        supabase.table("calls")
-        .select("id,duration_seconds,called_at", count="exact")
+    calls = _paginate(
+        lambda: supabase.table("calls")
+        .select("id,duration_seconds,called_at,lead_id")
         .gte("called_at", since)
-        .execute()
     )
-    total_calls_maqsam = calls_res.count if calls_res.count is not None else len(calls_res.data or [])
-    calls_sample = calls_res.data or []
+    total_calls_maqsam = len(calls)
 
     wa_leads = [l for l in leads if l.get("channel") == "whatsapp"]
-    mq_leads = [l for l in leads if l.get("channel") == "maqsam"]
+    leads_by_id = {l["id"]: l for l in leads if l.get("id")}
+    mq_call_lead_ids = {c["lead_id"] for c in calls if c.get("lead_id")}
+    mq_call_leads = [leads_by_id[lid] for lid in mq_call_lead_ids if lid in leads_by_id]
+    mq_unique_people = {
+        l.get("phone") or l.get("id")
+        for l in mq_call_leads
+        if l.get("phone") or l.get("id")
+    }
 
     wa_converted = sum(1 for l in wa_leads if l.get("status") == "converted")
-    mq_converted = sum(1 for l in mq_leads if l.get("status") == "converted")
+    mq_converted_people = {
+        l.get("phone") or l.get("id")
+        for l in mq_call_leads
+        if l.get("status") == "converted" and (l.get("phone") or l.get("id"))
+    }
 
     lead_ids_by_channel = {
         "whatsapp": {l["id"] for l in wa_leads},
@@ -100,8 +109,8 @@ def _channels_inner(range: str):
 
     avg_response = round(sum(response_times) / len(response_times), 1) if response_times else 0
     avg_call_dur = round(
-        sum(c.get("duration_seconds") or 0 for c in calls_sample) / len(calls_sample), 1
-    ) if calls_sample else 0
+        sum(c.get("duration_seconds") or 0 for c in calls) / len(calls), 1
+    ) if calls else 0
 
     return {
         "range": range,
@@ -114,9 +123,9 @@ def _channels_inner(range: str):
             "avg_response_time_min": avg_response,
         },
         "maqsam": {
-            "leads": len(mq_leads),
-            "converted": mq_converted,
-            "conversion_rate": round(mq_converted / len(mq_leads) * 100, 1) if mq_leads else 0,
+            "leads": len(mq_unique_people),
+            "converted": len(mq_converted_people),
+            "conversion_rate": round(len(mq_converted_people) / len(mq_unique_people) * 100, 1) if mq_unique_people else 0,
             "calls": total_calls_maqsam,
             "avg_call_duration_seconds": avg_call_dur,
         },
