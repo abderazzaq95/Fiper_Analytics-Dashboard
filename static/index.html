@@ -2273,10 +2273,6 @@ async function loadAll(bgRefresh = false) {
     const chP      = get('/api/channels');
     const leadsP   = get('/api/leads');
     const trafficP = fetch(`${API}/api/channels/traffic`).then(r => r.ok ? r.json() : Promise.resolve({}));
-    // Phase 2 — heavier: agents & quality (kick off in parallel, don't await yet)
-    const agentsP  = get('/api/agents');
-    const qualityP = get('/api/quality');
-
     const [status, ov, ch, leads, traffic] = await Promise.all([statusP, ovP, chP, leadsP, trafficP]);
     _pipelineStatus = status;
     // Render fast sections immediately; keep existing agents/quality in cache if available
@@ -2285,7 +2281,9 @@ async function loadAll(bgRefresh = false) {
     renderAll(...partialData);
     if (!bgRefresh) loadJourneyV2();
 
-    // Phase 2 complete — update only agents/quality sections
+    // Phase 2 — start heavier agents/quality calls after the first render.
+    const agentsP  = get('/api/agents');
+    const qualityP = get('/api/quality');
     const [agents, quality] = await Promise.all([agentsP, qualityP]);
     const fullData = [ov, ch, leads, agents, quality, traffic];
     _cache = fullData;

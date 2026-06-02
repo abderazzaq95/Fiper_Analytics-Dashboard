@@ -46,10 +46,6 @@ def channels(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
 def _channels_inner(range: str):
     since = _since(range)
 
-    # Leads are fetched as lookup data; Maqsam lead totals are derived from
-    # calls in the selected range below.
-    leads = _paginate(lambda: supabase.table("leads").select("id,phone,channel,status"))
-
     # Messages: small dataset
     messages = (
         supabase.table("messages").select("lead_id,direction,sent_at").gte("sent_at", since).execute().data or []
@@ -72,10 +68,22 @@ def _channels_inner(range: str):
     )
     total_calls_maqsam = len(calls)
 
-    wa_leads = [l for l in leads if l.get("channel") == "whatsapp"]
-    leads_by_id = {l["id"]: l for l in leads if l.get("id")}
+    wa_leads = _paginate(
+        lambda: supabase.table("leads")
+        .select("id,phone,status")
+        .eq("channel", "whatsapp")
+    )
     mq_call_lead_ids = {c["lead_id"] for c in calls if c.get("lead_id")}
-    mq_call_leads = [leads_by_id[lid] for lid in mq_call_lead_ids if lid in leads_by_id]
+    mq_call_leads = []
+    mq_ids = list(mq_call_lead_ids)
+    for idx in range(0, len(mq_ids), 500):
+        batch_ids = mq_ids[idx:idx + 500]
+        mq_call_leads.extend(
+            supabase.table("leads")
+            .select("id,phone,status")
+            .in_("id", batch_ids)
+            .execute().data or []
+        )
     mq_unique_people = {
         l.get("phone") or l.get("id")
         for l in mq_call_leads
