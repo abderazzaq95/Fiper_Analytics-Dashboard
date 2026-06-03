@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from supabase import create_client
 import os
 from dotenv import load_dotenv
+from pipeline import email_notifications
 
 load_dotenv()
 
@@ -21,13 +22,18 @@ def _upsert_alert(lead_id, agent_name, severity, alert_type, message):
     )
     if existing.data:
         return
-    supabase.table("alerts").insert({
+    alert = {
         "lead_id": lead_id,
         "agent_name": agent_name,
         "severity": severity,
         "type": alert_type,
         "message": message,
-    }).execute()
+    }
+    supabase.table("alerts").insert(alert).execute()
+    try:
+        email_notifications.notify_agent_alert(alert)
+    except Exception:
+        pass
 
 
 def check_no_reply():

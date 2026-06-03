@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Query
+from fastapi import FastAPI, Request, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
@@ -15,7 +15,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from supabase import create_client
 from dotenv import load_dotenv
 
-from pipeline import whatsapp, maqsam, ai_analyzer, alert_engine
+from pipeline import whatsapp, maqsam, ai_analyzer, alert_engine, email_notifications
 from api import overview, agents, leads, channels, quality, journey, journey_v2
 
 load_dotenv()
@@ -1057,6 +1057,20 @@ def _ping_self():
         log.warning(f"Self-ping failed: {e}")
 
 
+def send_sales_report(report_label: str):
+    try:
+        sent = email_notifications.send_supervisor_report(report_label)
+        log.info(f"Sales report {report_label} sent={sent}")
+    except Exception as e:
+        log.error(f"Sales report {report_label} failed: {e}", exc_info=True)
+
+
+def _require_email_debug_token(token: str):
+    expected = os.getenv("EMAIL_DEBUG_TOKEN", "")
+    if not expected or token != expected:
+        raise HTTPException(status_code=403, detail="Invalid email debug token")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Warm agent cache on startup
@@ -1115,6 +1129,30 @@ async def lifespan(app: FastAPI):
         coalesce=True,
     )
     scheduler.add_job(_ping_self, "interval", minutes=10, id="keepalive", replace_existing=True)
+    scheduler.add_job(
+        send_sales_report,
+        "cron",
+        hour=13,
+        minute=0,
+        timezone="UTC",
+        args=["13:00 UTC"],
+        id="sales_report_13",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        send_sales_report,
+        "cron",
+        hour=19,
+        minute=0,
+        timezone="UTC",
+        args=["19:00 UTC"],
+        id="sales_report_19",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
     scheduler.start()
     log.info(
         "Scheduler started — Maqsam every 2 min, WA activity every 2 min, "
@@ -1825,6 +1863,26 @@ def pipeline_status():
 def debug_webhooks():
     """Return the last 5 raw webhook payloads received — use to diagnose format issues."""
     return {"count": len(_last_webhook_payloads), "payloads": _last_webhook_payloads}
+
+
+@app.post("/api/debug/email/supervisor-report")
+def debug_send_supervisor_report(token: str = Query("")):
+    _require_email_debug_token(token)
+    sent = email_notifications.send_supervisor_report("manual test")
+    return {"sent": sent}
+
+
+@app.post("/api/debug/email/agent-alert")
+def debug_send_agent_alert(agent: str = Query("Jehad Qasim"), token: str = Query("")):
+    _require_email_debug_token(token)
+    sent = email_notifications.notify_agent_alert({
+        "lead_id": "test",
+        "agent_name": agent,
+        "severity": "HIGH",
+        "type": "test_alert",
+        "message": "Test alert notification from Fiper Analytics Dashboard.",
+    })
+    return {"agent": agent, "sent": sent}
 
 
 @app.get("/api/debug/mc-probe")
