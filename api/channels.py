@@ -68,11 +68,22 @@ def _channels_inner(range: str):
     )
     total_calls_maqsam = len(calls)
 
-    wa_leads = _paginate(
-        lambda: supabase.table("leads")
-        .select("id,phone,status")
-        .eq("channel", "whatsapp")
-    )
+    active_whatsapp_keys = {
+        l.get("phone") or l.get("id") for l in wa_activity if l.get("phone") or l.get("id")
+    }
+    wa_activity_ids = {l["id"] for l in wa_activity if l.get("id")}
+    wa_leads = []
+    wa_ids = list(wa_activity_ids)
+    idx = 0
+    while idx < len(wa_ids):
+        batch_ids = wa_ids[idx:idx + 500]
+        wa_leads.extend(
+            supabase.table("leads")
+            .select("id,phone,status")
+            .in_("id", batch_ids)
+            .execute().data or []
+        )
+        idx += 500
     mq_call_lead_ids = {c["lead_id"] for c in calls if c.get("lead_id")}
     mq_call_leads = []
     mq_ids = list(mq_call_lead_ids)
@@ -92,7 +103,11 @@ def _channels_inner(range: str):
         if l.get("phone") or l.get("id")
     }
 
-    wa_converted = sum(1 for l in wa_leads if l.get("status") == "converted")
+    wa_converted_people = {
+        l.get("phone") or l.get("id")
+        for l in wa_leads
+        if l.get("status") == "converted" and (l.get("phone") or l.get("id"))
+    }
     mq_converted_people = {
         l.get("phone") or l.get("id")
         for l in mq_call_leads
@@ -130,9 +145,9 @@ def _channels_inner(range: str):
     return {
         "range": range,
         "whatsapp": {
-            "leads": len(wa_leads),
-            "converted": wa_converted,
-            "conversion_rate": round(wa_converted / len(wa_leads) * 100, 1) if wa_leads else 0,
+            "leads": len(active_whatsapp_keys),
+            "converted": len(wa_converted_people),
+            "conversion_rate": round(len(wa_converted_people) / len(active_whatsapp_keys) * 100, 1) if active_whatsapp_keys else 0,
             "messages": active_whatsapp_conversations,
             "stored_messages": len(wa_msgs),
             "avg_response_time_min": avg_response,
