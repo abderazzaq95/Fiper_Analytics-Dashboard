@@ -504,7 +504,13 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   <div id="hotLeadsSection" style="display:none;margin-bottom:24px">
     <div class="section-label" style="color:var(--red)"><span data-en="🔥 Hot Leads — Immediate Attention" data-ar="🔥 عملاء ساخنون — تحتاج اهتمام فوري">🔥 Hot Leads — Immediate Attention</span></div>
     <div class="card" style="border:2px solid var(--red);padding:0;overflow:hidden">
+      <div style="padding:10px 20px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-light)">
+        <span data-en="Hot = score 80+ and status is new." data-ar="Hot = score 80+ and status is new.">Hot = score 80+ and status is new.</span>
+      </div>
       <div id="hotLeadsList"></div>
+      <div id="hotLeadsToggleWrap" style="display:none;padding:10px 16px;border-top:1px solid var(--border);text-align:center">
+        <button id="hotLeadsToggleBtn" onclick="toggleHotLeads()" style="background:none;border:none;color:var(--primary);font-size:13px;font-weight:700;cursor:pointer;padding:5px 12px;border-radius:6px"></button>
+      </div>
     </div>
   </div>
 
@@ -908,6 +914,7 @@ function renderGeo(leads) {
       <div class="geo-count">${fmt(g.count)}</div>
       <div class="geo-pct">${total?pct(g.count/total*100):'—'}</div>
     </div>`).join('');
+
 }
 
 // ── Pipeline freshness helpers ────────────────────────────────────────────────
@@ -1316,27 +1323,45 @@ function _renderLeadsRows() {
 }
 
 // ── Hot Leads ─────────────────────────────────────────────────────────────────
+let hotLeadsExpanded = false;
+let hotLeadsCache = [];
+// ── Peak Hours ────────────────────────────────────────────────────────────────
 function renderHotLeads(leadsData) {
   const hot = leadsData.hot_leads || [];
+  hotLeadsCache = hot;
   const section = document.getElementById('hotLeadsSection');
   if (!hot.length) { section.style.display = 'none'; return; }
   section.style.display = 'block';
-  const chIcon = {whatsapp:'💬', maqsam:'📞'};
-  document.getElementById('hotLeadsList').innerHTML = hot.slice(0, 15).map(l => `
+  const chIcon = {whatsapp:'ðŸ’¬', maqsam:'ðŸ“ž'};
+  const shown = hotLeadsExpanded ? hot : hot.slice(0, 5);
+  document.getElementById('hotLeadsList').innerHTML = shown.map(l => `
     <div class="hot-lead-row">
       <div class="hot-score-badge hot-pulse">${Math.round(l.score)}</div>
       <div style="flex:1;min-width:0">
         <div style="font-weight:700;color:var(--navy)">${l.name || fmtPhone(l.phone)} ${chIcon[l.channel] || ''}</div>
-        <div style="font-size:11px;color:var(--text-light)">${fmtPhone(l.phone)} · ${lang==='ar'?'الوكيل':'Agent'}: ${l.assigned_agent || '—'}</div>
+        <div style="font-size:11px;color:var(--text-light)">${fmtPhone(l.phone)} · Agent: ${l.assigned_agent || '—'}</div>
       </div>
       <div style="text-align:right;flex-shrink:0">
-        <div style="font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase">${lang==='ar'?'آخر تواصل':'Last contact'}</div>
+        <div style="font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase">Last contact</div>
         <div style="font-size:13px;font-weight:700;color:var(--red)">${ago(l.last_message_at || l.created_at)}</div>
       </div>
     </div>`).join('');
+
+  const toggleWrap = document.getElementById('hotLeadsToggleWrap');
+  const toggleBtn = document.getElementById('hotLeadsToggleBtn');
+  if (toggleWrap && toggleBtn && hot.length > 5) {
+    toggleWrap.style.display = 'block';
+    toggleBtn.textContent = hotLeadsExpanded ? 'Show less' : `Show more (${hot.length - 5})`;
+  } else if (toggleWrap) {
+    toggleWrap.style.display = 'none';
+  }
 }
 
-// ── Peak Hours ────────────────────────────────────────────────────────────────
+function toggleHotLeads() {
+  hotLeadsExpanded = !hotLeadsExpanded;
+  renderHotLeads({hot_leads: hotLeadsCache});
+}
+
 function renderHourlyChart(ov) {
   const section = document.getElementById('hourlySection');
   const dist = ov.hourly_distribution || [];
