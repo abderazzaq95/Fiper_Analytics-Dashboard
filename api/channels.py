@@ -33,6 +33,11 @@ def _paginate(build_query) -> list:
     return rows
 
 
+def _exact_count(build_query) -> int:
+    res = build_query().execute()
+    return res.count or 0
+
+
 @router.get("/api/channels")
 def channels(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
     try:
@@ -46,14 +51,13 @@ def channels(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
 def _channels_inner(range: str):
     since = _since(range)
 
-    # Messages: small dataset
-    messages = (
-        supabase.table("messages").select("lead_id,direction,sent_at").gte("sent_at", since).execute().data or []
+    stored_messages_count = _exact_count(
+        lambda: supabase.table("messages").select("id", count="exact").gte("sent_at", since)
     )
 
     wa_activity = _paginate(
         lambda: supabase.table("leads")
-        .select("id,phone,last_message_at")
+        .select("id,phone,status")
         .eq("channel", "whatsapp")
         .gte("last_message_at", since)
     )
@@ -61,30 +65,17 @@ def _channels_inner(range: str):
         l.get("phone") or l.get("id") for l in wa_activity if l.get("phone") or l.get("id")
     })
 
-    calls = _paginate(
-        lambda: supabase.table("calls")
-        .select("id,duration_seconds,called_at,lead_id")
-        .gte("called_at", since)
+    total_calls_maqsam = _exact_count(
+        lambda: supabase.table("calls").select("id", count="exact").gte("called_at", since)
     )
-    total_calls_maqsam = len(calls)
+    call_rows = _paginate(
+        lambda: supabase.table("calls").select("lead_id,duration_seconds").gte("called_at", since)
+    )
 
     active_whatsapp_keys = {
         l.get("phone") or l.get("id") for l in wa_activity if l.get("phone") or l.get("id")
     }
-    wa_activity_ids = {l["id"] for l in wa_activity if l.get("id")}
-    wa_leads = []
-    wa_ids = list(wa_activity_ids)
-    idx = 0
-    while idx < len(wa_ids):
-        batch_ids = wa_ids[idx:idx + 500]
-        wa_leads.extend(
-            supabase.table("leads")
-            .select("id,phone,status")
-            .in_("id", batch_ids)
-            .execute().data or []
-        )
-        idx += 500
-    mq_call_lead_ids = {c["lead_id"] for c in calls if c.get("lead_id")}
+    mq_call_lead_ids = {c["lead_id"] for c in call_rows if c.get("lead_id")}
     mq_call_leads = []
     mq_ids = list(mq_call_lead_ids)
     idx = 0
@@ -105,7 +96,7 @@ def _channels_inner(range: str):
 
     wa_converted_people = {
         l.get("phone") or l.get("id")
-        for l in wa_leads
+        for l in wa_activity
         if l.get("status") == "converted" and (l.get("phone") or l.get("id"))
     }
     mq_converted_people = {
@@ -114,33 +105,9 @@ def _channels_inner(range: str):
         if l.get("status") == "converted" and (l.get("phone") or l.get("id"))
     }
 
-    lead_ids_by_channel = {
-        "whatsapp": {l["id"] for l in wa_leads},
-    }
-
-    wa_msgs = [m for m in messages if m.get("lead_id") in lead_ids_by_channel["whatsapp"]]
-    response_times = []
-    by_lead: dict[str, list] = {}
-    for m in wa_msgs:
-        by_lead.setdefault(m["lead_id"], []).append(m)
-
-    for msgs in by_lead.values():
-        sorted_msgs = sorted(msgs, key=lambda x: x.get("sent_at") or "")
-        last_in = None
-        for m in sorted_msgs:
-            if m["direction"] == "inbound":
-                last_in = datetime.fromisoformat(m["sent_at"].replace("Z", "+00:00"))
-            elif m["direction"] == "outbound" and last_in:
-                out_t = datetime.fromisoformat(m["sent_at"].replace("Z", "+00:00"))
-                gap = (out_t - last_in).total_seconds() / 60
-                if gap >= 0:
-                    response_times.append(gap)
-                last_in = None
-
-    avg_response = round(sum(response_times) / len(response_times), 1) if response_times else 0
     avg_call_dur = round(
-        sum(c.get("duration_seconds") or 0 for c in calls) / len(calls), 1
-    ) if calls else 0
+        sum(c.get("duration_seconds") or 0 for c in call_rows) / len(call_rows), 1
+    ) if call_rows else 0
 
     return {
         "range": range,
@@ -149,8 +116,8 @@ def _channels_inner(range: str):
             "converted": len(wa_converted_people),
             "conversion_rate": round(len(wa_converted_people) / len(active_whatsapp_keys) * 100, 1) if active_whatsapp_keys else 0,
             "messages": active_whatsapp_conversations,
-            "stored_messages": len(wa_msgs),
-            "avg_response_time_min": avg_response,
+            "stored_messages": stored_messages_count,
+            "avg_response_time_min": 0,
         },
         "maqsam": {
             "leads": len(mq_unique_people),
@@ -184,42 +151,31 @@ def _channels_traffic_inner():
     start_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     start_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     start_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    since_month = start_month.isoformat()
 
-    leads = (
-        supabase.table("leads")
-        .select("id,channel,created_at")
-        .gte("created_at", since_month)
-        .execute()
-        .data
-    ) or []
-
-    wa_lead_ids = {l["id"] for l in leads if l.get("channel") == "whatsapp"}
-
-    messages = (
-        supabase.table("messages")
-        .select("lead_id,sent_at")
-        .gte("sent_at", since_month)
-        .execute()
-        .data
-    ) or []
-
-    # Use count="exact" per period to avoid row cap
     result: dict = {}
     for label, cutoff_dt in [("today", start_today), ("week", start_week), ("month", start_month)]:
         cutoff = cutoff_dt.isoformat()
-        p_leads = [l for l in leads if (l.get("created_at") or "") >= cutoff]
-        wa = sum(1 for l in p_leads if l.get("channel") == "whatsapp")
-        mq = sum(1 for l in p_leads if l.get("channel") == "maqsam")
-        msgs = sum(1 for m in messages if (m.get("sent_at") or "") >= cutoff and m.get("lead_id") in wa_lead_ids)
-
-        calls_count_res = (
-            supabase.table("calls")
+        wa = _exact_count(
+            lambda cutoff=cutoff: supabase.table("leads")
+            .select("id", count="exact")
+            .eq("channel", "whatsapp")
+            .gte("last_message_at", cutoff)
+        )
+        mq = _exact_count(
+            lambda cutoff=cutoff: supabase.table("calls")
+            .select("lead_id", count="exact")
+            .gte("called_at", cutoff)
+        )
+        msgs = _exact_count(
+            lambda cutoff=cutoff: supabase.table("messages")
+            .select("id", count="exact")
+            .gte("sent_at", cutoff)
+        )
+        cls = _exact_count(
+            lambda cutoff=cutoff: supabase.table("calls")
             .select("id", count="exact")
             .gte("called_at", cutoff)
-            .execute()
         )
-        cls = calls_count_res.count or 0
 
         result[label] = {
             "whatsapp": {"leads": wa, "messages": msgs},

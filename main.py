@@ -364,7 +364,6 @@ async def ingest_maqsam(days_back: int = 3, overlap_minutes: int = 30) -> dict:
         return {"calls_seen": 0, "calls_upserted": 0, "since": since_dt.isoformat(), "error": str(e)}
 
     now_iso = datetime.now(timezone.utc).isoformat()
-
     # Batch-upsert unique leads first, then calls
     unique_phones: dict[str, None] = {}
     for call in calls:
@@ -1364,16 +1363,21 @@ def _extract_mc_outbound(body: dict) -> tuple[str | None, str | None, str, str, 
 
     # ── Agent name ───────────────────────────────────────────────────────────
     # Try: agent / user / sender (newer MC format)
-    agent_obj = body.get("agent") or body.get("user") or body.get("sender") or {}
+    root = _first_dict(body.get("data"), body.get("payload"), body)
+    delta = _first_dict(root.get("delta"), root.get("eventData"), root.get("data"))
+    agent_obj = _first_dict(root.get("agent"), root.get("user"), root.get("sender"), delta.get("user"))
     if isinstance(agent_obj, dict):
         agent_name = (agent_obj.get("name") or agent_obj.get("fullName")
                       or agent_obj.get("displayName") or agent_obj.get("username")
                       or agent_obj.get("email"))
     else:
         agent_name = str(agent_obj) if agent_obj else None
+    agent_id = delta.get("user_id") or delta.get("userId") or root.get("user_id") or root.get("userId")
+    if not agent_name and agent_id:
+        agent_name = whatsapp.resolve_agent_name(agent_id)
 
     # ── Contact phone ────────────────────────────────────────────────────────
-    contact_obj = body.get("contact") or body.get("chat") or {}
+    contact_obj = _first_dict(root.get("contact"), delta.get("contact"), root.get("chat"), delta.get("chat"))
     if isinstance(contact_obj, dict):
         phone = (contact_obj.get("number") or contact_obj.get("phone")
                  or contact_obj.get("wa_id") or contact_obj.get("id")
@@ -1381,34 +1385,53 @@ def _extract_mc_outbound(body: dict) -> tuple[str | None, str | None, str, str, 
     else:
         phone = str(contact_obj) if contact_obj else None
     # Fallback: top-level fields, or strip @s.whatsapp.net from "to" field
-    to_raw = body.get("to") or body.get("recipient") or ""
+    to_raw = root.get("to") or body.get("to") or root.get("recipient") or body.get("recipient") or ""
     if isinstance(to_raw, str):
         to_raw = to_raw.split("@")[0]
-    phone = phone or body.get("number") or body.get("phone") or body.get("contact_number") or to_raw or None
+    phone = (
+        phone or delta.get("number") or delta.get("phone") or root.get("number")
+        or root.get("phone") or body.get("number") or body.get("phone")
+        or body.get("contact_number") or to_raw or None
+    )
 
     # ── Message body ─────────────────────────────────────────────────────────
-    msg_obj = body.get("message") or {}
+    msg_obj = _first_dict(root.get("message"), delta.get("message"))
     if isinstance(msg_obj, dict):
         body_text = (msg_obj.get("body") or msg_obj.get("text") or msg_obj.get("content")
                      or f"[{msg_obj.get('type', 'message')}]")
     else:
         body_text = str(msg_obj) if msg_obj else "[outbound]"
-    body_text = body_text or body.get("body") or body.get("text") or body.get("content") or "[outbound]"
+    body_text = (
+        delta.get("body") or delta.get("text") or delta.get("content")
+        or body_text or root.get("body") or root.get("text") or root.get("content")
+        or body.get("body") or body.get("text") or body.get("content") or "[outbound]"
+    )
 
     # ── Message ID (for dedup) ───────────────────────────────────────────────
     if isinstance(msg_obj, dict):
         msg_id = msg_obj.get("id") or msg_obj.get("wamid")
     else:
         msg_id = None
-    msg_id = msg_id or body.get("message_id") or body.get("id") or body.get("wamid")
+    msg_id = (
+        msg_id or delta.get("message_id") or delta.get("messageId") or delta.get("id")
+        or root.get("message_id") or root.get("messageId") or root.get("id")
+        or body.get("message_id") or body.get("id") or body.get("wamid")
+    )
     # Generate a synthetic stable ID if none provided
     if not msg_id and phone:
-        ts_raw = body.get("timestamp") or body.get("createdAt") or body.get("created_at")
-        msg_id = f"mc_out_{phone}_{ts_raw or now_iso}"
+        ts_raw = (
+            delta.get("timestamp") or root.get("timestamp") or body.get("timestamp")
+            or body.get("createdAt") or body.get("created_at")
+        )
+        msg_id = f"mc_out_{phone}_{ts_raw or now_iso}_{str(body_text)[:64]}"
 
     # ── Timestamp ────────────────────────────────────────────────────────────
-    ts_raw = (body.get("timestamp") or body.get("createdAt") or body.get("created_at")
-              or body.get("time") or body.get("sentAt"))
+    ts_raw = (
+        delta.get("timestamp") or delta.get("createdAt") or delta.get("created_at")
+        or delta.get("time") or delta.get("sentAt") or root.get("timestamp")
+        or body.get("timestamp") or body.get("createdAt") or body.get("created_at")
+        or body.get("time") or body.get("sentAt")
+    )
     if isinstance(msg_obj, dict):
         ts_raw = ts_raw or msg_obj.get("timestamp") or msg_obj.get("createdAt")
     sent_at = _ts_to_iso(ts_raw, now_iso)
@@ -1786,6 +1809,9 @@ async def webhook_manycontacts(request: Request):
         elif body.get("event") == "message_new":
             # ManyContacts native: full message event, including outbound if enabled.
             await _handle_mc_message_new(body, now_iso)
+        elif body.get("event") == "message_sent":
+            # ManyContacts native: outbound agent reply with body/user/timestamp.
+            await _handle_mc_outbound(body, now_iso)
         elif _is_outbound_mc(body):
             # ManyContacts native outbound (agent reply) — if ever enabled
             await _handle_mc_outbound(body, now_iso)
