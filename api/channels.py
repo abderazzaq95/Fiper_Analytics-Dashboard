@@ -74,8 +74,11 @@ def channels(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
 
 def _channels_from_overview(range: str):
     try:
-        from api.overview import _overview_inner
-        overview = _overview_inner(range)
+        from api.overview import _overview_inner, _overview_count_fallback
+        try:
+            overview = _overview_inner(range)
+        except Exception:
+            overview = _overview_count_fallback(range)
         return {
             "range": range,
             "whatsapp": {

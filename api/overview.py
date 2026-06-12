@@ -46,6 +46,71 @@ def _paginate(build_query) -> list:
     return rows
 
 
+def _safe_count(build_query) -> int:
+    try:
+        res = build_query().execute()
+        return res.count or 0
+    except Exception:
+        return 0
+
+
+def _overview_count_fallback(range: str) -> dict:
+    since = _since(range)
+    total_messages = _safe_count(
+        lambda: supabase.table("messages").select("id", count="exact").gte("sent_at", since).limit(1)
+    )
+    inbound = _safe_count(
+        lambda: supabase.table("messages").select("id", count="exact").gte("sent_at", since).eq("direction", "inbound").limit(1)
+    )
+    outbound = _safe_count(
+        lambda: supabase.table("messages").select("id", count="exact").gte("sent_at", since).eq("direction", "outbound").limit(1)
+    )
+    active_whatsapp = _safe_count(
+        lambda: supabase.table("leads").select("id", count="exact").eq("channel", "whatsapp").gte("last_message_at", since).limit(1)
+    )
+    total_calls = _safe_count(
+        lambda: supabase.table("calls").select("id", count="exact").gte("called_at", since).limit(1)
+    )
+    call_rows = []
+    try:
+        call_rows = (
+            supabase.table("calls")
+            .select("lead_id,duration_seconds")
+            .gte("called_at", since)
+            .range(0, 999)
+            .execute()
+            .data or []
+        )
+    except Exception:
+        call_rows = []
+    unique_leads = len({c.get("lead_id") for c in call_rows if c.get("lead_id")}) or total_calls
+    avg_call_duration = round(
+        sum(c.get("duration_seconds") or 0 for c in call_rows) / len(call_rows), 1
+    ) if call_rows else 0
+    open_alerts = _safe_count(
+        lambda: supabase.table("alerts").select("id", count="exact").gte("created_at", since).eq("resolved", False).limit(1)
+    )
+    high_alerts = _safe_count(
+        lambda: supabase.table("alerts").select("id", count="exact").gte("created_at", since).eq("resolved", False).eq("severity", "HIGH").limit(1)
+    )
+    return {
+        "range": range,
+        "leads": {"total": unique_leads, "converted": 0, "conversion_rate": 0, "avg_score": 0},
+        "messages": {
+            "inbound": inbound,
+            "outbound": outbound,
+            "stored_total": total_messages,
+            "active_conversations": active_whatsapp,
+            "total": active_whatsapp,
+            "capture_stale": False,
+        },
+        "calls": {"total": total_calls, "avg_duration_seconds": avg_call_duration},
+        "alerts": {"open": open_alerts, "high": high_alerts},
+        "hourly_distribution": _EMPTY_HOURLY,
+        "fallback": "count",
+    }
+
+
 @router.get("/api/overview")
 def overview(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
     try:
@@ -53,6 +118,9 @@ def overview(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/overview error ({range}): {e}", exc_info=True)
+        fallback = _overview_count_fallback(range)
+        if fallback["calls"]["total"] or fallback["messages"]["total"] or fallback["messages"]["active_conversations"]:
+            return fallback
         return {"range": range, "leads":{"total":0,"converted":0,"conversion_rate":0,"avg_score":0}, "messages":{"inbound":0,"outbound":0,"total":0}, "calls":{"total":0,"avg_duration_seconds":0}, "alerts":{"open":0,"high":0}, "hourly_distribution":_EMPTY_HOURLY}
 
 
