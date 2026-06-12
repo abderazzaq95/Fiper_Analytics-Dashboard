@@ -1449,6 +1449,45 @@ async def _handle_meta_format(body: dict, now_iso: str) -> None:
             if statuses:
                 for s in statuses:
                     log.info(f"[webhook/mc] status | id={s.get('id')!r} status={s.get('status')!r}")
+                    msg_id = s.get("id")
+                    phone = s.get("recipient_id")
+                    sent_at = _ts_to_iso(s.get("timestamp"), now_iso)
+                    status = s.get("status")
+                    if not (msg_id and phone):
+                        continue
+
+                    lead_result = supabase.table("leads").upsert({
+                        "wa_contact_id": phone,
+                        "phone": phone,
+                        "channel": "whatsapp",
+                        "last_message_at": sent_at,
+                        "updated_at": now_iso,
+                    }, on_conflict="wa_contact_id").execute()
+                    lead_id = lead_result.data[0]["id"] if lead_result.data else None
+                    if not lead_id:
+                        continue
+
+                    existing = (
+                        supabase.table("messages")
+                        .select("id,body")
+                        .eq("wa_message_id", msg_id)
+                        .limit(1)
+                        .execute()
+                        .data or []
+                    )
+                    if existing:
+                        supabase.table("messages").update({
+                            "status": status,
+                        }).eq("wa_message_id", msg_id).execute()
+                    else:
+                        supabase.table("messages").insert({
+                            "wa_message_id": msg_id,
+                            "lead_id": lead_id,
+                            "direction": "outbound",
+                            "body": "[outbound body unavailable from WhatsApp status webhook]",
+                            "status": status,
+                            "sent_at": sent_at,
+                        }).execute()
                 continue
 
             messages = value.get("messages")
