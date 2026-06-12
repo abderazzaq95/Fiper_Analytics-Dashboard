@@ -39,12 +39,24 @@ def _exact_count(build_query) -> int:
 
 
 def _unique_call_leads_count(since: str) -> int:
-    rows = _paginate(
-        lambda: supabase.table("calls")
-        .select("lead_id")
-        .gte("called_at", since)
-    )
-    return len({r.get("lead_id") for r in rows if r.get("lead_id")})
+    try:
+        rows = _paginate(
+            lambda: supabase.table("calls")
+            .select("lead_id")
+            .gte("called_at", since)
+        )
+        return len({r.get("lead_id") for r in rows if r.get("lead_id")})
+    except Exception as e:
+        import logging
+        logging.getLogger("fiper").warning(
+            f"/api/channels/traffic unique Maqsam leads failed: {e}",
+            exc_info=True,
+        )
+        return _exact_count(
+            lambda: supabase.table("calls")
+            .select("id", count="exact")
+            .gte("called_at", since)
+        )
 
 
 @router.get("/api/channels")
