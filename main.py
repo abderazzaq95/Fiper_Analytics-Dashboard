@@ -1456,14 +1456,22 @@ async def _handle_meta_format(body: dict, now_iso: str) -> None:
                     if not (msg_id and phone):
                         continue
 
-                    lead_result = supabase.table("leads").upsert({
-                        "wa_contact_id": phone,
+                    existing_lead = _find_whatsapp_lead(None, phone)
+                    lead_row = {
                         "phone": phone,
                         "channel": "whatsapp",
                         "last_message_at": sent_at,
                         "updated_at": now_iso,
-                    }, on_conflict="wa_contact_id").execute()
-                    lead_id = lead_result.data[0]["id"] if lead_result.data else None
+                    }
+                    if existing_lead:
+                        supabase.table("leads").update(lead_row).eq("id", existing_lead["id"]).execute()
+                        lead_id = existing_lead["id"]
+                    else:
+                        lead_result = supabase.table("leads").upsert({
+                            "wa_contact_id": phone,
+                            **lead_row,
+                        }, on_conflict="wa_contact_id").execute()
+                        lead_id = lead_result.data[0]["id"] if lead_result.data else None
                     if not lead_id:
                         continue
 
