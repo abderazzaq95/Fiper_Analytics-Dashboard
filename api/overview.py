@@ -114,7 +114,16 @@ def _overview_count_fallback(range: str) -> dict:
 @router.get("/api/overview")
 def overview(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
     try:
-        return _overview_inner(range)
+        data = _overview_inner(range)
+        if (
+            not data.get("calls", {}).get("total")
+            and not data.get("messages", {}).get("total")
+            and not data.get("leads", {}).get("total")
+        ):
+            fallback = _overview_count_fallback(range)
+            if fallback["calls"]["total"] or fallback["messages"]["total"] or fallback["messages"]["active_conversations"]:
+                return fallback
+        return data
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/overview error ({range}): {e}", exc_info=True)
