@@ -1707,8 +1707,43 @@ function normalizeChannels(ov, ch) {
   return fixed;
 }
 
+function normalizeOverview(ov, ch, leads) {
+  const fixed = ov || {};
+  fixed.leads = fixed.leads || {};
+  fixed.messages = fixed.messages || {};
+  fixed.calls = fixed.calls || {};
+  fixed.alerts = fixed.alerts || {};
+  const wa = ch?.whatsapp || {};
+  const mq = ch?.maqsam || {};
+  if ((fixed.leads.total || 0) === 0 && ((mq.leads || 0) > 0 || (wa.leads || 0) > 0)) {
+    fixed.leads.total = Math.max(mq.leads || 0, wa.leads || 0);
+  }
+  if ((fixed.calls.total || 0) === 0 && (mq.calls || 0) > 0) {
+    fixed.calls.total = mq.calls;
+    fixed.calls.avg_duration_seconds = fixed.calls.avg_duration_seconds || mq.avg_call_duration_seconds || 0;
+  }
+  if ((fixed.messages.total || 0) === 0 && (wa.messages || 0) > 0) {
+    fixed.messages.total = wa.messages;
+    fixed.messages.active_conversations = wa.messages;
+    fixed.messages.inbound = fixed.messages.inbound || wa.stored_messages || 0;
+    fixed.messages.outbound = fixed.messages.outbound || 0;
+    fixed.messages.stored_total = fixed.messages.stored_total || wa.stored_messages || 0;
+  }
+  if ((fixed.leads.avg_score || 0) === 0 && leads?.leads?.length) {
+    const scored = leads.leads.map(l => l.score).filter(s => s != null);
+    if (scored.length) fixed.leads.avg_score = scored.reduce((a, b) => a + Number(b), 0) / scored.length;
+  }
+  fixed.leads.converted = fixed.leads.converted || 0;
+  fixed.leads.conversion_rate = fixed.leads.conversion_rate || 0;
+  fixed.alerts.open = fixed.alerts.open || 0;
+  fixed.alerts.high = fixed.alerts.high || 0;
+  fixed.hourly_distribution = fixed.hourly_distribution || Array.from({length:24}, (_, hour) => ({hour, calls:0}));
+  return fixed;
+}
+
 function renderAll(ov, ch, leads, agents, quality, traffic) {
   ch = normalizeChannels(ov, ch);
+  ov = normalizeOverview(ov, ch, leads);
   allLeads = leads.leads || [];
   renderHotLeads(leads);
   renderKPI(ov, ch);
