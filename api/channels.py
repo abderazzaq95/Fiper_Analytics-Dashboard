@@ -66,7 +66,38 @@ def channels(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/channels error ({range}): {e}", exc_info=True)
+        fallback = _channels_from_overview(range)
+        if fallback:
+            return fallback
         return {"range": range, "whatsapp":{"leads":0,"converted":0,"conversion_rate":0,"messages":0,"avg_response_time_min":0}, "maqsam":{"leads":0,"converted":0,"conversion_rate":0,"calls":0,"avg_call_duration_seconds":0}}
+
+
+def _channels_from_overview(range: str):
+    try:
+        from api.overview import _overview_inner
+        overview = _overview_inner(range)
+        return {
+            "range": range,
+            "whatsapp": {
+                "leads": overview.get("messages", {}).get("active_conversations") or overview.get("messages", {}).get("total") or 0,
+                "converted": 0,
+                "conversion_rate": 0,
+                "messages": overview.get("messages", {}).get("total") or 0,
+                "stored_messages": overview.get("messages", {}).get("stored_total") or 0,
+                "avg_response_time_min": 0,
+            },
+            "maqsam": {
+                "leads": overview.get("leads", {}).get("total") or 0,
+                "converted": overview.get("leads", {}).get("converted") or 0,
+                "conversion_rate": overview.get("leads", {}).get("conversion_rate") or 0,
+                "calls": overview.get("calls", {}).get("total") or 0,
+                "avg_call_duration_seconds": overview.get("calls", {}).get("avg_duration_seconds") or 0,
+            },
+        }
+    except Exception as e:
+        import logging
+        logging.getLogger("fiper").error(f"/api/channels overview fallback error ({range}): {e}", exc_info=True)
+        return None
 
 
 def _channels_inner(range: str):
