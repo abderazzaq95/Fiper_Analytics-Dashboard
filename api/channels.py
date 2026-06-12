@@ -38,6 +38,15 @@ def _exact_count(build_query) -> int:
     return res.count or 0
 
 
+def _unique_call_leads_count(since: str) -> int:
+    rows = _paginate(
+        lambda: supabase.table("calls")
+        .select("lead_id")
+        .gte("called_at", since)
+    )
+    return len({r.get("lead_id") for r in rows if r.get("lead_id")})
+
+
 @router.get("/api/channels")
 def channels(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
     try:
@@ -161,11 +170,7 @@ def _channels_traffic_inner():
             .eq("channel", "whatsapp")
             .gte("last_message_at", cutoff)
         )
-        mq = _exact_count(
-            lambda cutoff=cutoff: supabase.table("calls")
-            .select("lead_id", count="exact")
-            .gte("called_at", cutoff)
-        )
+        mq = _unique_call_leads_count(cutoff)
         msgs = _exact_count(
             lambda cutoff=cutoff: supabase.table("messages")
             .select("id", count="exact")
