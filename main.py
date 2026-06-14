@@ -1336,6 +1336,33 @@ def _message_duplicate_exists(
     return bool(rows)
 
 
+OUTBOUND_STATUS_PLACEHOLDER = "[outbound body unavailable from WhatsApp status webhook]"
+
+
+def _nearby_outbound_rows(lead_id: str, sent_at: str, *, placeholder_only: bool = False) -> list[dict]:
+    try:
+        center = datetime.fromisoformat(sent_at.replace("Z", "+00:00"))
+    except (ValueError, TypeError, AttributeError):
+        return []
+    start = (center - timedelta(seconds=10)).isoformat()
+    end = (center + timedelta(seconds=10)).isoformat()
+    query = (
+        supabase.table("messages")
+        .select("id,wa_message_id,body,status,sent_at")
+        .eq("lead_id", lead_id)
+        .eq("direction", "outbound")
+        .gte("sent_at", start)
+        .lte("sent_at", end)
+        .order("sent_at", desc=True)
+        .limit(5)
+    )
+    if placeholder_only:
+        query = query.eq("body", OUTBOUND_STATUS_PLACEHOLDER)
+    else:
+        query = query.neq("body", OUTBOUND_STATUS_PLACEHOLDER)
+    return query.execute().data or []
+
+
 def _is_outbound_mc(body: dict) -> bool:
     """Return True if the payload looks like a ManyContacts outbound/agent message."""
     if body.get("direction") == "outbound":
@@ -1488,11 +1515,17 @@ async def _handle_meta_format(body: dict, now_iso: str) -> None:
                             "status": status,
                         }).eq("wa_message_id", msg_id).execute()
                     else:
+                        body_rows = _nearby_outbound_rows(lead_id, sent_at, placeholder_only=False)
+                        if body_rows:
+                            supabase.table("messages").update({
+                                "status": status,
+                            }).eq("id", body_rows[0]["id"]).execute()
+                            continue
                         supabase.table("messages").insert({
                             "wa_message_id": msg_id,
                             "lead_id": lead_id,
                             "direction": "outbound",
-                            "body": "[outbound body unavailable from WhatsApp status webhook]",
+                            "body": OUTBOUND_STATUS_PLACEHOLDER,
                             "status": status,
                             "sent_at": sent_at,
                         }).execute()
@@ -1782,15 +1815,24 @@ async def _handle_mc_outbound(body: dict, now_iso: str) -> None:
     if not (msg_id and lead_id):
         return
 
-    # Store outbound message
-    supabase.table("messages").upsert({
-        "wa_message_id": msg_id,
-        "lead_id": lead_id,
-        "direction": "outbound",
-        "body": body_text,
-        "sent_at": sent_at,
-        **({"agent_name": agent_name} if agent_name else {}),
-    }, on_conflict="wa_message_id").execute()
+    placeholder_rows = _nearby_outbound_rows(lead_id, sent_at, placeholder_only=True)
+    if placeholder_rows:
+        update_row = {
+            "body": body_text,
+            "sent_at": sent_at,
+            **({"agent_name": agent_name} if agent_name else {}),
+        }
+        supabase.table("messages").update(update_row).eq("id", placeholder_rows[0]["id"]).execute()
+    else:
+        # Store outbound message
+        supabase.table("messages").upsert({
+            "wa_message_id": msg_id,
+            "lead_id": lead_id,
+            "direction": "outbound",
+            "body": body_text,
+            "sent_at": sent_at,
+            **({"agent_name": agent_name} if agent_name else {}),
+        }, on_conflict="wa_message_id").execute()
 
     # Compute and log response time (time since last inbound from this lead)
     try:
