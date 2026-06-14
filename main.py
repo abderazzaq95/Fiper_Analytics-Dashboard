@@ -1476,59 +1476,6 @@ async def _handle_meta_format(body: dict, now_iso: str) -> None:
             if statuses:
                 for s in statuses:
                     log.info(f"[webhook/mc] status | id={s.get('id')!r} status={s.get('status')!r}")
-                    msg_id = s.get("id")
-                    phone = s.get("recipient_id")
-                    sent_at = _ts_to_iso(s.get("timestamp"), now_iso)
-                    status = s.get("status")
-                    if not (msg_id and phone):
-                        continue
-
-                    existing_lead = _find_whatsapp_lead(None, phone)
-                    lead_row = {
-                        "phone": phone,
-                        "channel": "whatsapp",
-                        "last_message_at": sent_at,
-                        "updated_at": now_iso,
-                    }
-                    if existing_lead:
-                        supabase.table("leads").update(lead_row).eq("id", existing_lead["id"]).execute()
-                        lead_id = existing_lead["id"]
-                    else:
-                        lead_result = supabase.table("leads").upsert({
-                            "wa_contact_id": phone,
-                            **lead_row,
-                        }, on_conflict="wa_contact_id").execute()
-                        lead_id = lead_result.data[0]["id"] if lead_result.data else None
-                    if not lead_id:
-                        continue
-
-                    existing = (
-                        supabase.table("messages")
-                        .select("id,body")
-                        .eq("wa_message_id", msg_id)
-                        .limit(1)
-                        .execute()
-                        .data or []
-                    )
-                    if existing:
-                        supabase.table("messages").update({
-                            "status": status,
-                        }).eq("wa_message_id", msg_id).execute()
-                    else:
-                        body_rows = _nearby_outbound_rows(lead_id, sent_at, placeholder_only=False)
-                        if body_rows:
-                            supabase.table("messages").update({
-                                "status": status,
-                            }).eq("id", body_rows[0]["id"]).execute()
-                            continue
-                        supabase.table("messages").insert({
-                            "wa_message_id": msg_id,
-                            "lead_id": lead_id,
-                            "direction": "outbound",
-                            "body": OUTBOUND_STATUS_PLACEHOLDER,
-                            "status": status,
-                            "sent_at": sent_at,
-                        }).execute()
                 continue
 
             messages = value.get("messages")
