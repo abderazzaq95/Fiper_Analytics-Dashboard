@@ -517,6 +517,11 @@ def _clean_fiper_text(text: str | None) -> str:
     return _BAD_FIPER_NAMES.sub("Fiper", text)
 
 
+def _safe_error_message(exc: Exception) -> str:
+    message = str(exc)
+    return re.sub(r"key=[^&\s']+", "key=[redacted]", message)
+
+
 def _has_arabic(text: str | None) -> bool:
     return bool(text and re.search(r"[\u0600-\u06FF]", text))
 
@@ -946,6 +951,7 @@ async def backfill_missing_lead_scores(limit: int = 20, days_back: int = 30) -> 
 
     ok = err = skipped = 0
     sample_errors = []
+    rate_limited = False
     for lead in remaining:
         lead_id = lead["id"]
         channel = lead.get("channel", "")
@@ -1019,10 +1025,15 @@ async def backfill_missing_lead_scores(limit: int = 20, days_back: int = 30) -> 
             log.info(f"Score backfill OK {phone} score={result.get('score')}")
             await asyncio.sleep(0.35)
         except Exception as exc:
-            log.error(f"Score backfill failed for lead {phone}: {exc}")
+            safe_error = _safe_error_message(exc)
+            log.error(f"Score backfill failed for lead {phone}: {safe_error}")
             if len(sample_errors) < 5:
-                sample_errors.append(f"{phone}: {exc}")
+                sample_errors.append(f"{phone}: {safe_error}")
             err += 1
+            if "429" in safe_error or "Too Many Requests" in safe_error:
+                rate_limited = True
+                skipped += max(0, len(remaining) - (ok + err + skipped))
+                break
 
     log.info(
         "Score backfill done: copied=%s analyzed=%s errors=%s skipped=%s",
@@ -1033,6 +1044,7 @@ async def backfill_missing_lead_scores(limit: int = 20, days_back: int = 30) -> 
         "analyzed": ok,
         "errors": err,
         "skipped": skipped,
+        "rate_limited": rate_limited,
         "sample_errors": sample_errors,
     }
 
