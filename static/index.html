@@ -783,8 +783,12 @@ let lang  = localStorage.getItem('fiper_lang') || 'en';
 let charts = {};
 let allLeads = [];
 let _cache = null;      // last fetched data for current range
-let _lastGoodAgents = null;
+let _lastGoodAgents  = null;
 let _lastGoodQuality = null;
+let _lastGoodOv      = null;
+let _lastGoodCh      = null;
+let _lastGoodLeads   = null;
+let _lastGoodTraffic = null;
 let _rangeCache = {};   // range → {status, data} — instant switching
 let _lastRenderedData = null;
 
@@ -2464,11 +2468,15 @@ async function loadAll(bgRefresh = false) {
     const trafficP = fetch(`${API}/api/channels/traffic?_=${Date.now()}`, {cache:'no-store'}).then(r => r.ok ? r.json() : Promise.resolve({}));
     const [status, ovRaw, chRaw, leadsRaw, trafficRaw] = await Promise.all([statusP, ovP, chP, leadsP, trafficP]);
     _pipelineStatus = status;
-    // Render fast sections immediately; keep existing agents/quality in cache if available
-    const ov = keepIfBad(ovRaw, previous?.[0], hasOverview);
-    const ch = keepIfBad(chRaw, previous?.[1], hasChannels);
-    const leads = keepIfBad(leadsRaw, previous?.[2], hasLeadsData);
-    const traffic = keepIfBad(trafficRaw, previous?.[5], hasTraffic);
+    // Use last-known-good values as tertiary fallback so zeros never flash
+    const ov      = keepIfBad(ovRaw,      previous?.[0] || _lastGoodOv,      hasOverview);
+    const ch      = keepIfBad(chRaw,      previous?.[1] || _lastGoodCh,      hasChannels);
+    const leads   = keepIfBad(leadsRaw,   previous?.[2] || _lastGoodLeads,   hasLeadsData);
+    const traffic = keepIfBad(trafficRaw, previous?.[5] || _lastGoodTraffic, hasTraffic);
+    if (hasOverview(ov))   _lastGoodOv      = ov;
+    if (hasChannels(ch))   _lastGoodCh      = ch;
+    if (hasLeadsData(leads)) _lastGoodLeads = leads;
+    if (hasTraffic(traffic)) _lastGoodTraffic = traffic;
     const partialData = [
       ov,
       ch,
