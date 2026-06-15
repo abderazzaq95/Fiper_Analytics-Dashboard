@@ -175,6 +175,19 @@ async def ingest_manycontacts(hours_back: int = 2) -> dict:
     Saves all messages (inbound + outbound) to the messages table.
     Returns stats dict: {contacts, messages_total, messages_outbound}.
     """
+    log.info(
+        "ManyContacts message polling skipped; message bodies are webhook-only "
+        f"(hours_back={hours_back})"
+    )
+    days_back = max(1, (hours_back + 23) // 24)
+    stats = await ingest_manycontacts_activity(days_back=days_back)
+    stats.update({
+        "messages_total": 0,
+        "messages_outbound": 0,
+        "message_source": "webhook_only",
+    })
+    return stats
+
     log.info(f"ManyContacts ingestion started (hours_back={hours_back})")
     now = datetime.now(timezone.utc)
     date_from = (now - timedelta(hours=hours_back)).strftime("%Y-%m-%d")
@@ -1099,16 +1112,6 @@ async def lifespan(app: FastAPI):
         next_run_time=datetime.now(timezone.utc),
     )
     scheduler.add_job(
-        run_whatsapp_message_sync,
-        "interval",
-        minutes=5,
-        id="whatsapp_messages",
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
-        next_run_time=datetime.now(timezone.utc),
-    )
-    scheduler.add_job(
         run_ai_analysis,
         "interval",
         minutes=15,
@@ -1882,7 +1885,6 @@ def pipeline_status():
     pipeline_job  = scheduler.get_job("pipeline")
     maqsam_job    = scheduler.get_job("maqsam_realtime")
     whatsapp_job  = scheduler.get_job("whatsapp_activity")
-    wa_msg_job    = scheduler.get_job("whatsapp_messages")
     ai_job        = scheduler.get_job("ai_analysis")
     base_url      = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000").rstrip("/")
     return {
@@ -1895,10 +1897,6 @@ def pipeline_status():
         "next_maqsam_sync": (
             maqsam_job.next_run_time.isoformat()
             if maqsam_job and maqsam_job.next_run_time else None
-        ),
-        "next_whatsapp_message_sync": (
-            wa_msg_job.next_run_time.isoformat()
-            if wa_msg_job and wa_msg_job.next_run_time else None
         ),
         "next_whatsapp_activity_sync": (
             whatsapp_job.next_run_time.isoformat()
@@ -1974,7 +1972,21 @@ async def manual_whatsapp_sync(days_back: int = Query(7, ge=1, le=90)):
     Manually trigger a full WhatsApp message backfill for the last N days.
     Runs synchronously and returns stats — may take up to a minute for large accounts.
     """
-    log.info(f"[sync/whatsapp] manual trigger days_back={days_back}")
+    log.info(
+        "[sync/whatsapp] message-history polling disabled; "
+        f"running activity-only sync days_back={days_back}"
+    )
+    stats = await ingest_manycontacts_activity(days_back=days_back)
+    await _broadcast("data_updated", {"source": "whatsapp_manual_activity_sync"})
+    return {
+        "status": "done",
+        "message_source": "webhook_only",
+        "note": (
+            "ManyContacts message bodies are captured only by inbound/message_sent "
+            "webhooks; manual sync updates active chat/contact activity only."
+        ),
+        **stats,
+    }
     now = datetime.now(timezone.utc)
     date_from = (now - timedelta(days=days_back)).strftime("%Y-%m-%d")
     date_to = now.strftime("%Y-%m-%d")
