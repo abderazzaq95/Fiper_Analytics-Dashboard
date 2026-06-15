@@ -456,9 +456,57 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   .kpi-grid{grid-template-columns:1fr 1fr}
   .jfilter-bar{gap:8px}
 }
+/* ── Login gate ─────────────────────────────────────────────── */
+#loginOverlay {
+  position:fixed;inset:0;z-index:9999;
+  background:var(--bg);
+  display:flex;align-items:center;justify-content:center;
+}
+#loginBox {
+  background:var(--card);border-radius:var(--r);
+  box-shadow:var(--shadow-md);
+  padding:48px 40px 40px;
+  width:100%;max-width:380px;text-align:center;
+}
+#loginBox img { height:40px;margin-bottom:24px; }
+#loginBox h2 {
+  font-size:20px;font-weight:700;color:var(--navy);margin:0 0 8px;
+}
+#loginBox p { font-size:13px;color:var(--text-light);margin:0 0 28px; }
+.login-field {
+  width:100%;box-sizing:border-box;
+  padding:11px 14px;margin-bottom:12px;
+  border:1.5px solid var(--border);border-radius:var(--r-sm);
+  font-family:var(--font-en);font-size:14px;color:var(--navy);
+  background:var(--bg);outline:none;transition:border .2s;
+}
+.login-field:focus { border-color:var(--blue); }
+#loginBtn {
+  width:100%;padding:12px;margin-top:4px;
+  background:var(--blue-grad);color:#fff;border:none;
+  border-radius:var(--r-sm);font-size:14px;font-weight:700;
+  cursor:pointer;transition:opacity .2s;
+}
+#loginBtn:hover { opacity:.9; }
+#loginErr {
+  color:var(--red);font-size:12px;margin-top:10px;min-height:18px;
+}
 </style>
 </head>
 <body>
+
+<!-- Login gate -->
+<div id="loginOverlay">
+  <div id="loginBox">
+    <img src="https://fiper.me/assets/logo.png" alt="Fiper"/>
+    <h2>Intelligence Dashboard</h2>
+    <p>Enter your credentials to continue</p>
+    <input id="loginUser" class="login-field" type="text" placeholder="Username" autocomplete="username"/>
+    <input id="loginPass" class="login-field" type="password" placeholder="Password" autocomplete="current-password"/>
+    <button id="loginBtn" onclick="doLogin()">Sign In</button>
+    <div id="loginErr"></div>
+  </div>
+</div>
 
 <!-- Header -->
 <header>
@@ -2715,13 +2763,42 @@ function connectSSE() {
   };
 }
 
+// ── Auth gate ─────────────────────────────────────────────────────────────────
+const _AUTH_KEY = 'fiper_auth_v1';
+function _checkAuth() {
+  return sessionStorage.getItem(_AUTH_KEY) === 'ok';
+}
+function doLogin() {
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value;
+  if (u === 'fiper' && p === 'Fiper2026') {
+    sessionStorage.setItem(_AUTH_KEY, 'ok');
+    document.getElementById('loginOverlay').style.display = 'none';
+    _initDashboard();
+  } else {
+    document.getElementById('loginErr').textContent = 'Invalid username or password.';
+  }
+}
+document.getElementById('loginPass').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+document.getElementById('loginUser').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('loginPass').focus();
+});
+
+function _initDashboard() {
+  applyLang();
+  if (_applyStoredCache(range)) renderAll(..._cache);
+  loadAll();
+  connectSSE();
+  _updateActiveNav();
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
-applyLang();
-// Show last-good data immediately from localStorage so no zeros flash on refresh
-if (_applyStoredCache(range)) renderAll(..._cache);
-loadAll();
-connectSSE();
-_updateActiveNav();
+if (_checkAuth()) {
+  document.getElementById('loginOverlay').style.display = 'none';
+  _initDashboard();
+}
 </script>
 </body>
 </html>

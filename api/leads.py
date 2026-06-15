@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 load_dotenv()
 router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
+BATCH = 100
 
 
 def _since(range_: str) -> str:
@@ -35,16 +36,48 @@ def leads(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
 def _leads_inner(range: str):
     since = _since(range)
 
-    all_leads = (
+    # Activity-based filtering: WA leads by last_message_at, Maqsam leads by calls
+    wa_leads = (
         supabase.table("leads")
         .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at")
-        .gte("created_at", since)
+        .eq("channel", "whatsapp")
+        .gte("last_message_at", since)
         .order("score", desc=True)
         .execute()
         .data
     ) or []
 
-    # Join AI summaries by lead_id
+    # Maqsam: find leads that had a call in the period
+    call_rows = (
+        supabase.table("calls")
+        .select("lead_id")
+        .gte("called_at", since)
+        .execute()
+        .data
+    ) or []
+    maqsam_ids = list({c["lead_id"] for c in call_rows if c.get("lead_id")})
+
+    maqsam_leads = []
+    for i in range(0, len(maqsam_ids), BATCH):
+        chunk = (
+            supabase.table("leads")
+            .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at")
+            .in_("id", maqsam_ids[i:i + BATCH])
+            .execute()
+            .data
+        ) or []
+        maqsam_leads.extend(chunk)
+
+    # Deduplicate and sort by score
+    seen: set = set()
+    all_leads = []
+    for lead in wa_leads + maqsam_leads:
+        if lead["id"] not in seen:
+            seen.add(lead["id"])
+            all_leads.append(lead)
+    all_leads.sort(key=lambda l: l.get("score") or 0, reverse=True)
+
+    # Join AI summaries
     try:
         analyses = (
             supabase.table("ai_analysis")
@@ -58,10 +91,10 @@ def _leads_inner(range: str):
     for lead in all_leads:
         lead["summary"] = summary_map.get(lead["id"])
 
-    status_counts = {}
+    status_counts: dict = {}
     score_buckets = {"0-25": 0, "26-50": 0, "51-75": 0, "76-100": 0}
     for l in all_leads:
-        status = l.get("status", "new")
+        status = l.get("status") or "new"
         status_counts[status] = status_counts.get(status, 0) + 1
         score = l.get("score")
         if score is None:
@@ -75,7 +108,7 @@ def _leads_inner(range: str):
         else:
             score_buckets["76-100"] += 1
 
-    # Hot leads: score >= 80 AND status = 'new' (all-time, no date filter)
+    # Hot leads: score >= 80 AND status = 'new' (all-time)
     hot_leads_raw = (
         supabase.table("leads")
         .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at")
