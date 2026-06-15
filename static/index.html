@@ -786,6 +786,7 @@ let _cache = null;      // last fetched data for current range
 let _lastGoodAgents = null;
 let _lastGoodQuality = null;
 let _rangeCache = {};   // range → {status, data} — instant switching
+let _lastRenderedData = null;
 
 // ── Language ──────────────────────────────────────────────────────────────────
 function applyLang() {
@@ -858,12 +859,45 @@ async function get(path) {
 function hasAgents(data) {
   return Array.isArray(data?.agents) && data.agents.length > 0;
 }
+function hasOverview(data) {
+  return !!data && (
+    (data.calls?.total || 0) > 0 ||
+    (data.messages?.total || 0) > 0 ||
+    (data.messages?.stored_total || 0) > 0 ||
+    (data.messages?.inbound || 0) > 0 ||
+    (data.messages?.outbound || 0) > 0 ||
+    (data.leads?.total || 0) > 0
+  );
+}
+function hasChannels(data) {
+  return !!data && (
+    (data.whatsapp?.leads || 0) > 0 ||
+    (data.whatsapp?.messages || 0) > 0 ||
+    (data.whatsapp?.stored_messages || 0) > 0 ||
+    (data.maqsam?.leads || 0) > 0 ||
+    (data.maqsam?.calls || 0) > 0
+  );
+}
+function hasLeadsData(data) {
+  return !!data && ((data.total || 0) > 0 || (data.leads || []).length > 0);
+}
 function hasQuality(data) {
   const outcomes = data?.call_outcomes || {};
   const sentiment = data?.sentiment || {};
   return Object.keys(outcomes).length > 0 ||
     ((sentiment.positive || 0) + (sentiment.neutral || 0) + (sentiment.negative || 0)) > 0 ||
     ((data?.alerts?.total || 0) > 0);
+}
+function hasTraffic(data) {
+  return !!data && ['today','week','month'].some(p =>
+    (data[p]?.whatsapp?.leads || 0) > 0 ||
+    (data[p]?.whatsapp?.messages || 0) > 0 ||
+    (data[p]?.maqsam?.leads || 0) > 0 ||
+    (data[p]?.maqsam?.calls || 0) > 0
+  );
+}
+function keepIfBad(next, prev, isGood) {
+  return isGood(next) ? next : (prev || next);
 }
 function renderAgentsLoading() {
   const el = document.getElementById('agentTable');
@@ -2421,17 +2455,30 @@ async function exportJourneyCSV() {
 // bgRefresh=true: silent background update, doesn't reset journey or show errors
 async function loadAll(bgRefresh = false) {
   try {
+    const previous = _rangeCache[range]?.data || _cache || _lastRenderedData;
     // Phase 1 — fast APIs: render KPIs, charts, leads immediately
     const statusP  = fetch(`${API}/api/status`).then(r => r.ok ? r.json() : Promise.resolve({}));
     const ovP      = get('/api/overview');
     const chP      = get('/api/channels');
     const leadsP   = get('/api/leads');
     const trafficP = fetch(`${API}/api/channels/traffic?_=${Date.now()}`, {cache:'no-store'}).then(r => r.ok ? r.json() : Promise.resolve({}));
-    const [status, ov, ch, leads, traffic] = await Promise.all([statusP, ovP, chP, leadsP, trafficP]);
+    const [status, ovRaw, chRaw, leadsRaw, trafficRaw] = await Promise.all([statusP, ovP, chP, leadsP, trafficP]);
     _pipelineStatus = status;
     // Render fast sections immediately; keep existing agents/quality in cache if available
-    const partialData = [ov, ch, leads, _cache?.[3] ?? null, _cache?.[4] ?? null, traffic];
+    const ov = keepIfBad(ovRaw, previous?.[0], hasOverview);
+    const ch = keepIfBad(chRaw, previous?.[1], hasChannels);
+    const leads = keepIfBad(leadsRaw, previous?.[2], hasLeadsData);
+    const traffic = keepIfBad(trafficRaw, previous?.[5], hasTraffic);
+    const partialData = [
+      ov,
+      ch,
+      leads,
+      hasAgents(previous?.[3]) ? previous[3] : (_lastGoodAgents || null),
+      hasQuality(previous?.[4]) ? previous[4] : (_lastGoodQuality || null),
+      traffic
+    ];
     _cache = partialData;
+    _lastRenderedData = partialData;
     renderAll(...partialData);
     if (!bgRefresh) loadJourneyV2();
 
@@ -2445,6 +2492,7 @@ async function loadAll(bgRefresh = false) {
     if (hasQuality(qualityRaw)) _lastGoodQuality = qualityRaw;
     const fullData = [ov, ch, leads, agents, quality, traffic];
     _cache = fullData;
+    _lastRenderedData = fullData;
     _rangeCache[range] = { status, data: fullData };
     renderAgents(agents);
     renderAlerts(quality);
