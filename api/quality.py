@@ -60,23 +60,24 @@ def _quality_inner(range: str):
         .data
     ) or []
 
-    # Resolve agent_name for alerts that have lead_id but no agent_name
-    unresolved_lead_ids = list({
-        a["lead_id"] for a in alerts
-        if not a.get("agent_name") and a.get("lead_id")
-    })
-    if unresolved_lead_ids:
+    # Enrich alerts with lead phone/name and resolve missing agent_name
+    all_alert_lead_ids = list({a["lead_id"] for a in alerts if a.get("lead_id")})
+    if all_alert_lead_ids:
         lead_rows = (
             supabase.table("leads")
-            .select("id,assigned_agent")
-            .in_("id", unresolved_lead_ids)
+            .select("id,phone,name,assigned_agent")
+            .in_("id", all_alert_lead_ids)
             .execute()
             .data
         ) or []
-        lead_agent_map = {r["id"]: r.get("assigned_agent") for r in lead_rows}
+        lead_map = {r["id"]: r for r in lead_rows}
         for a in alerts:
-            if not a.get("agent_name") and a.get("lead_id"):
-                a["agent_name"] = lead_agent_map.get(a["lead_id"])
+            lead = lead_map.get(a.get("lead_id") or "")
+            if lead:
+                if not a.get("agent_name"):
+                    a["agent_name"] = lead.get("assigned_agent")
+                a["lead_phone"] = lead.get("phone")
+                a["lead_name"]  = lead.get("name")
 
     analyses = (
         supabase.table("ai_analysis")
