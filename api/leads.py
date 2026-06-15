@@ -8,6 +8,8 @@ load_dotenv()
 router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 BATCH = 100
+PAGE = 1000
+EMPTY_SCORE_BUCKETS = {"0-25": 0, "26-50": 0, "51-75": 0, "76-100": 0}
 
 
 def _since(range_: str) -> str:
@@ -30,7 +32,67 @@ def leads(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/leads error ({range}): {e}", exc_info=True)
-        return {"range": range, "total": 0, "funnel": {}, "score_distribution": {"0-25":0,"26-50":0,"51-75":0,"76-100":0}, "leads": [], "hot_leads": []}
+        return {
+            "range": range,
+            "total": 0,
+            "funnel": {},
+            "score_distribution": _score_distribution(),
+            "leads": [],
+            "hot_leads": _hot_leads(),
+        }
+
+
+def _score_distribution():
+    score_buckets = dict(EMPTY_SCORE_BUCKETS)
+    offset = 0
+
+    try:
+        while True:
+            rows = (
+                supabase.table("leads")
+                .select("score")
+                .not_.is_("score", "null")
+                .range(offset, offset + PAGE - 1)
+                .execute()
+                .data
+            ) or []
+
+            for row in rows:
+                score = row.get("score")
+                if score is None:
+                    continue
+                if score <= 25:
+                    score_buckets["0-25"] += 1
+                elif score <= 50:
+                    score_buckets["26-50"] += 1
+                elif score <= 75:
+                    score_buckets["51-75"] += 1
+                else:
+                    score_buckets["76-100"] += 1
+
+            if len(rows) < PAGE:
+                break
+            offset += PAGE
+    except Exception:
+        return dict(EMPTY_SCORE_BUCKETS)
+
+    return score_buckets
+
+
+def _hot_leads():
+    try:
+        return (
+            supabase.table("leads")
+            .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at")
+            .gte("score", 80)
+            .eq("status", "new")
+            .order("score", desc=True)
+            .limit(50)
+            .execute()
+            .data
+        ) or []
+    except Exception:
+        return []
 
 
 def _leads_inner(range_: str):
@@ -96,46 +158,11 @@ def _leads_inner(range_: str):
         status = l.get("status") or "new"
         status_counts[status] = status_counts.get(status, 0) + 1
 
-    # Score distribution: all-time leads that have a score (period filter misses
-    # backfilled leads whose score was set before the range window)
-    score_rows = (
-        supabase.table("leads")
-        .select("score")
-        .not_.is_("score", "null")
-        .execute()
-        .data
-    ) or []
-    score_buckets = {"0-25": 0, "26-50": 0, "51-75": 0, "76-100": 0}
-    for l in score_rows:
-        score = l.get("score")
-        if score is None:
-            continue
-        if score <= 25:
-            score_buckets["0-25"] += 1
-        elif score <= 50:
-            score_buckets["26-50"] += 1
-        elif score <= 75:
-            score_buckets["51-75"] += 1
-        else:
-            score_buckets["76-100"] += 1
-
-    # Hot leads: score >= 80 AND status = 'new' (all-time)
-    hot_leads_raw = (
-        supabase.table("leads")
-        .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at")
-        .gte("score", 80)
-        .eq("status", "new")
-        .order("score", desc=True)
-        .limit(50)
-        .execute()
-        .data
-    ) or []
-
     return {
         "range": range_,
         "total": len(all_leads),
         "funnel": status_counts,
-        "score_distribution": score_buckets,
+        "score_distribution": _score_distribution(),
         "leads": all_leads,
-        "hot_leads": hot_leads_raw,
+        "hot_leads": _hot_leads(),
     }
