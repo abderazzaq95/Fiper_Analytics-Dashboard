@@ -92,10 +92,21 @@ def _leads_inner(range: str):
         lead["summary"] = summary_map.get(lead["id"])
 
     status_counts: dict = {}
-    score_buckets = {"0-25": 0, "26-50": 0, "51-75": 0, "76-100": 0}
     for l in all_leads:
         status = l.get("status") or "new"
         status_counts[status] = status_counts.get(status, 0) + 1
+
+    # Score distribution: all-time leads that have a score (period filter misses
+    # backfilled leads whose score was set before the range window)
+    score_rows = (
+        supabase.table("leads")
+        .select("score")
+        .not_.is_("score", "null")
+        .execute()
+        .data
+    ) or []
+    score_buckets = {"0-25": 0, "26-50": 0, "51-75": 0, "76-100": 0}
+    for l in score_rows:
         score = l.get("score")
         if score is None:
             continue

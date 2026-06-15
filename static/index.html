@@ -502,7 +502,10 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
     <h2>Intelligence Dashboard</h2>
     <p>Enter your credentials to continue</p>
     <input id="loginUser" class="login-field" type="text" placeholder="Username" autocomplete="username"/>
-    <input id="loginPass" class="login-field" type="password" placeholder="Password" autocomplete="current-password"/>
+    <div style="position:relative;margin-bottom:12px">
+      <input id="loginPass" class="login-field" type="password" placeholder="Password" autocomplete="current-password" style="padding-right:40px;margin-bottom:0"/>
+      <button onclick="(function(){var f=document.getElementById('loginPass');var b=document.getElementById('eyeBtn');f.type=f.type==='password'?'text':'password';b.textContent=f.type==='password'?'👁':'🙈';})()" id="eyeBtn" type="button" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:0;line-height:1">👁</button>
+    </div>
     <button id="loginBtn" onclick="doLogin()">Sign In</button>
     <div id="loginErr"></div>
   </div>
@@ -1057,7 +1060,7 @@ function mergeLeads(fresh, prev) {
       converted: fresh.funnel?.converted ?? prev.funnel?.converted ?? 0,
       lost:      fresh.funnel?.lost      ?? prev.funnel?.lost      ?? 0,
     },
-    score_distribution: (Object.keys(fresh.score_distribution || {}).length ? fresh.score_distribution : null) || prev.score_distribution || {},
+    score_distribution: (Object.values(fresh.score_distribution || {}).some(v => v > 0) ? fresh.score_distribution : null) || prev.score_distribution || {},
   };
 }
 function renderAgentsLoading() {
