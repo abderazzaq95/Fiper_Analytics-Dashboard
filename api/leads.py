@@ -33,8 +33,8 @@ def leads(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
         return {"range": range, "total": 0, "funnel": {}, "score_distribution": {"0-25":0,"26-50":0,"51-75":0,"76-100":0}, "leads": [], "hot_leads": []}
 
 
-def _leads_inner(range: str):
-    since = _since(range)
+def _leads_inner(range_: str):
+    since = _since(range_)
 
     # Activity-based filtering: WA leads by last_message_at, Maqsam leads by calls
     wa_leads = (
@@ -132,7 +132,7 @@ def _leads_inner(range: str):
     ) or []
 
     return {
-        "range": range,
+        "range": range_,
         "total": len(all_leads),
         "funnel": status_counts,
         "score_distribution": score_buckets,
