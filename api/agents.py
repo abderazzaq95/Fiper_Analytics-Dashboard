@@ -277,6 +277,35 @@ def _agents_inner(range: str):
         })
 
     result.sort(key=lambda x: x["calls_handled"], reverse=True)
+    if not result:
+        fallback_agents = set()
+        fallback_agents.update(_norm(c.get("agent_name")) for c in calls if _norm(c.get("agent_name")))
+        fallback_agents.update(_norm(m.get("agent_name")) for m in messages if _norm(m.get("agent_name")))
+        fallback_agents.update(agent_alerts.keys())
+        for agent in fallback_agents:
+            ac = [c for c in calls if _norm(c.get("agent_name")) == agent]
+            am = [m for m in messages if _norm(m.get("agent_name")) == agent]
+            lead_ids = {
+                row.get("lead_id")
+                for row in [*ac, *am]
+                if row.get("lead_id")
+            }
+            completed_calls = [c for c in ac if (c.get("duration_seconds") or 0) > 0]
+            result.append({
+                "agent": agent,
+                "leads": len(lead_ids),
+                "calls_handled": len(completed_calls),
+                "avg_call_duration_seconds": round(
+                    sum(c.get("duration_seconds") or 0 for c in completed_calls) / len(completed_calls)
+                ) if completed_calls else 0,
+                "avg_response_time_min": 0,
+                "avg_treatment_score": 0,
+                "sentiment": {"positive": 0, "neutral": 0, "negative": 0},
+                "open_alerts": len(agent_alerts.get(agent, [])),
+                "alert_details": agent_alerts.get(agent, []),
+                "quality_trend": [],
+            })
+        result.sort(key=lambda x: x["calls_handled"], reverse=True)
     return {"range": range, "agents": result}
 
 
