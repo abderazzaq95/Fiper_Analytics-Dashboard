@@ -29,6 +29,7 @@ scheduler = AsyncIOScheduler()
 _last_pipeline_run: datetime | None = None
 _last_maqsam_sync: datetime | None = None
 _last_webhook_health_alert: datetime | None = None
+_last_score_backfill: dict | None = None
 _last_webhook_payloads: list[dict] = []  # ring buffer — last 5 raw webhook bodies
 
 # SSE client queues — one per connected dashboard tab
@@ -850,6 +851,199 @@ async def run_ai_analysis(hours_back: int = 3):
     return {"analyzed": ok, "errors": err, "skipped": skipped, "call_summaries": summary_stats}
 
 
+async def backfill_missing_lead_scores(limit: int = 20, days_back: int = 30) -> dict:
+    """Score active leads whose leads.score is still missing.
+
+    First copies scores from existing ai_analysis rows, then spends Gemini calls
+    only on leads that have analyzable messages or call transcripts.
+    """
+    from collections import defaultdict
+
+    if limit <= 0:
+        return {"updated_from_existing": 0, "analyzed": 0, "errors": 0, "skipped": 0}
+
+    since_iso = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    candidates = (
+        supabase.table("leads")
+        .select("id,phone,channel,last_message_at,created_at")
+        .is_("score", "null")
+        .gte("last_message_at", since_iso)
+        .order("last_message_at", desc=True)
+        .limit(limit * 5)
+        .execute().data or []
+    )
+
+    if not candidates:
+        log.info("Score backfill: no missing-score candidates")
+        return {"updated_from_existing": 0, "analyzed": 0, "errors": 0, "skipped": 0}
+
+    lead_ids = [lead["id"] for lead in candidates if lead.get("id")]
+    existing_rows = (
+        supabase.table("ai_analysis")
+        .select("lead_id,score")
+        .in_("lead_id", lead_ids)
+        .not_.is_("score", "null")
+        .execute().data or []
+    )
+    existing_score = {
+        row["lead_id"]: row.get("score")
+        for row in existing_rows
+        if row.get("lead_id") and row.get("score") is not None
+    }
+
+    updated_from_existing = 0
+    remaining = []
+    for lead in candidates:
+        score = existing_score.get(lead["id"])
+        if score is not None:
+            supabase.table("leads").update({"score": score}).eq("id", lead["id"]).execute()
+            updated_from_existing += 1
+        else:
+            remaining.append(lead)
+
+    remaining = remaining[:limit]
+    if not remaining:
+        log.info(f"Score backfill: copied {updated_from_existing} existing AI scores")
+        return {
+            "updated_from_existing": updated_from_existing,
+            "analyzed": 0,
+            "errors": 0,
+            "skipped": 0,
+        }
+
+    if not _GEMINI_KEY:
+        log.info("Score backfill skipped Gemini analysis: GEMINI_API_KEY is missing")
+        return {
+            "updated_from_existing": updated_from_existing,
+            "analyzed": 0,
+            "errors": 0,
+            "skipped": len(remaining),
+        }
+
+    remaining_ids = [lead["id"] for lead in remaining]
+    all_calls_raw = (
+        supabase.table("calls")
+        .select("lead_id,duration_seconds,outcome,agent_name,called_at,transcript,maqsam_sentiment,summary_en")
+        .in_("lead_id", remaining_ids)
+        .gt("duration_seconds", 0)
+        .execute().data or []
+    )
+    all_msgs_raw = (
+        supabase.table("messages")
+        .select("lead_id,direction,body,sent_at,agent_name")
+        .in_("lead_id", remaining_ids)
+        .execute().data or []
+    )
+
+    calls_by_lead: dict[str, list] = defaultdict(list)
+    msgs_by_lead: dict[str, list] = defaultdict(list)
+    for call in all_calls_raw:
+        if call.get("lead_id"):
+            calls_by_lead[call["lead_id"]].append(call)
+    for msg in all_msgs_raw:
+        if msg.get("lead_id"):
+            msgs_by_lead[msg["lead_id"]].append(msg)
+
+    ok = err = skipped = 0
+    for lead in remaining:
+        lead_id = lead["id"]
+        channel = lead.get("channel", "")
+        phone = lead.get("phone") or lead_id[:8]
+        mq_sentiment = None
+
+        if channel == "maqsam":
+            calls = sorted(calls_by_lead.get(lead_id, []), key=lambda c: c.get("called_at") or "")
+            calls = [c for c in calls if (c.get("transcript") or "").strip()]
+            if not calls:
+                skipped += 1
+                continue
+
+            blocks, sentiments = [], []
+            for i, call in enumerate(calls, 1):
+                sentiment = call.get("maqsam_sentiment")
+                if sentiment:
+                    sentiments.append(sentiment)
+                block = (
+                    f"=== CALL {i} | Duration: {call.get('duration_seconds')}s | "
+                    f"State: {call.get('outcome')} | Agent: {call.get('agent_name') or 'unknown'} ==="
+                )
+                if sentiment:
+                    block += f"\nMaqsam Sentiment: {sentiment}"
+                if call.get("summary_en"):
+                    block += f"\nSummary: {call['summary_en']}"
+                block += f"\n\nTranscript:\n{(call.get('transcript') or '').strip()[:3000]}"
+                blocks.append(block)
+
+            mq_sentiment = (
+                "negative" if "negative" in sentiments else
+                "positive" if "positive" in sentiments else
+                (sentiments[0] if sentiments else None)
+            )
+            user_msg = (
+                f"Maqsam sentiment (pre-determined): {mq_sentiment or 'unknown'}\n\n"
+                "Analyze these calls:\n\n" + "\n\n".join(blocks)
+            )
+            source = "maqsam"
+
+        elif channel == "whatsapp":
+            msgs = sorted(msgs_by_lead.get(lead_id, []), key=lambda m: m.get("sent_at") or "")
+            msgs = [m for m in msgs if (m.get("body") or "").strip()]
+            if not msgs:
+                skipped += 1
+                continue
+
+            lines = []
+            for msg in msgs[-40:]:
+                role = "Agent" if msg.get("direction") == "outbound" else "Customer"
+                agent = f" ({msg.get('agent_name')})" if msg.get("agent_name") else ""
+                lines.append(f"{role}{agent}: {(msg.get('body') or '')[:300]}")
+            user_msg = (
+                "Maqsam sentiment (pre-determined): unknown\n\n"
+                "Analyze this WhatsApp conversation:\n\n" + "\n".join(lines)
+            )
+            source = "whatsapp"
+
+        else:
+            skipped += 1
+            continue
+
+        try:
+            result = _normalize_ai_result(await _call_gemini_async(user_msg))
+            if mq_sentiment:
+                result["sentiment"] = mq_sentiment
+            _save_ai_analysis(lead_id, source, result)
+            if result.get("score") is not None:
+                supabase.table("leads").update({"score": result.get("score")}).eq("id", lead_id).execute()
+            ok += 1
+            log.info(f"Score backfill OK {phone} score={result.get('score')}")
+            await asyncio.sleep(0.35)
+        except Exception as exc:
+            log.error(f"Score backfill failed for lead {phone}: {exc}")
+            err += 1
+
+    log.info(
+        "Score backfill done: copied=%s analyzed=%s errors=%s skipped=%s",
+        updated_from_existing, ok, err, skipped,
+    )
+    return {
+        "updated_from_existing": updated_from_existing,
+        "analyzed": ok,
+        "errors": err,
+        "skipped": skipped,
+    }
+
+
+async def run_score_backfill_job():
+    global _last_score_backfill
+    limit = int(os.getenv("AI_SCORE_BACKFILL_LIMIT", "15"))
+    days_back = int(os.getenv("AI_SCORE_BACKFILL_DAYS", "30"))
+    stats = await backfill_missing_lead_scores(limit=limit, days_back=days_back)
+    _last_score_backfill = {"ran_at": datetime.now(timezone.utc).isoformat(), **stats}
+    if stats.get("updated_from_existing") or stats.get("analyzed"):
+        await _broadcast("data_updated", {"source": "score_backfill", **stats})
+    return stats
+
+
 async def run_pipeline():
     """Full pipeline: ingest → AI analysis → alerts. Runs every 2 hours."""
     global _last_pipeline_run
@@ -1200,6 +1394,16 @@ async def lifespan(app: FastAPI):
         max_instances=1,
         coalesce=True,
         next_run_time=datetime.now(timezone.utc) + timedelta(minutes=3),
+    )
+    scheduler.add_job(
+        run_score_backfill_job,
+        "interval",
+        minutes=20,
+        id="score_backfill",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(timezone.utc) + timedelta(minutes=6),
     )
     scheduler.add_job(
         run_pipeline,
@@ -1987,6 +2191,7 @@ def pipeline_status():
     maqsam_job    = scheduler.get_job("maqsam_realtime")
     whatsapp_job  = scheduler.get_job("whatsapp_activity")
     webhook_health_job = scheduler.get_job("whatsapp_webhook_health")
+    score_backfill_job = scheduler.get_job("score_backfill")
     ai_job        = scheduler.get_job("ai_analysis")
     base_url      = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000").rstrip("/")
     return {
@@ -1996,6 +2201,7 @@ def pipeline_status():
             _last_webhook_health_alert.isoformat()
             if _last_webhook_health_alert else None
         ),
+        "last_score_backfill": _last_score_backfill,
         "next_pipeline_run": (
             pipeline_job.next_run_time.isoformat()
             if pipeline_job and pipeline_job.next_run_time else None
@@ -2011,6 +2217,10 @@ def pipeline_status():
         "next_webhook_health_check": (
             webhook_health_job.next_run_time.isoformat()
             if webhook_health_job and webhook_health_job.next_run_time else None
+        ),
+        "next_score_backfill": (
+            score_backfill_job.next_run_time.isoformat()
+            if score_backfill_job and score_backfill_job.next_run_time else None
         ),
         "next_ai_analysis": (
             ai_job.next_run_time.isoformat()
@@ -2229,6 +2439,23 @@ async def trigger_ai_analysis(hours_back: int = Query(24, ge=1, le=72)):
     stats = await run_ai_analysis(hours_back=hours_back)
     await _broadcast("data_updated", {"source": "ai_analysis_manual", "hours_back": hours_back, **stats})
     return {"status": "done", "hours_back": hours_back, **stats}
+
+
+@app.post("/api/trigger-score-backfill")
+async def trigger_score_backfill(
+    limit: int = Query(20, ge=1, le=100),
+    days_back: int = Query(30, ge=1, le=90),
+):
+    """Fill missing lead scores for active leads that have usable data."""
+    stats = await backfill_missing_lead_scores(limit=limit, days_back=days_back)
+    global _last_score_backfill
+    _last_score_backfill = {
+        "ran_at": datetime.now(timezone.utc).isoformat(),
+        "manual": True,
+        **stats,
+    }
+    await _broadcast("data_updated", {"source": "score_backfill_manual", **stats})
+    return {"status": "done", "limit": limit, "days_back": days_back, **stats}
 
 
 @app.get("/api/stream")
