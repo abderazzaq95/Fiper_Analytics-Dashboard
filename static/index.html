@@ -166,6 +166,7 @@ html[dir=rtl] .alert-item{border-left:none;border-right:4px solid transparent}
 .alert-item.low{border-color:var(--blue)}
 .alert-body{flex:1}
 .alert-msg{font-size:13px;color:var(--navy);font-weight:500;line-height:1.5}
+.alert-last-msg{font-size:12px;color:var(--text);margin-top:4px;padding:5px 8px;background:var(--bg);border-left:3px solid var(--border);border-radius:0 4px 4px 0;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .alert-meta{font-size:11px;color:var(--text-light);margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .empty-state{text-align:center;padding:48px 24px;color:var(--text-light)}
 .empty-icon{font-size:36px;margin-bottom:12px}
@@ -792,6 +793,42 @@ let _lastGoodTraffic = null;
 let _rangeCache = {};   // range → {status, data} — instant switching
 let _lastRenderedData = null;
 
+// ── Persistent cache (survives page refresh) ──────────────────────────────────
+const _CACHE_VER = 'v4';
+const _CACHE_TTL = 12 * 60 * 60 * 1000; // 12h
+
+function _storageKey(r) { return `fiper_${_CACHE_VER}_${r}`; }
+
+function _saveCache(r, data) {
+  try { localStorage.setItem(_storageKey(r), JSON.stringify({ ts: Date.now(), data })); } catch(e) {}
+}
+
+function _loadCache(r) {
+  try {
+    const raw = localStorage.getItem(_storageKey(r));
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw);
+    if (Date.now() - ts > _CACHE_TTL) return null;
+    return Array.isArray(data) ? data : null;
+  } catch(e) { return null; }
+}
+
+function _applyStoredCache(r) {
+  const stored = _loadCache(r);
+  if (!stored) return false;
+  const [ov, ch, leads, agents, quality, traffic] = stored;
+  if (hasOverview(ov))     _lastGoodOv      = ov;
+  if (hasChannels(ch))     _lastGoodCh      = ch;
+  if (hasLeadsData(leads)) _lastGoodLeads   = leads;
+  if (hasAgents(agents))   _lastGoodAgents  = agents;
+  if (hasQuality(quality)) _lastGoodQuality = quality;
+  if (hasTraffic(traffic)) _lastGoodTraffic = traffic;
+  _cache = stored;
+  _lastRenderedData = stored;
+  _rangeCache[r] = { status: {}, data: stored };
+  return true;
+}
+
 // ── Language ──────────────────────────────────────────────────────────────────
 function applyLang() {
   const isAr = lang === 'ar';
@@ -828,6 +865,10 @@ function setRange(r) {
     // Render instantly from cache, then silently refresh in the background
     _pipelineStatus = cached.status;
     _cache = cached.data;
+    renderAll(..._cache);
+    _silentRefresh();
+  } else if (_applyStoredCache(r)) {
+    // Restore from localStorage so no zeros flash while fresh data loads
     renderAll(..._cache);
     _silentRefresh();
   } else {
@@ -1736,6 +1777,7 @@ function renderAlerts(quality) {
       <span class="pill ${a.severity==='HIGH'?'pill-red':a.severity==='MED'?'pill-warn':'pill-blue'}" style="flex-shrink:0;margin-top:1px">${a.severity}</span>
       <div class="alert-body">
         <div class="alert-msg">${typeLabels[a.type]||a.type} — ${a.message||''}</div>
+        ${a.last_message_body?`<div class="alert-last-msg">💬 "${esc(a.last_message_body)}"</div>`:''}
         <div class="alert-meta">
           ${leadDisplay?`<span style="font-weight:700;color:var(--navy)">📱 ${esc(leadDisplay)}</span>`:''}
           ${a.agent_name?`<span>👤 ${esc(a.agent_name)}</span>`:''}
@@ -2508,6 +2550,7 @@ async function loadAll(bgRefresh = false) {
     _cache = fullData;
     _lastRenderedData = fullData;
     _rangeCache[range] = { status, data: fullData };
+    _saveCache(range, fullData);
     renderAgents(agents);
     renderAlerts(quality);
     renderSentiment(quality);
@@ -2602,6 +2645,8 @@ function connectSSE() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 applyLang();
+// Show last-good data immediately from localStorage so no zeros flash on refresh
+if (_applyStoredCache(range)) renderAll(..._cache);
 loadAll();
 connectSSE();
 _updateActiveNav();

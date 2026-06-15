@@ -79,6 +79,29 @@ def _quality_inner(range: str):
                 a["lead_phone"] = lead.get("phone")
                 a["lead_name"]  = lead.get("name")
 
+    # For open no_reply alerts, fetch the last unanswered inbound message body
+    no_reply_open = [a for a in alerts if a.get("type") == "no_reply" and not a.get("resolved")]
+    for a in no_reply_open:
+        lead_id = a.get("lead_id")
+        if not lead_id:
+            continue
+        try:
+            msg = (
+                supabase.table("messages")
+                .select("body")
+                .eq("lead_id", lead_id)
+                .eq("direction", "inbound")
+                .order("sent_at", desc=True)
+                .limit(1)
+                .execute()
+                .data
+            )
+            if msg:
+                body = (msg[0].get("body") or "").strip()
+                a["last_message_body"] = body[:200] if body else None
+        except Exception:
+            pass
+
     analyses = (
         supabase.table("ai_analysis")
         .select("lead_id,sentiment,topics,treatment_score,risk_flags,analyzed_at,source")
