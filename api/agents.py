@@ -64,11 +64,90 @@ def _norm(name: str | None) -> str | None:
 @router.get("/api/agents")
 def agents(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
     try:
-        return _agents_inner(range)
+        data = _agents_inner(range)
+        if not data.get("agents"):
+            fallback = _agents_lightweight(range)
+            if fallback.get("agents"):
+                return fallback
+        return data
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/agents error ({range}): {e}", exc_info=True)
+        try:
+            return _agents_lightweight(range)
+        except Exception as fallback_error:
+            logging.getLogger("fiper").error(
+                f"/api/agents lightweight fallback error ({range}): {fallback_error}",
+                exc_info=True,
+            )
         return {"range": range, "agents": []}
+
+
+def _agents_lightweight(range: str):
+    since = _since(range)
+    calls = _paginate(
+        lambda: supabase.table("calls")
+        .select("agent_name,lead_id,duration_seconds,called_at")
+        .gte("called_at", since)
+    )
+    messages = _paginate(
+        lambda: supabase.table("messages")
+        .select("agent_name,direction,sent_at,lead_id")
+        .gte("sent_at", since)
+    )
+    alerts = (
+        supabase.table("alerts")
+        .select("agent_name,lead_id,severity,type,message,resolved,created_at")
+        .eq("resolved", False)
+        .execute().data or []
+    )
+
+    agents = sorted({
+        *(_norm(c.get("agent_name")) for c in calls if _norm(c.get("agent_name"))),
+        *(_norm(m.get("agent_name")) for m in messages if _norm(m.get("agent_name"))),
+        *(_norm(a.get("agent_name")) for a in alerts if _norm(a.get("agent_name"))),
+    })
+
+    rows = []
+    for agent in agents:
+        agent_calls = [c for c in calls if _norm(c.get("agent_name")) == agent]
+        agent_msgs = [m for m in messages if _norm(m.get("agent_name")) == agent]
+        agent_alerts = [
+            a for a in alerts
+            if _norm(a.get("agent_name")) == agent
+            and (a.get("agent_name") or "").lower() not in ("team", "unknown")
+        ]
+        completed_calls = [c for c in agent_calls if (c.get("duration_seconds") or 0) > 0]
+        lead_ids = {
+            item.get("lead_id")
+            for item in [*agent_calls, *agent_msgs, *agent_alerts]
+            if item.get("lead_id")
+        }
+        rows.append({
+            "agent": agent,
+            "leads": len(lead_ids),
+            "calls_handled": len(completed_calls),
+            "avg_call_duration_seconds": round(
+                sum(c.get("duration_seconds") or 0 for c in completed_calls) / len(completed_calls)
+            ) if completed_calls else 0,
+            "avg_response_time_min": 0,
+            "avg_treatment_score": 0,
+            "sentiment": {"positive": 0, "neutral": 0, "negative": 0},
+            "open_alerts": len(agent_alerts),
+            "alert_details": [
+                {
+                    "lead_id": a.get("lead_id"),
+                    "severity": a.get("severity") or "MED",
+                    "type": a.get("type") or "alert",
+                    "message": a.get("message") or "",
+                    "created_at": a.get("created_at"),
+                }
+                for a in agent_alerts
+            ],
+            "quality_trend": [],
+        })
+    rows.sort(key=lambda x: x["calls_handled"], reverse=True)
+    return {"range": range, "agents": rows, "fallback": "lightweight"}
 
 
 def _agents_inner(range: str):
