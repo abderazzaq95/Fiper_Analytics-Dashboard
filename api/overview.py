@@ -9,6 +9,7 @@ router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 
 _EMPTY_HOURLY = [{"hour": h, "calls": 0} for h in range(24)]
+BATCH_SIZE = 100
 
 
 def _since(range_: str) -> str:
@@ -68,6 +69,21 @@ def _overview_count_fallback(range: str) -> dict:
     active_whatsapp = _safe_count(
         lambda: supabase.table("leads").select("id", count="exact").eq("channel", "whatsapp").gte("last_message_at", since).limit(1)
     )
+    if active_whatsapp == 0:
+        try:
+            wa_rows = _paginate(
+                lambda: supabase.table("leads")
+                .select("id,phone")
+                .eq("channel", "whatsapp")
+                .gte("last_message_at", since)
+            )
+            active_whatsapp = len({
+                r.get("phone") or r.get("id")
+                for r in wa_rows
+                if r.get("phone") or r.get("id")
+            })
+        except Exception:
+            active_whatsapp = 0
     total_calls = _safe_count(
         lambda: supabase.table("calls").select("id", count="exact").gte("called_at", since).limit(1)
     )
@@ -160,7 +176,7 @@ def _overview_inner(range: str):
         phones = list(active_whatsapp_phones)
         idx = 0
         while idx < len(phones):
-            batch_phones = phones[idx:idx + 500]
+            batch_phones = phones[idx:idx + BATCH_SIZE]
             rows = (
                 supabase.table("leads")
                 .select("id,phone")
@@ -169,7 +185,7 @@ def _overview_inner(range: str):
                 .execute().data or []
             )
             active_whatsapp_lead_ids.update(r["id"] for r in rows if r.get("id"))
-            idx += 500
+            idx += BATCH_SIZE
     latest_whatsapp_activity = max(
         (l.get("last_message_at") or "" for l in wa_activity),
         default="",
@@ -214,7 +230,7 @@ def _overview_inner(range: str):
         id_list = list(active_lead_ids)
         idx = 0
         while idx < len(id_list):
-            batch_ids = id_list[idx:idx + 500]
+            batch_ids = id_list[idx:idx + BATCH_SIZE]
             chunk = (
                 supabase.table("leads")
                 .select("id,phone,status,score")
@@ -223,7 +239,7 @@ def _overview_inner(range: str):
                 .data or []
             )
             leads.extend(chunk)
-            idx += 500
+            idx += BATCH_SIZE
 
     # Alerts: small dataset
     alerts = (
@@ -252,7 +268,7 @@ def _overview_inner(range: str):
             rows = (
                 supabase.table("leads")
                 .select("id,phone,channel")
-                .in_("id", msg_lead_list[idx:idx + 500])
+                .in_("id", msg_lead_list[idx:idx + BATCH_SIZE])
                 .execute().data or []
             )
             stored_message_keys.update(
@@ -260,7 +276,7 @@ def _overview_inner(range: str):
                 for r in rows
                 if r.get("channel") == "whatsapp" and (r.get("phone") or r.get("id"))
             )
-            idx += 500
+            idx += BATCH_SIZE
         active_whatsapp_conversations = len(stored_message_keys)
 
     latest_stored_message = max(

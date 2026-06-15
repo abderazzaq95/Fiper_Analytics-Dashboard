@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 load_dotenv()
 router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
+BATCH_SIZE = 100
 
 
 def _since(range_: str) -> str:
@@ -135,14 +136,14 @@ def _channels_inner(range: str):
     mq_ids = list(mq_call_lead_ids)
     idx = 0
     while idx < len(mq_ids):
-        batch_ids = mq_ids[idx:idx + 500]
+        batch_ids = mq_ids[idx:idx + BATCH_SIZE]
         mq_call_leads.extend(
             supabase.table("leads")
             .select("id,phone,status")
             .in_("id", batch_ids)
             .execute().data or []
         )
-        idx += 500
+        idx += BATCH_SIZE
     mq_unique_people = {
         l.get("phone") or l.get("id")
         for l in mq_call_leads

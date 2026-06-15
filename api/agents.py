@@ -8,6 +8,7 @@ from collections import defaultdict
 load_dotenv()
 router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
+BATCH_SIZE = 100
 
 
 def _paginate(build_query) -> list:
@@ -95,20 +96,20 @@ def _agents_inner(range: str):
         leads.extend(
             supabase.table("leads")
             .select("id,phone,name,assigned_agent,status,score")
-            .in_("id", active_ids[idx:idx + 500])
+            .in_("id", active_ids[idx:idx + BATCH_SIZE])
             .execute().data or []
         )
-        idx += 500
+        idx += BATCH_SIZE
     analyses = []
     idx = 0
     while idx < len(active_ids):
         analyses.extend(
             supabase.table("ai_analysis")
             .select("lead_id,sentiment,treatment_score,source,analyzed_at,outcome")
-            .in_("lead_id", active_ids[idx:idx + 500])
+            .in_("lead_id", active_ids[idx:idx + BATCH_SIZE])
             .execute().data or []
         )
-        idx += 500
+        idx += BATCH_SIZE
 
     # ── Build lookup dicts (all agent keys normalized to Title Case) ──────────
 
