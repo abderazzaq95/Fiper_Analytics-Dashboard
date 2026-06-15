@@ -66,6 +66,39 @@ def notify_agent_alert(alert: dict) -> bool:
     return _send_email(recipient, f"Fiper Alert - {severity} - {alert_type}", html_body)
 
 
+def send_webhook_health_alert(details: dict) -> bool:
+    if not SALES_SUPERVISOR_EMAIL:
+        return False
+
+    lag_min = details.get("lag_min")
+    latest_activity = details.get("latest_activity_at") or "unknown"
+    latest_stored = details.get("latest_stored_at") or "none"
+    active_chats = details.get("active_chats") or 0
+
+    html_body = f"""
+    <h2>Fiper WhatsApp Webhook Warning</h2>
+    <p>
+      ManyContacts shows recent WhatsApp activity, but message webhooks appear
+      to be delayed or disabled.
+    </p>
+    <ul>
+      <li><b>Active WhatsApp chats:</b> {html.escape(str(active_chats))}</li>
+      <li><b>Latest ManyContacts activity:</b> {html.escape(str(latest_activity))}</li>
+      <li><b>Latest stored message:</b> {html.escape(str(latest_stored))}</li>
+      <li><b>Lag:</b> {html.escape(str(lag_min))} minutes</li>
+    </ul>
+    <p>
+      Please check ManyContacts -> API / Developers and make sure
+      <b>Enable WhatsApp API webhook forwarding</b> is ON and saved.
+    </p>
+    """
+    return _send_email(
+        SALES_SUPERVISOR_EMAIL,
+        "Fiper Alert - WhatsApp webhook may be disabled",
+        html_body,
+    )
+
+
 def send_supervisor_report(report_label: str = "") -> bool:
     if not SALES_SUPERVISOR_EMAIL:
         return False

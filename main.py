@@ -28,6 +28,7 @@ WA_VERIFY_TOKEN = os.getenv("WA_VERIFY_TOKEN", "")
 scheduler = AsyncIOScheduler()
 _last_pipeline_run: datetime | None = None
 _last_maqsam_sync: datetime | None = None
+_last_webhook_health_alert: datetime | None = None
 _last_webhook_payloads: list[dict] = []  # ring buffer — last 5 raw webhook bodies
 
 # SSE client queues — one per connected dashboard tab
@@ -1077,6 +1078,85 @@ def send_sales_report(report_label: str):
         log.error(f"Sales report {report_label} failed: {e}", exc_info=True)
 
 
+def _parse_iso_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+def check_whatsapp_webhook_health():
+    """Email supervisor when ManyContacts activity moves but webhooks stall."""
+    global _last_webhook_health_alert
+
+    threshold_min = int(os.getenv("WEBHOOK_STALE_MINUTES", "20"))
+    cooldown_min = int(os.getenv("WEBHOOK_ALERT_COOLDOWN_MINUTES", "60"))
+    now = datetime.now(timezone.utc)
+
+    if _last_webhook_health_alert:
+        since_alert = (now - _last_webhook_health_alert).total_seconds() / 60
+        if since_alert < cooldown_min:
+            return
+
+    try:
+        activity_rows = (
+            supabase.table("leads")
+            .select("id,phone,last_message_at")
+            .eq("channel", "whatsapp")
+            .order("last_message_at", desc=True)
+            .limit(50)
+            .execute().data or []
+        )
+        latest_activity_raw = next(
+            (r.get("last_message_at") for r in activity_rows if r.get("last_message_at")),
+            None,
+        )
+        latest_activity = _parse_iso_dt(latest_activity_raw)
+        if not latest_activity:
+            return
+
+        recent_activity_count = sum(
+            1 for r in activity_rows
+            if (
+                _parse_iso_dt(r.get("last_message_at"))
+                and (now - _parse_iso_dt(r.get("last_message_at"))).total_seconds() <= 3600
+            )
+        )
+        if recent_activity_count == 0:
+            return
+
+        msg_rows = (
+            supabase.table("messages")
+            .select("sent_at")
+            .order("sent_at", desc=True)
+            .limit(1)
+            .execute().data or []
+        )
+        latest_stored_raw = msg_rows[0].get("sent_at") if msg_rows else None
+        latest_stored = _parse_iso_dt(latest_stored_raw)
+        lag_min = (
+            (latest_activity - latest_stored).total_seconds() / 60
+            if latest_stored else threshold_min + 1
+        )
+
+        if lag_min <= threshold_min:
+            return
+
+        sent = email_notifications.send_webhook_health_alert({
+            "lag_min": round(lag_min, 1),
+            "latest_activity_at": latest_activity_raw,
+            "latest_stored_at": latest_stored_raw,
+            "active_chats": recent_activity_count,
+        })
+        if sent:
+            _last_webhook_health_alert = now
+            log.warning(f"WhatsApp webhook health alert sent; lag={lag_min:.1f}m")
+    except Exception as e:
+        log.error(f"WhatsApp webhook health check failed: {e}", exc_info=True)
+
+
 def _require_email_debug_token(token: str):
     expected = os.getenv("EMAIL_DEBUG_TOKEN", "")
     if not expected or token != expected:
@@ -1131,6 +1211,16 @@ async def lifespan(app: FastAPI):
         coalesce=True,
     )
     scheduler.add_job(_ping_self, "interval", minutes=10, id="keepalive", replace_existing=True)
+    scheduler.add_job(
+        check_whatsapp_webhook_health,
+        "interval",
+        minutes=5,
+        id="whatsapp_webhook_health",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(timezone.utc) + timedelta(minutes=2),
+    )
     scheduler.add_job(
         send_sales_report,
         "cron",
@@ -1885,11 +1975,16 @@ def pipeline_status():
     pipeline_job  = scheduler.get_job("pipeline")
     maqsam_job    = scheduler.get_job("maqsam_realtime")
     whatsapp_job  = scheduler.get_job("whatsapp_activity")
+    webhook_health_job = scheduler.get_job("whatsapp_webhook_health")
     ai_job        = scheduler.get_job("ai_analysis")
     base_url      = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000").rstrip("/")
     return {
         "last_pipeline_run": _last_pipeline_run.isoformat() if _last_pipeline_run else None,
         "last_maqsam_sync":  _last_maqsam_sync.isoformat()  if _last_maqsam_sync  else None,
+        "last_webhook_health_alert": (
+            _last_webhook_health_alert.isoformat()
+            if _last_webhook_health_alert else None
+        ),
         "next_pipeline_run": (
             pipeline_job.next_run_time.isoformat()
             if pipeline_job and pipeline_job.next_run_time else None
@@ -1901,6 +1996,10 @@ def pipeline_status():
         "next_whatsapp_activity_sync": (
             whatsapp_job.next_run_time.isoformat()
             if whatsapp_job and whatsapp_job.next_run_time else None
+        ),
+        "next_webhook_health_check": (
+            webhook_health_job.next_run_time.isoformat()
+            if webhook_health_job and webhook_health_job.next_run_time else None
         ),
         "next_ai_analysis": (
             ai_job.next_run_time.isoformat()
@@ -1943,6 +2042,18 @@ def debug_send_agent_alert(agent: str = Query("Jehad Qasim"), token: str = Query
         "message": "Test alert notification from Fiper Analytics Dashboard.",
     })
     return {"agent": agent, "sent": sent}
+
+
+@app.post("/api/debug/email/webhook-health")
+def debug_send_webhook_health_alert(token: str = Query("")):
+    _require_email_debug_token(token)
+    sent = email_notifications.send_webhook_health_alert({
+        "lag_min": "test",
+        "latest_activity_at": datetime.now(timezone.utc).isoformat(),
+        "latest_stored_at": "test message",
+        "active_chats": "test",
+    })
+    return {"sent": sent}
 
 
 @app.get("/api/debug/mc-probe")
