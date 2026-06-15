@@ -944,6 +944,74 @@ function hasTraffic(data) {
 function keepIfBad(next, prev, isGood) {
   return isGood(next) ? next : (prev || next);
 }
+// Field-level merges: keep cached non-zero values when fresh data has zeros
+function mergeOv(fresh, prev) {
+  if (!fresh || !prev) return fresh || prev;
+  return {
+    ...fresh,
+    messages: {
+      ...fresh.messages,
+      inbound:      fresh.messages?.inbound      || prev.messages?.inbound      || 0,
+      outbound:     fresh.messages?.outbound     || prev.messages?.outbound     || 0,
+      stored_total: fresh.messages?.stored_total || prev.messages?.stored_total || 0,
+    },
+    leads: {
+      ...fresh.leads,
+      total:     fresh.leads?.total     || prev.leads?.total     || 0,
+      avg_score: fresh.leads?.avg_score || prev.leads?.avg_score || 0,
+    },
+    calls: {
+      ...fresh.calls,
+      total:               fresh.calls?.total               || prev.calls?.total               || 0,
+      avg_duration_seconds: fresh.calls?.avg_duration_seconds || prev.calls?.avg_duration_seconds || 0,
+    },
+  };
+}
+function mergeCh(fresh, prev) {
+  if (!fresh || !prev) return fresh || prev;
+  return {
+    ...fresh,
+    whatsapp: {
+      ...fresh.whatsapp,
+      leads:           fresh.whatsapp?.leads           || prev.whatsapp?.leads           || 0,
+      messages:        fresh.whatsapp?.messages        || prev.whatsapp?.messages        || 0,
+      stored_messages: fresh.whatsapp?.stored_messages || prev.whatsapp?.stored_messages || 0,
+    },
+    maqsam: {
+      ...fresh.maqsam,
+      leads:                     fresh.maqsam?.leads                     || prev.maqsam?.leads                     || 0,
+      calls:                     fresh.maqsam?.calls                     || prev.maqsam?.calls                     || 0,
+      avg_call_duration_seconds: fresh.maqsam?.avg_call_duration_seconds || prev.maqsam?.avg_call_duration_seconds || 0,
+    },
+  };
+}
+function mergeTraffic(fresh, prev) {
+  if (!fresh || !prev) return fresh || prev;
+  const out = {};
+  for (const p of ['today','week','month']) {
+    const f = fresh[p] || {}, pv = prev[p] || {};
+    out[p] = {
+      whatsapp: { leads: f.whatsapp?.leads || pv.whatsapp?.leads || 0, messages: f.whatsapp?.messages || pv.whatsapp?.messages || 0 },
+      maqsam:   { leads: f.maqsam?.leads   || pv.maqsam?.leads   || 0, calls:    f.maqsam?.calls     || pv.maqsam?.calls     || 0 },
+    };
+  }
+  return out;
+}
+function mergeLeads(fresh, prev) {
+  if (!fresh || !prev) return fresh || prev;
+  return {
+    ...fresh,
+    total: fresh.total || prev.total || 0,
+    leads: (fresh.leads?.length ? fresh.leads : null) || prev.leads || [],
+    funnel: {
+      new:       fresh.funnel?.new       ?? prev.funnel?.new       ?? 0,
+      engaged:   fresh.funnel?.engaged   ?? prev.funnel?.engaged   ?? 0,
+      converted: fresh.funnel?.converted ?? prev.funnel?.converted ?? 0,
+      lost:      fresh.funnel?.lost      ?? prev.funnel?.lost      ?? 0,
+    },
+    score_distribution: (Object.keys(fresh.score_distribution || {}).length ? fresh.score_distribution : null) || prev.score_distribution || {},
+  };
+}
 function renderAgentsLoading() {
   const el = document.getElementById('agentTable');
   if (!el || el.querySelector('table')) return;
@@ -2516,14 +2584,18 @@ async function loadAll(bgRefresh = false) {
     const trafficP = fetch(`${API}/api/channels/traffic?_=${Date.now()}`, {cache:'no-store'}).then(r => r.ok ? r.json() : Promise.resolve({}));
     const [status, ovRaw, chRaw, leadsRaw, trafficRaw] = await Promise.all([statusP, ovP, chP, leadsP, trafficP]);
     _pipelineStatus = status;
-    // Use last-known-good values as tertiary fallback so zeros never flash
-    const ov      = keepIfBad(ovRaw,      previous?.[0] || _lastGoodOv,      hasOverview);
-    const ch      = keepIfBad(chRaw,      previous?.[1] || _lastGoodCh,      hasChannels);
-    const leads   = keepIfBad(leadsRaw,   previous?.[2] || _lastGoodLeads,   hasLeadsData);
-    const traffic = keepIfBad(trafficRaw, previous?.[5] || _lastGoodTraffic, hasTraffic);
-    if (hasOverview(ov))   _lastGoodOv      = ov;
-    if (hasChannels(ch))   _lastGoodCh      = ch;
-    if (hasLeadsData(leads)) _lastGoodLeads = leads;
+    // Field-level merge: keep cached non-zero values when fresh data has zeros
+    const prevOv      = previous?.[0] || _lastGoodOv;
+    const prevCh      = previous?.[1] || _lastGoodCh;
+    const prevLeads   = previous?.[2] || _lastGoodLeads;
+    const prevTraffic = previous?.[5] || _lastGoodTraffic;
+    const ov      = hasOverview(ovRaw)   ? mergeOv(ovRaw, prevOv)           : (prevOv      || ovRaw);
+    const ch      = hasChannels(chRaw)   ? mergeCh(chRaw, prevCh)           : (prevCh      || chRaw);
+    const leads   = hasLeadsData(leadsRaw) ? mergeLeads(leadsRaw, prevLeads) : (prevLeads   || leadsRaw);
+    const traffic = hasTraffic(trafficRaw) ? mergeTraffic(trafficRaw, prevTraffic) : (prevTraffic || trafficRaw);
+    if (hasOverview(ov))     _lastGoodOv      = ov;
+    if (hasChannels(ch))     _lastGoodCh      = ch;
+    if (hasLeadsData(leads)) _lastGoodLeads   = leads;
     if (hasTraffic(traffic)) _lastGoodTraffic = traffic;
     const partialData = [
       ov,
