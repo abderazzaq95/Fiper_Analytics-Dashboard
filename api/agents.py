@@ -73,10 +73,8 @@ def agents(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
 def _agents_inner(range: str):
     since = _since(range)
 
-    leads    = _paginate(lambda: supabase.table("leads").select("id,phone,name,assigned_agent,status,score"))
     messages = _paginate(lambda: supabase.table("messages").select("agent_name,direction,sent_at,lead_id").gte("sent_at", since))
     calls    = _paginate(lambda: supabase.table("calls").select("agent_name,lead_id,duration_seconds,called_at").gte("called_at", since))
-    analyses = _paginate(lambda: supabase.table("ai_analysis").select("lead_id,sentiment,treatment_score,source,analyzed_at,outcome"))
     alerts   = (
         supabase.table("alerts")
         .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
@@ -85,7 +83,28 @@ def _agents_inner(range: str):
         .execute().data or []
     )
     # All-time call→lead→agent map for alert attribution (unfiltered by date)
-    all_calls_for_alerts = _paginate(lambda: supabase.table("calls").select("agent_name,lead_id"))
+    active_lead_ids = {
+        row.get("lead_id")
+        for row in [*messages, *calls, *alerts]
+        if row.get("lead_id")
+    }
+    active_ids = list(active_lead_ids)
+    leads = []
+    for idx in range(0, len(active_ids), 500):
+        leads.extend(
+            supabase.table("leads")
+            .select("id,phone,name,assigned_agent,status,score")
+            .in_("id", active_ids[idx:idx + 500])
+            .execute().data or []
+        )
+    analyses = []
+    for idx in range(0, len(active_ids), 500):
+        analyses.extend(
+            supabase.table("ai_analysis")
+            .select("lead_id,sentiment,treatment_score,source,analyzed_at,outcome")
+            .in_("lead_id", active_ids[idx:idx + 500])
+            .execute().data or []
+        )
 
     # ── Build lookup dicts (all agent keys normalized to Title Case) ──────────
 
@@ -129,7 +148,7 @@ def _agents_inner(range: str):
         ag = _norm(m.get("agent_name"))
         if lid and m.get("direction") == "outbound" and ag:
             lead_to_agent_fallback.setdefault(lid, ag)
-    for c in all_calls_for_alerts:
+    for c in calls:
         lid = c.get("lead_id")
         ag = _norm(c.get("agent_name"))
         if lid and ag:
@@ -161,7 +180,7 @@ def _agents_inner(range: str):
             })
 
     # All agents: WhatsApp (leads + messages) + Maqsam (calls)
-    all_agents = set(agent_leads.keys()) | set(agent_msgs.keys()) | set(agent_calls.keys())
+    all_agents = set(agent_leads.keys()) | set(agent_msgs.keys()) | set(agent_calls.keys()) | set(agent_alerts.keys())
 
     result = []
     for agent in all_agents:

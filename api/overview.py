@@ -244,6 +244,25 @@ def _overview_inner(range: str):
 
     inbound = sum(1 for m in messages if m.get("direction") == "inbound")
     outbound = sum(1 for m in messages if m.get("direction") == "outbound")
+    if active_whatsapp_conversations == 0 and msg_lead_ids:
+        msg_lead_list = list(msg_lead_ids)
+        stored_message_keys = set()
+        idx = 0
+        while idx < len(msg_lead_list):
+            rows = (
+                supabase.table("leads")
+                .select("id,phone,channel")
+                .in_("id", msg_lead_list[idx:idx + 500])
+                .execute().data or []
+            )
+            stored_message_keys.update(
+                r.get("phone") or r.get("id")
+                for r in rows
+                if r.get("channel") == "whatsapp" and (r.get("phone") or r.get("id"))
+            )
+            idx += 500
+        active_whatsapp_conversations = len(stored_message_keys)
+
     latest_stored_message = max(
         (m.get("sent_at") or "" for m in messages),
         default="",

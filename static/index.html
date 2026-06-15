@@ -783,6 +783,8 @@ let lang  = localStorage.getItem('fiper_lang') || 'en';
 let charts = {};
 let allLeads = [];
 let _cache = null;      // last fetched data for current range
+let _lastGoodAgents = null;
+let _lastGoodQuality = null;
 let _rangeCache = {};   // range → {status, data} — instant switching
 
 // ── Language ──────────────────────────────────────────────────────────────────
@@ -852,6 +854,28 @@ async function get(path) {
   const r = await fetch(`${API}${path}${sep}range=${range}&_=${Date.now()}`, {cache:'no-store'});
   if (!r.ok) throw new Error(r.status);
   return r.json();
+}
+function hasAgents(data) {
+  return Array.isArray(data?.agents) && data.agents.length > 0;
+}
+function hasQuality(data) {
+  const outcomes = data?.call_outcomes || {};
+  const sentiment = data?.sentiment || {};
+  return Object.keys(outcomes).length > 0 ||
+    ((sentiment.positive || 0) + (sentiment.neutral || 0) + (sentiment.negative || 0)) > 0 ||
+    ((data?.alerts?.total || 0) > 0);
+}
+function renderAgentsLoading() {
+  const el = document.getElementById('agentTable');
+  if (!el || el.querySelector('table')) return;
+  document.getElementById('agentCount').textContent = '';
+  el.innerHTML = `<div class="empty-state"><div class="empty-icon">...</div><div class="empty-text">${lang==='ar'?'جار تحميل بيانات الوكلاء...':'Loading agent data...'}</div></div>`;
+}
+function renderQualityLoading() {
+  const wrap = document.getElementById('outcomesWrap');
+  if (wrap && !document.getElementById('outcomesChart')) {
+    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">...</div><div class="empty-text">${lang==='ar'?'جار تحميل النتائج...':'Loading call outcomes...'}</div></div>`;
+  }
 }
 function esc(str) {
   return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1729,6 +1753,10 @@ function normalizeOverview(ov, ch, leads) {
     fixed.messages.outbound = fixed.messages.outbound || 0;
     fixed.messages.stored_total = fixed.messages.stored_total || wa.stored_messages || 0;
   }
+  if ((fixed.messages.total || 0) === 0 && ((fixed.messages.inbound || 0) + (fixed.messages.outbound || 0)) > 0) {
+    fixed.messages.total = fixed.messages.active_conversations || wa.messages || (fixed.messages.inbound + fixed.messages.outbound);
+    fixed.messages.active_conversations = fixed.messages.active_conversations || fixed.messages.total;
+  }
   if ((fixed.leads.avg_score || 0) === 0 && leads?.leads?.length) {
     const scored = leads.leads.map(l => l.score).filter(s => s != null);
     if (scored.length) fixed.leads.avg_score = scored.reduce((a, b) => a + Number(b), 0) / scored.length;
@@ -1756,7 +1784,9 @@ function renderAll(ov, ch, leads, agents, quality, traffic) {
   renderGeo(allLeads);
   // Sections that need quality/agents data — skip if not yet loaded
   if (quality) { renderOutcomes(quality); renderSentiment(quality); renderTopics(quality); renderFAQ(quality); renderQualityRisk(quality, ov); renderAlerts(quality); }
+  else { renderQualityLoading(); }
   if (agents)  { renderAgents(agents); }
+  else { renderAgentsLoading(); }
   document.getElementById('lastUpdText').textContent = (lang==='ar'?'تحديث: ':'Updated: ') + new Date().toLocaleTimeString();
   applyLang();
 }
@@ -2408,7 +2438,11 @@ async function loadAll(bgRefresh = false) {
     // Phase 2 — start heavier agents/quality calls after the first render.
     const agentsP  = get('/api/agents');
     const qualityP = get('/api/quality');
-    const [agents, quality] = await Promise.all([agentsP, qualityP]);
+    const [agentsRaw, qualityRaw] = await Promise.all([agentsP, qualityP]);
+    const agents = hasAgents(agentsRaw) ? agentsRaw : (_lastGoodAgents || agentsRaw);
+    const quality = hasQuality(qualityRaw) ? qualityRaw : (_lastGoodQuality || qualityRaw);
+    if (hasAgents(agentsRaw)) _lastGoodAgents = agentsRaw;
+    if (hasQuality(qualityRaw)) _lastGoodQuality = qualityRaw;
     const fullData = [ov, ch, leads, agents, quality, traffic];
     _cache = fullData;
     _rangeCache[range] = { status, data: fullData };
