@@ -42,6 +42,25 @@ def leads(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
         }
 
 
+def _bucket_scores(rows):
+    score_buckets = dict(EMPTY_SCORE_BUCKETS)
+
+    for row in rows:
+        score = row.get("score")
+        if score is None:
+            continue
+        if score <= 25:
+            score_buckets["0-25"] += 1
+        elif score <= 50:
+            score_buckets["26-50"] += 1
+        elif score <= 75:
+            score_buckets["51-75"] += 1
+        else:
+            score_buckets["76-100"] += 1
+
+    return score_buckets
+
+
 def _score_distribution():
     score_buckets = dict(EMPTY_SCORE_BUCKETS)
     offset = 0
@@ -57,18 +76,9 @@ def _score_distribution():
                 .data
             ) or []
 
-            for row in rows:
-                score = row.get("score")
-                if score is None:
-                    continue
-                if score <= 25:
-                    score_buckets["0-25"] += 1
-                elif score <= 50:
-                    score_buckets["26-50"] += 1
-                elif score <= 75:
-                    score_buckets["51-75"] += 1
-                else:
-                    score_buckets["76-100"] += 1
+            page_buckets = _bucket_scores(rows)
+            for key, value in page_buckets.items():
+                score_buckets[key] += value
 
             if len(rows) < PAGE:
                 break
@@ -162,7 +172,7 @@ def _leads_inner(range_: str):
         "range": range_,
         "total": len(all_leads),
         "funnel": status_counts,
-        "score_distribution": _score_distribution(),
+        "score_distribution": _bucket_scores(all_leads),
         "leads": all_leads,
         "hot_leads": _hot_leads(),
     }
