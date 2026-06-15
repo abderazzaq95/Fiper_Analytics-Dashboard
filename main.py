@@ -945,6 +945,7 @@ async def backfill_missing_lead_scores(limit: int = 20, days_back: int = 30) -> 
             msgs_by_lead[msg["lead_id"]].append(msg)
 
     ok = err = skipped = 0
+    sample_errors = []
     for lead in remaining:
         lead_id = lead["id"]
         channel = lead.get("channel", "")
@@ -1019,6 +1020,8 @@ async def backfill_missing_lead_scores(limit: int = 20, days_back: int = 30) -> 
             await asyncio.sleep(0.35)
         except Exception as exc:
             log.error(f"Score backfill failed for lead {phone}: {exc}")
+            if len(sample_errors) < 5:
+                sample_errors.append(f"{phone}: {exc}")
             err += 1
 
     log.info(
@@ -1030,6 +1033,7 @@ async def backfill_missing_lead_scores(limit: int = 20, days_back: int = 30) -> 
         "analyzed": ok,
         "errors": err,
         "skipped": skipped,
+        "sample_errors": sample_errors,
     }
 
 
