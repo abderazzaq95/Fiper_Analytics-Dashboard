@@ -1821,6 +1821,12 @@ async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
         f"phone={phone!r} agent={agent_name!r} msg_id={msg_id!r} body={str(body_text)[:80]!r}"
     )
 
+    if direction == "outbound" and lead_id:
+        try:
+            alert_engine.resolve_no_reply(lead_id)
+        except Exception as e:
+            log.error(f"resolve_no_reply error: {e}")
+
     if direction == "inbound":
         try:
             alert_engine.check_no_reply()
@@ -1873,6 +1879,11 @@ async def _handle_mc_outbound(body: dict, now_iso: str) -> None:
             "sent_at": sent_at,
             **({"agent_name": agent_name} if agent_name else {}),
         }, on_conflict="wa_message_id").execute()
+
+    try:
+        alert_engine.resolve_no_reply(lead_id)
+    except Exception as e:
+        log.error(f"resolve_no_reply error: {e}")
 
     # Compute and log response time (time since last inbound from this lead)
     try:

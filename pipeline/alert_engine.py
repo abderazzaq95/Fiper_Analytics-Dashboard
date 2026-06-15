@@ -36,14 +36,23 @@ def _upsert_alert(lead_id, agent_name, severity, alert_type, message):
         pass
 
 
+def resolve_no_reply(lead_id: str):
+    """Resolve any open no_reply alert for this lead — call when agent sends a reply."""
+    supabase.table("alerts").update({"resolved": True}).eq("lead_id", lead_id).eq("type", "no_reply").eq("resolved", False).execute()
+
+
 def check_no_reply():
-    """HIGH: inbound message older than 60 min with no subsequent outbound reply."""
+    """HIGH: inbound message older than 60 min with no subsequent outbound reply.
+    Also auto-resolves existing alerts for leads that have since been answered."""
     now = datetime.now(timezone.utc)
     messages = supabase.table("messages").select("lead_id,sent_at,direction").execute().data
 
     by_lead: dict[str, list[dict]] = {}
     for m in messages:
         by_lead.setdefault(m["lead_id"], []).append(m)
+
+    # Track which leads still have unanswered inbounds
+    still_unanswered: set[str] = set()
 
     for lead_id, msgs in by_lead.items():
         sorted_msgs = sorted(msgs, key=lambda x: x["sent_at"])
@@ -58,12 +67,26 @@ def check_no_reply():
             sent = datetime.fromisoformat(last_inbound["sent_at"].replace("Z", "+00:00"))
             gap_min = (now - sent).total_seconds() / 60
             if gap_min > 60:
+                still_unanswered.add(lead_id)
                 lead = supabase.table("leads").select("assigned_agent").eq("id", lead_id).single().execute().data
                 agent = (lead.get("assigned_agent") if lead else None) or "unknown"
                 _upsert_alert(
                     lead_id, agent, "HIGH", "no_reply",
                     f"Inbound message unanswered for {int(gap_min)} minutes."
                 )
+
+    # Auto-resolve alerts for leads that have now been answered
+    open_alerts = (
+        supabase.table("alerts")
+        .select("id,lead_id")
+        .eq("type", "no_reply")
+        .eq("resolved", False)
+        .execute()
+        .data or []
+    )
+    resolved_ids = [a["id"] for a in open_alerts if a["lead_id"] not in still_unanswered]
+    if resolved_ids:
+        supabase.table("alerts").update({"resolved": True}).in_("id", resolved_ids).execute()
 
 
 def check_stale_callbacks():
