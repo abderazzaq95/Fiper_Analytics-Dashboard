@@ -90,21 +90,25 @@ def _agents_inner(range: str):
     }
     active_ids = list(active_lead_ids)
     leads = []
-    for idx in range(0, len(active_ids), 500):
+    idx = 0
+    while idx < len(active_ids):
         leads.extend(
             supabase.table("leads")
             .select("id,phone,name,assigned_agent,status,score")
             .in_("id", active_ids[idx:idx + 500])
             .execute().data or []
         )
+        idx += 500
     analyses = []
-    for idx in range(0, len(active_ids), 500):
+    idx = 0
+    while idx < len(active_ids):
         analyses.extend(
             supabase.table("ai_analysis")
             .select("lead_id,sentiment,treatment_score,source,analyzed_at,outcome")
             .in_("lead_id", active_ids[idx:idx + 500])
             .execute().data or []
         )
+        idx += 500
 
     # ── Build lookup dicts (all agent keys normalized to Title Case) ──────────
 
