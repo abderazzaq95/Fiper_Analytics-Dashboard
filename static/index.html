@@ -851,7 +851,7 @@ let _lastRenderedData = null;
 let _riskFlagDetails = {};
 
 // ── Persistent cache (survives page refresh) ──────────────────────────────────
-const _CACHE_VER = 'v5';
+const _CACHE_VER = 'v6';
 const _CACHE_TTL = 12 * 60 * 60 * 1000; // 12h
 
 function _storageKey(r) { return `fiper_${_CACHE_VER}_${r}`; }
@@ -880,9 +880,11 @@ function _applyStoredCache(r) {
   if (hasAgents(agents))   _lastGoodAgents  = agents;
   if (hasQuality(quality)) _lastGoodQuality = quality;
   if (hasTraffic(traffic)) _lastGoodTraffic = traffic;
-  _cache = stored;
-  _lastRenderedData = stored;
-  _rangeCache[r] = { status: {}, data: stored };
+  const safeQuality = hasQuality(quality) ? quality : (_lastGoodQuality || null);
+  const safeStored = [ov, ch, leads, agents, safeQuality, traffic];
+  _cache = safeStored;
+  _lastRenderedData = safeStored;
+  _rangeCache[r] = { status: {}, data: safeStored };
   return true;
 }
 
@@ -987,8 +989,12 @@ function hasQuality(data) {
   const outcomes = data?.call_outcomes || {};
   const sentiment = data?.sentiment || {};
   return Object.keys(outcomes).length > 0 ||
+    Object.keys(data?.top_topics || {}).length > 0 ||
+    Object.keys(data?.top_risk_flags || {}).length > 0 ||
+    (Array.isArray(data?.faq_topics) && data.faq_topics.length > 0) ||
     ((sentiment.positive || 0) + (sentiment.neutral || 0) + (sentiment.negative || 0)) > 0 ||
-    ((data?.alerts?.total || 0) > 0);
+    ((data?.alerts?.total || 0) > 0) ||
+    ((data?.avg_treatment_score || 0) > 0);
 }
 function hasTraffic(data) {
   return !!data && ['today','week','month'].some(p =>
@@ -2735,7 +2741,9 @@ async function loadAll(bgRefresh = false) {
     const qualityP = get('/api/quality');
     const [agentsRaw, qualityRaw] = await Promise.all([agentsP, qualityP]);
     const agents = hasAgents(agentsRaw) ? agentsRaw : (_lastGoodAgents || agentsRaw);
-    const quality = hasQuality(qualityRaw) ? qualityRaw : (_lastGoodQuality || qualityRaw);
+    const quality = hasQuality(qualityRaw)
+      ? qualityRaw
+      : (hasQuality(previous?.[4]) ? previous[4] : (_lastGoodQuality || null));
     if (hasAgents(agentsRaw)) _lastGoodAgents = agentsRaw;
     if (hasQuality(qualityRaw)) _lastGoodQuality = qualityRaw;
     const fullData = [ov, ch, leads, agents, quality, traffic];

@@ -104,7 +104,7 @@ def _quality_inner(range: str):
 
     analyses = (
         supabase.table("ai_analysis")
-        .select("lead_id,sentiment,topics,treatment_score,risk_flags,analyzed_at,source,summary,summary_en,summary_ar")
+        .select("lead_id,sentiment,topics,treatment_score,risk_flags,analyzed_at,source,summary")
         .gte("analyzed_at", since)
         .execute()
         .data
@@ -114,7 +114,7 @@ def _quality_inner(range: str):
     try:
         topic_example_rows = (
             supabase.table("ai_analysis")
-            .select("lead_id,topics,summary,summary_en,summary_ar")
+            .select("lead_id,topics,summary")
             .gte("analyzed_at", since)
             .execute()
             .data
@@ -218,9 +218,7 @@ def _quality_inner(range: str):
         lead = analysis_lead_map.get(lead_id or "", {})
         latest_msg = latest_message_map.get(lead_id or "", {})
         summary = (
-            analysis.get("summary_en")
-            or analysis.get("summary")
-            or analysis.get("summary_ar")
+            analysis.get("summary")
             or ""
         ).strip()
         message_body = (latest_msg.get("body") or "").strip()
@@ -250,9 +248,7 @@ def _quality_inner(range: str):
     topic_examples: dict[str, list[dict]] = {}
     for analysis in topic_example_rows:
         summary = (
-            analysis.get("summary_en")
-            or analysis.get("summary")
-            or analysis.get("summary_ar")
+            analysis.get("summary")
             or ""
         ).strip()
         if not summary:
