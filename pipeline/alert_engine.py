@@ -63,6 +63,31 @@ def _lead_ids_for_phone(phone: str | None) -> set[str]:
     return lead_ids
 
 
+def _lead_row_map_for_phone(phone: str | None) -> dict[str, dict]:
+    if not phone:
+        return {}
+    rows = (
+        supabase.table("leads")
+        .select("id,phone,wa_contact_id,assigned_agent,updated_at")
+        .eq("channel", "whatsapp")
+        .eq("phone", phone)
+        .execute()
+        .data
+        or []
+    )
+    if not rows:
+        rows = (
+            supabase.table("leads")
+            .select("id,phone,wa_contact_id,assigned_agent,updated_at")
+            .eq("channel", "whatsapp")
+            .eq("wa_contact_id", phone)
+            .execute()
+            .data
+            or []
+        )
+    return {row["id"]: row for row in rows if row.get("id")}
+
+
 def resolve_no_reply(lead_id: str | None = None, phone: str | None = None):
     """Resolve any open no_reply alert for this conversation.
 
@@ -99,14 +124,35 @@ def check_no_reply():
     now = datetime.now(timezone.utc)
     messages = supabase.table("messages").select("lead_id,sent_at,direction").execute().data
 
-    by_lead: dict[str, list[dict]] = {}
+    leads = (
+        supabase.table("leads")
+        .select("id,phone,wa_contact_id,assigned_agent,updated_at")
+        .eq("channel", "whatsapp")
+        .execute()
+        .data
+        or []
+    )
+
+    lead_phone_map: dict[str, str] = {}
+    phone_leads: dict[str, list[dict]] = {}
+    for lead in leads:
+        phone = lead.get("phone") or lead.get("wa_contact_id")
+        if not phone:
+            continue
+        lead_phone_map[lead["id"]] = phone
+        phone_leads.setdefault(phone, []).append(lead)
+
+    by_phone: dict[str, list[dict]] = {}
     for m in messages:
-        by_lead.setdefault(m["lead_id"], []).append(m)
+        phone = lead_phone_map.get(m.get("lead_id"))
+        if not phone:
+            continue
+        by_phone.setdefault(phone, []).append(m)
 
     # Track which leads still have unanswered inbounds
-    still_unanswered: set[str] = set()
+    still_unanswered_phones: set[str] = set()
 
-    for lead_id, msgs in by_lead.items():
+    for phone, msgs in by_phone.items():
         sorted_msgs = sorted(msgs, key=lambda x: x["sent_at"])
         last_inbound = None
         for m in sorted_msgs:
@@ -119,9 +165,17 @@ def check_no_reply():
             sent = datetime.fromisoformat(last_inbound["sent_at"].replace("Z", "+00:00"))
             gap_min = (now - sent).total_seconds() / 60
             if gap_min > 60:
-                still_unanswered.add(lead_id)
-                lead = supabase.table("leads").select("assigned_agent").eq("id", lead_id).single().execute().data
-                agent = (lead.get("assigned_agent") if lead else None) or "unknown"
+                still_unanswered_phones.add(phone)
+                lead_rows = phone_leads.get(phone, [])
+                lead_rows = sorted(
+                    lead_rows,
+                    key=lambda row: row.get("updated_at") or "",
+                    reverse=True,
+                )
+                lead_id = lead_rows[0].get("id") if lead_rows else None
+                agent = (lead_rows[0].get("assigned_agent") if lead_rows else None) or "unknown"
+                if not lead_id:
+                    continue
                 _upsert_alert(
                     lead_id, agent, "HIGH", "no_reply",
                     f"Inbound message unanswered for {int(gap_min)} minutes."
@@ -136,7 +190,11 @@ def check_no_reply():
         .execute()
         .data or []
     )
-    resolved_ids = [a["id"] for a in open_alerts if a["lead_id"] not in still_unanswered]
+    resolved_ids = []
+    for alert in open_alerts:
+        phone = lead_phone_map.get(alert["lead_id"])
+        if phone and phone not in still_unanswered_phones:
+            resolved_ids.append(alert["id"])
     if resolved_ids:
         supabase.table("alerts").update({"resolved": True}).in_("id", resolved_ids).execute()
 
