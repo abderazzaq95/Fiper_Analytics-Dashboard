@@ -184,11 +184,13 @@ html[dir=rtl] .alert-item{border-left:none;border-right:4px solid transparent}
 /* ── Risk flags ── */
 .risk-item{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)}
 .risk-item:last-child{border-bottom:none}
-.risk-item.clickable{cursor:pointer;border-radius:6px;padding-left:6px;padding-right:6px}
-.risk-item.clickable:hover{background:var(--blue-light)}
+.risk-block{padding:8px 0;border-bottom:1px solid var(--border)}
+.risk-block:last-child{border-bottom:none}
 .risk-name{font-size:12px;color:var(--navy);font-weight:500}
 .risk-count{font-size:12px;font-weight:700;color:var(--red)}
 .risk-detail-line{font-size:12px;color:var(--text);line-height:1.45;margin-top:6px;padding:7px 9px;background:var(--bg);border-left:3px solid var(--border);border-radius:0 6px 6px 0}
+.risk-detail-meta{font-size:11px;color:var(--text-light);margin-top:5px;display:flex;gap:6px;flex-wrap:wrap}
+.risk-empty-detail{font-size:11px;color:var(--text-light);margin-top:6px;font-style:italic}
 
 /* ── Lead Journey Tracker ── */
 .journey-lead{border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px;overflow:hidden;transition:box-shadow .2s}
@@ -849,7 +851,7 @@ let _lastRenderedData = null;
 let _riskFlagDetails = {};
 
 // ── Persistent cache (survives page refresh) ──────────────────────────────────
-const _CACHE_VER = 'v4';
+const _CACHE_VER = 'v5';
 const _CACHE_TTL = 12 * 60 * 60 * 1000; // 12h
 
 function _storageKey(r) { return `fiper_${_CACHE_VER}_${r}`; }
@@ -1369,6 +1371,28 @@ const TOPIC_LABELS = {
   leverage:              {en:'Leverage',              ar:'الرافعة المالية'},
 };
 
+function riskDetailsInlineHtml(flag, maxRows=3) {
+  const rows = ((_riskFlagDetails && _riskFlagDetails[flag]) || []).slice(0, maxRows);
+  if (!rows.length) {
+    return `<div class="risk-empty-detail">${lang==='ar'?'لا توجد تفاصيل محفوظة لهذا الخطر':'No saved detail rows for this risk flag yet'}</div>`;
+  }
+  return rows.map(item => {
+    const phone = item.lead_phone ? fmtPhone(item.lead_phone) : (lang==='ar'?'رقم غير معروف':'Unknown number');
+    const leadName = item.lead_name ? ` · ${esc(item.lead_name)}` : '';
+    const agent = item.agent_name || (lang==='ar'?'غير معروف':'unknown');
+    const when = item.analyzed_at ? new Date(item.analyzed_at).toLocaleString() : '—';
+    const source = item.source || 'analysis';
+    const score = item.treatment_score != null ? ` · ${esc(String(item.treatment_score))}/100` : '';
+    const msgLabel = item.message_direction === 'outbound' ? 'Agent' : 'Customer';
+    return `<div class="risk-detail-line">
+      <div><b>${esc(phone)}${leadName}</b></div>
+      <div class="risk-detail-meta">Agent: ${esc(agent)} · ${esc(source)} · ${esc(when)}${score}</div>
+      ${item.summary ? `<div style="margin-top:5px"><b>AI:</b> ${esc(item.summary)}</div>` : ''}
+      ${item.message ? `<div style="margin-top:5px"><b>${esc(msgLabel)}:</b> ${esc(item.message)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
 function renderTopics(quality) {
   const topicsRaw  = quality?.top_topics || {};
   const riskRaw    = quality?.top_risk_flags || {};
@@ -1394,7 +1418,7 @@ function renderTopics(quality) {
   const riskColors = {unanswered:'var(--blue)',profit_expectations:'var(--warn)',beginner_risk:'var(--red)',stale_callback:'var(--red)',negative_sentiment:'var(--red)',slow_response:'var(--warn)'};
   const riskLabels = {unanswered:lang==='ar'?'لا إجابة':'Unanswered',profit_expectations:lang==='ar'?'توقعات مفرطة':'Profit Expectations',beginner_risk:lang==='ar'?'خطر مبتدئ':'Beginner Risk',stale_callback:lang==='ar'?'معاودة متأخرة':'Stale Callback',negative_sentiment:lang==='ar'?'مشاعر سلبية':'Negative Sentiment',slow_response:lang==='ar'?'رد بطيء':'Slow Response'};
   document.getElementById('riskList').innerHTML = riskKeys.length
-    ? riskKeys.map(k=>`<button type="button" class="risk-item clickable" onclick="openRiskFlagDetails('${esc(k)}')" style="width:100%;border:0;background:transparent;font-family:inherit;text-align:inherit"><span class="risk-name">${riskLabels[k]||k}</span><span class="risk-count" style="color:${riskColors[k]||'var(--red)'}">${riskRaw[k]}</span></button>`).join('')
+    ? riskKeys.map(k=>`<div class="risk-block"><div class="risk-item"><span class="risk-name">${riskLabels[k]||k}</span><span class="risk-count" style="color:${riskColors[k]||'var(--red)'}">${riskRaw[k]}</span></div>${riskDetailsInlineHtml(k,3)}</div>`).join('')
     : `<div style="text-align:center;padding:16px;color:var(--text-light);font-size:12px">${lang==='ar'?'لم يتم رصد علامات خطر':'No risk flags detected'}</div>`;
 }
 
@@ -1663,7 +1687,7 @@ function renderFAQ(quality) {
     </div>`;
   }).join('');
   const riskHtml = riskKeys.length
-    ? riskKeys.map(k=>`<button type="button" class="risk-item clickable" onclick="openRiskFlagDetails('${esc(k)}')" style="width:100%;border:0;background:transparent;font-family:inherit;text-align:inherit"><span class="risk-name">${esc(riskLabels[k] || k.replaceAll('_',' '))}</span><span class="risk-count">${fmt(riskRaw[k])}</span></button>`).join('')
+    ? riskKeys.map(k=>`<div class="risk-block"><div class="risk-item"><span class="risk-name">${esc(riskLabels[k] || k.replaceAll('_',' '))}</span><span class="risk-count">${fmt(riskRaw[k])}</span></div>${riskDetailsInlineHtml(k,2)}</div>`).join('')
     : `<div style="color:var(--text-light);font-size:12px">No risk flags detected</div>`;
   document.getElementById('faqList').innerHTML = `
     <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:14px">Business topics from analyzed conversations</div>
