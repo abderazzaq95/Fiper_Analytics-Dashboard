@@ -2282,6 +2282,17 @@ def debug_send_agent_alert(agent: str = Query("Jehad Qasim"), token: str = Query
     return {"agent": agent, "sent": sent, "contact": contact}
 
 
+@app.post("/api/debug/email/test-notification")
+def debug_send_test_notification(
+    email: str = Query(...),
+    phone: str = Query(""),
+    token: str = Query(""),
+):
+    _require_email_debug_token(token)
+    sent = email_notifications.send_test_notification(email, phone)
+    return {"email": email, "phone": phone, "sent": sent}
+
+
 @app.post("/api/debug/email/webhook-health")
 def debug_send_webhook_health_alert(token: str = Query("")):
     _require_email_debug_token(token)

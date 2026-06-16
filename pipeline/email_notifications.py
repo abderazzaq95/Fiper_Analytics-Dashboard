@@ -140,6 +140,19 @@ def _send_email(to: str, subject: str, html_body: str) -> bool:
     return True
 
 
+def send_test_notification(to: str, phone: str = "") -> bool:
+    html_body = f"""
+    <h2>Fiper Test Alert</h2>
+    <p>This is a test notification from the Fiper Analytics Dashboard.</p>
+    <ul>
+      <li><b>Severity:</b> HIGH</li>
+      <li><b>Type:</b> test alert</li>
+      <li><b>Requested phone:</b> {html.escape(phone or "not provided")}</li>
+    </ul>
+    """
+    return _send_email(to, "Fiper test alert notification", html_body)
+
+
 def notify_agent_alert(alert: dict) -> bool:
     agent = alert.get("agent_name") or "unknown"
     recipient = _agent_email(agent)
