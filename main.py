@@ -1676,6 +1676,47 @@ def _record_whatsapp_line_heartbeat(body: dict, now_iso: str) -> None:
         log.debug(f"[webhook/mc] could not record heartbeat for {line_number}: {e}")
 
 
+def _debug_whatsapp_webhook_inspect(body: dict) -> dict:
+    """Return a compact inspection of how the webhook payload is interpreted."""
+    root = _first_dict(body.get("data"), body.get("payload"), body)
+    delta = _first_dict(root.get("delta"), root.get("eventData"), root.get("data"))
+    value = _first_dict(root.get("value"), delta.get("value"))
+    contact = _first_dict(root.get("contact"), delta.get("contact"), root.get("chat"), delta.get("chat"))
+    metadata = _first_dict(
+        root.get("metadata"),
+        delta.get("metadata"),
+        value.get("metadata"),
+        contact.get("metadata"),
+    )
+    extracted_line = _extract_whatsapp_business_number(body)
+    extracted_phone = _pick_customer_phone(
+        contact.get("number"),
+        contact.get("phone"),
+        contact.get("wa_id"),
+        delta.get("number"),
+        delta.get("phone"),
+        root.get("number"),
+        root.get("phone"),
+        body.get("number"),
+        body.get("phone"),
+        body.get("contact_number"),
+        root.get("to"),
+        body.get("to"),
+    )
+    return {
+        "event": body.get("event"),
+        "keys": list(body.keys()),
+        "root_keys": list(root.keys()) if isinstance(root, dict) else [],
+        "delta_keys": list(delta.keys()) if isinstance(delta, dict) else [],
+        "contact_keys": list(contact.keys()) if isinstance(contact, dict) else [],
+        "metadata_keys": list(metadata.keys()) if isinstance(metadata, dict) else [],
+        "extracted_business_line": extracted_line,
+        "extracted_customer_phone": extracted_phone,
+        "line_is_known": bool(extracted_line and extracted_line in whatsapp.BUSINESS_NUMBERS),
+        "payload_preview": str(body)[:1000],
+    }
+
+
 def _find_whatsapp_lead(contact_id: str | None, phone: str | None) -> dict | None:
     """Find an existing WhatsApp lead by ManyContacts id or phone."""
     lookups = []
@@ -2257,6 +2298,7 @@ async def webhook_manycontacts(request: Request):
         "path": request.url.path,
         "event": body.get("event"),
         "keys": list(body.keys()),
+        "body": body,
         "preview": str(body)[:500],
     })
     if len(_last_webhook_payloads) > 5:
@@ -2365,6 +2407,22 @@ def pipeline_status():
 def debug_webhooks():
     """Return the last 5 raw webhook payloads received — use to diagnose format issues."""
     return {"count": len(_last_webhook_payloads), "payloads": _last_webhook_payloads}
+
+
+@app.get("/api/debug/webhooks/analyze")
+def debug_webhooks_analyze():
+    """Return parsed diagnostics for the last webhook payloads."""
+    analyzed = [
+        {
+            "at": item.get("at"),
+            "path": item.get("path"),
+            "parsed": _debug_whatsapp_webhook_inspect(item.get("body") or {})
+            if isinstance(item.get("body"), dict)
+            else {"error": "payload is not a dict"},
+        }
+        for item in _last_webhook_payloads
+    ]
+    return {"count": len(analyzed), "payloads": analyzed}
 
 
 @app.post("/api/debug/email/supervisor-report")
