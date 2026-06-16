@@ -45,7 +45,7 @@ def quality(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/quality error ({range}): {e}", exc_info=True)
-        return {"range": range, "alerts": {"total":0,"open":0,"by_severity":{"HIGH":0,"MED":0,"LOW":0},"list":[]}, "sentiment":{"positive":0,"neutral":0,"negative":0}, "top_topics":{}, "top_risk_flags":{}, "faq_topics":[], "avg_treatment_score":0, "call_outcomes":{}, "complaints_count":0, "avg_messages_per_lead":0}
+        return {"range": range, "alerts": {"total":0,"open":0,"by_severity":{"HIGH":0,"MED":0,"LOW":0},"list":[]}, "sentiment":{"positive":0,"neutral":0,"negative":0}, "top_topics":{}, "top_risk_flags":{}, "risk_flag_details":{}, "faq_topics":[], "avg_treatment_score":0, "call_outcomes":{}, "complaints_count":0, "avg_messages_per_lead":0}
 
 
 def _quality_inner(range: str):
@@ -104,7 +104,7 @@ def _quality_inner(range: str):
 
     analyses = (
         supabase.table("ai_analysis")
-        .select("lead_id,sentiment,topics,treatment_score,risk_flags,analyzed_at,source")
+        .select("lead_id,sentiment,topics,treatment_score,risk_flags,analyzed_at,source,summary,summary_en,summary_ar")
         .gte("analyzed_at", since)
         .execute()
         .data
@@ -114,7 +114,7 @@ def _quality_inner(range: str):
     try:
         topic_example_rows = (
             supabase.table("ai_analysis")
-            .select("lead_id,topics,summary")
+            .select("lead_id,topics,summary,summary_en,summary_ar")
             .gte("analyzed_at", since)
             .execute()
             .data
@@ -178,6 +178,75 @@ def _quality_inner(range: str):
     })
     topic_counter = Counter(all_topics)
     total_topic_count = sum(topic_counter.values())
+    analysis_lead_ids = list({a["lead_id"] for a in analyses if a.get("lead_id")})
+    analysis_lead_map = {}
+    if analysis_lead_ids:
+        try:
+            lead_rows = (
+                supabase.table("leads")
+                .select("id,phone,name,assigned_agent")
+                .in_("id", analysis_lead_ids)
+                .execute()
+                .data
+            ) or []
+            analysis_lead_map = {r["id"]: r for r in lead_rows}
+        except Exception:
+            analysis_lead_map = {}
+
+    latest_message_map = {}
+    if analysis_lead_ids:
+        try:
+            msg_rows = (
+                supabase.table("messages")
+                .select("lead_id,direction,body,agent_name,sent_at")
+                .in_("lead_id", analysis_lead_ids)
+                .order("sent_at", desc=True)
+                .limit(1000)
+                .execute()
+                .data
+            ) or []
+            for msg in msg_rows:
+                lead_id = msg.get("lead_id")
+                if lead_id and lead_id not in latest_message_map:
+                    latest_message_map[lead_id] = msg
+        except Exception:
+            latest_message_map = {}
+
+    risk_flag_details: dict[str, list[dict]] = {}
+    for analysis in sorted(analyses, key=lambda a: a.get("analyzed_at") or "", reverse=True):
+        lead_id = analysis.get("lead_id")
+        lead = analysis_lead_map.get(lead_id or "", {})
+        latest_msg = latest_message_map.get(lead_id or "", {})
+        summary = (
+            analysis.get("summary_en")
+            or analysis.get("summary")
+            or analysis.get("summary_ar")
+            or ""
+        ).strip()
+        message_body = (latest_msg.get("body") or "").strip()
+        if len(summary) > 320:
+            summary = summary[:317].rstrip() + "..."
+        if len(message_body) > 320:
+            message_body = message_body[:317].rstrip() + "..."
+        for flag in analysis.get("risk_flags") or []:
+            bucket = risk_flag_details.setdefault(flag, [])
+            if len(bucket) >= 10:
+                continue
+            bucket.append({
+                "lead_id": lead_id,
+                "lead_phone": lead.get("phone"),
+                "lead_name": lead.get("name"),
+                "agent_name": lead.get("assigned_agent") or latest_msg.get("agent_name"),
+                "source": analysis.get("source"),
+                "analyzed_at": analysis.get("analyzed_at"),
+                "sentiment": analysis.get("sentiment"),
+                "treatment_score": analysis.get("treatment_score"),
+                "summary": summary,
+                "message": message_body,
+                "message_direction": latest_msg.get("direction"),
+                "message_at": latest_msg.get("sent_at"),
+            })
+
     topic_examples: dict[str, list[dict]] = {}
     for analysis in topic_example_rows:
         summary = (
@@ -231,6 +300,7 @@ def _quality_inner(range: str):
         },
         "top_topics": dict(topic_counter.most_common(10)),
         "top_risk_flags": dict(Counter(all_risk_flags).most_common(10)),
+        "risk_flag_details": risk_flag_details,
         "faq_topics": faq_topics,
         "avg_treatment_score": round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else 0,
         "call_outcomes": call_outcomes,

@@ -184,8 +184,11 @@ html[dir=rtl] .alert-item{border-left:none;border-right:4px solid transparent}
 /* ── Risk flags ── */
 .risk-item{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)}
 .risk-item:last-child{border-bottom:none}
+.risk-item.clickable{cursor:pointer;border-radius:6px;padding-left:6px;padding-right:6px}
+.risk-item.clickable:hover{background:var(--blue-light)}
 .risk-name{font-size:12px;color:var(--navy);font-weight:500}
 .risk-count{font-size:12px;font-weight:700;color:var(--red)}
+.risk-detail-line{font-size:12px;color:var(--text);line-height:1.45;margin-top:6px;padding:7px 9px;background:var(--bg);border-left:3px solid var(--border);border-radius:0 6px 6px 0}
 
 /* ── Lead Journey Tracker ── */
 .journey-lead{border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px;overflow:hidden;transition:box-shadow .2s}
@@ -843,6 +846,7 @@ let _lastGoodLeads   = null;
 let _lastGoodTraffic = null;
 let _rangeCache = {};   // range → {status, data} — instant switching
 let _lastRenderedData = null;
+let _riskFlagDetails = {};
 
 // ── Persistent cache (survives page refresh) ──────────────────────────────────
 const _CACHE_VER = 'v4';
@@ -1368,6 +1372,7 @@ const TOPIC_LABELS = {
 function renderTopics(quality) {
   const topicsRaw  = quality?.top_topics || {};
   const riskRaw    = quality?.top_risk_flags || {};
+  _riskFlagDetails = quality?.risk_flag_details || {};
   const topicsWrap = document.getElementById('topicsWrap');
   const tKeys      = Object.keys(topicsRaw).slice(0,6);
   const total      = tKeys.reduce((s,k)=>s+topicsRaw[k],0);
@@ -1389,7 +1394,7 @@ function renderTopics(quality) {
   const riskColors = {unanswered:'var(--blue)',profit_expectations:'var(--warn)',beginner_risk:'var(--red)',stale_callback:'var(--red)',negative_sentiment:'var(--red)',slow_response:'var(--warn)'};
   const riskLabels = {unanswered:lang==='ar'?'لا إجابة':'Unanswered',profit_expectations:lang==='ar'?'توقعات مفرطة':'Profit Expectations',beginner_risk:lang==='ar'?'خطر مبتدئ':'Beginner Risk',stale_callback:lang==='ar'?'معاودة متأخرة':'Stale Callback',negative_sentiment:lang==='ar'?'مشاعر سلبية':'Negative Sentiment',slow_response:lang==='ar'?'رد بطيء':'Slow Response'};
   document.getElementById('riskList').innerHTML = riskKeys.length
-    ? riskKeys.map(k=>`<div class="risk-item"><span class="risk-name">${riskLabels[k]||k}</span><span class="risk-count" style="color:${riskColors[k]||'var(--red)'}">${riskRaw[k]}</span></div>`).join('')
+    ? riskKeys.map(k=>`<button type="button" class="risk-item clickable" onclick="openRiskFlagDetails('${esc(k)}')" style="width:100%;border:0;background:transparent;font-family:inherit;text-align:inherit"><span class="risk-name">${riskLabels[k]||k}</span><span class="risk-count" style="color:${riskColors[k]||'var(--red)'}">${riskRaw[k]}</span></button>`).join('')
     : `<div style="text-align:center;padding:16px;color:var(--text-light);font-size:12px">${lang==='ar'?'لم يتم رصد علامات خطر':'No risk flags detected'}</div>`;
 }
 
@@ -1658,7 +1663,7 @@ function renderFAQ(quality) {
     </div>`;
   }).join('');
   const riskHtml = riskKeys.length
-    ? riskKeys.map(k=>`<div class="risk-item"><span class="risk-name">${esc(riskLabels[k] || k.replaceAll('_',' '))}</span><span class="risk-count">${fmt(riskRaw[k])}</span></div>`).join('')
+    ? riskKeys.map(k=>`<button type="button" class="risk-item clickable" onclick="openRiskFlagDetails('${esc(k)}')" style="width:100%;border:0;background:transparent;font-family:inherit;text-align:inherit"><span class="risk-name">${esc(riskLabels[k] || k.replaceAll('_',' '))}</span><span class="risk-count">${fmt(riskRaw[k])}</span></button>`).join('')
     : `<div style="color:var(--text-light);font-size:12px">No risk flags detected</div>`;
   document.getElementById('faqList').innerHTML = `
     <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:14px">Business topics from analyzed conversations</div>
@@ -1871,6 +1876,46 @@ async function openAgentAlerts(agent) {
     console.error('[alerts] render error:', e);
     body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Render error: ${esc(String(e))}</div></div>`;
   }
+}
+
+function openRiskFlagDetails(flag) {
+  const modal = document.getElementById('agentAlertsModal');
+  const title = document.getElementById('agentAlertsTitle');
+  const body  = document.getElementById('agentAlertsBody');
+  if (!modal || !title || !body) return;
+
+  const label = _translateTag(flag).replace(/_/g, ' ');
+  const items = (_riskFlagDetails && _riskFlagDetails[flag]) || [];
+  title.textContent = `${label} · ${lang==='ar'?'Ø§Ù„ØªÙØ§ØµÙŠÙ„':'Details'}`;
+  modal.classList.add('open');
+
+  if (!items.length) {
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">âš ï¸</div><div class="empty-text">${lang==='ar'?'Ù„Ø§ ØªÙˆØ¬Ø¯ ØªÙØ§ØµÙŠÙ„ Ù„Ù‡Ø°Ø§ Ø§Ù„Ø®Ø·Ø±':'No detail rows for this risk flag'}</div></div>`;
+    return;
+  }
+
+  body.innerHTML = items.map(item => {
+    const phone = item.lead_phone ? fmtPhone(item.lead_phone) : (lang==='ar'?'Ø±Ù‚Ù… ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ':'Unknown number');
+    const leadName = item.lead_name ? ` · ${esc(item.lead_name)}` : '';
+    const agent = item.agent_name || (lang==='ar'?'ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ':'unknown');
+    const source = item.source || 'analysis';
+    const when = item.analyzed_at ? new Date(item.analyzed_at).toLocaleString() : '—';
+    const msgWhen = item.message_at ? new Date(item.message_at).toLocaleString() : '';
+    const score = item.treatment_score != null ? ` · Treatment ${esc(String(item.treatment_score))}/100` : '';
+    const sentiment = item.sentiment ? ` · ${esc(item.sentiment)}` : '';
+    const messageLabel = item.message_direction === 'outbound'
+      ? (lang==='ar'?'Ø±Ø³Ø§Ù„Ø© Ø§Ù„ÙˆÙƒÙŠÙ„':'Agent message')
+      : (lang==='ar'?'Ø±Ø³Ø§Ù„Ø© Ø§Ù„Ø¹Ù…ÙŠÙ„':'Customer message');
+    return `<div class="agent-alert-card">
+      <div class="agent-alert-top">
+        <span class="pill pill-red">${esc(label)}</span>
+        <span class="agent-alert-title">${esc(phone)}${leadName}</span>
+      </div>
+      <div class="alert-meta">ðŸ‘¤ ${esc(agent)} · ${esc(source)} · ${esc(when)}${score}${sentiment}</div>
+      ${item.summary ? `<div class="risk-detail-line"><b>${lang==='ar'?'ØªØ­Ù„ÙŠÙ„ AI':'AI analysis'}:</b> ${esc(item.summary)}</div>` : ''}
+      ${item.message ? `<div class="risk-detail-line"><b>${esc(messageLabel)}${msgWhen ? ' · ' + esc(msgWhen) : ''}:</b> ${esc(item.message)}</div>` : ''}
+    </div>`;
+  }).join('');
 }
 
 function closeAgentAlertsModal(ev) {
