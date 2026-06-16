@@ -2271,6 +2271,7 @@ def debug_send_supervisor_report(token: str = Query("")):
 @app.post("/api/debug/email/agent-alert")
 def debug_send_agent_alert(agent: str = Query("Jehad Qasim"), token: str = Query("")):
     _require_email_debug_token(token)
+    contact = email_notifications.resolve_agent_contact(agent)
     sent = email_notifications.notify_agent_alert({
         "lead_id": "test",
         "agent_name": agent,
@@ -2278,7 +2279,7 @@ def debug_send_agent_alert(agent: str = Query("Jehad Qasim"), token: str = Query
         "type": "test_alert",
         "message": "Test alert notification from Fiper Analytics Dashboard.",
     })
-    return {"agent": agent, "sent": sent}
+    return {"agent": agent, "sent": sent, "contact": contact}
 
 
 @app.post("/api/debug/email/webhook-health")

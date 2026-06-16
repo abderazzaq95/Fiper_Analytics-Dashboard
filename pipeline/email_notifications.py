@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+import csv
 import html
+import io
 import os
 import re
+import time
+import unicodedata
 
 import requests
 from dotenv import load_dotenv
@@ -17,11 +21,102 @@ supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "Fiper Alerts <onboarding@resend.dev>")
 SALES_SUPERVISOR_EMAIL = os.getenv("SALES_SUPERVISOR_EMAIL", "")
+AGENT_CONTACTS_CSV_URL = os.getenv(
+    "AGENT_CONTACTS_CSV_URL",
+    "https://docs.google.com/spreadsheets/d/"
+    "1PB6P7V_wJkg6AFBNOGJ6Vb7-g3Mw7G4CPmQzJaZR1a8/"
+    "gviz/tq?tqx=out:csv&gid=0",
+)
+CONTACT_CACHE_SECONDS = int(os.getenv("AGENT_CONTACT_CACHE_SECONDS", "600"))
+_contacts_cache: dict = {"loaded_at": 0.0, "contacts": {}}
 
 
 def _agent_env_key(agent_name: str | None) -> str:
     slug = re.sub(r"[^A-Z0-9]+", "_", (agent_name or "").upper()).strip("_")
     return f"AGENT_EMAIL_{slug}" if slug else ""
+
+
+def _normalize_name(name: str | None) -> str:
+    value = unicodedata.normalize("NFKD", name or "")
+    value = "".join(ch for ch in value if not unicodedata.combining(ch))
+    value = re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+    value = re.sub(r"\s+", " ", value)
+    # Fiper data contains both Jehad and Jihad spellings for the same agent.
+    value = value.replace("jihad", "jehad")
+    return value
+
+
+def _name_keys(name: str | None) -> set[str]:
+    normalized = _normalize_name(name)
+    if not normalized:
+        return set()
+    compact = normalized.replace(" ", "")
+    no_vowels = re.sub(r"[aeiou]", "", compact)
+    return {normalized, compact, no_vowels}
+
+
+def _load_agent_contacts() -> dict[str, dict]:
+    now = time.time()
+    if now - (_contacts_cache.get("loaded_at") or 0) < CONTACT_CACHE_SECONDS:
+        return _contacts_cache.get("contacts") or {}
+
+    contacts: dict[str, dict] = {}
+    if not AGENT_CONTACTS_CSV_URL:
+        _contacts_cache.update({"loaded_at": now, "contacts": contacts})
+        return contacts
+
+    try:
+        response = requests.get(AGENT_CONTACTS_CSV_URL, timeout=20)
+        response.raise_for_status()
+        reader = csv.DictReader(io.StringIO(response.text))
+        for row in reader:
+            name = (row.get("NAME") or row.get("Name") or "").strip()
+            email = (row.get("EMAIL") or row.get("Email") or "").strip()
+            phone = (
+                row.get("PHONE NUMBER")
+                or row.get("Phone Number")
+                or row.get("PHONE")
+                or row.get("Phone")
+                or ""
+            ).strip()
+            if not (name and email):
+                continue
+            contact = {"name": name, "email": email, "phone": phone}
+            for key in _name_keys(name):
+                contacts[key] = contact
+    except Exception:
+        contacts = _contacts_cache.get("contacts") or {}
+
+    _contacts_cache.update({"loaded_at": now, "contacts": contacts})
+    return contacts
+
+
+def _agent_contact(agent_name: str | None) -> dict | None:
+    contacts = _load_agent_contacts()
+    for key in _name_keys(agent_name):
+        if key in contacts:
+            return contacts[key]
+    return None
+
+
+def _agent_email(agent_name: str | None) -> str:
+    env_email = os.getenv(_agent_env_key(agent_name), "")
+    if env_email:
+        return env_email.strip()
+    contact = _agent_contact(agent_name)
+    return (contact or {}).get("email", "").strip()
+
+
+def resolve_agent_contact(agent_name: str | None) -> dict:
+    env_email = os.getenv(_agent_env_key(agent_name), "").strip()
+    contact = _agent_contact(agent_name) or {}
+    return {
+        "agent": agent_name or "",
+        "name": contact.get("name") or agent_name or "",
+        "email": env_email or contact.get("email") or "",
+        "phone": contact.get("phone") or "",
+        "source": "env" if env_email else ("sheet" if contact else "none"),
+    }
 
 
 def _send_email(to: str, subject: str, html_body: str) -> bool:
@@ -47,7 +142,7 @@ def _send_email(to: str, subject: str, html_body: str) -> bool:
 
 def notify_agent_alert(alert: dict) -> bool:
     agent = alert.get("agent_name") or "unknown"
-    recipient = os.getenv(_agent_env_key(agent), "")
+    recipient = _agent_email(agent)
     if not recipient:
         return False
 
