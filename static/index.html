@@ -616,46 +616,43 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 
   <!-- AI Insights -->
   <div id="sec-insights" class="section-label"><span data-en="AI Insights" data-ar="رؤى الذكاء الاصطناعي">AI Insights</span></div>
-  <div class="two-col">
-    <div class="card">
-      <div class="card-head" data-en="Sentiment Analysis" data-ar="تحليل المشاعر">Sentiment Analysis</div>
-      <div class="two-col" style="gap:12px;align-items:center">
-        <div class="chart-wrap" style="height:180px" id="sentimentWrap"><canvas id="sentimentChart"></canvas></div>
-        <div class="gauge-wrap" id="treatGauge">
-          <div class="gauge-circle">
-            <svg width="100" height="100" viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="40" fill="none" stroke="var(--border)" stroke-width="10"/>
-              <circle id="gaugeArc" cx="50" cy="50" r="40" fill="none" stroke="var(--blue)" stroke-width="10" stroke-linecap="round" stroke-dasharray="0 251.2" style="transition:stroke-dasharray 1s ease"/>
-            </svg>
-            <div class="gauge-text">
-              <div class="gauge-num" id="gaugeNum">—</div>
-              <div class="gauge-lbl" data-en="/100" data-ar="/100">/100</div>
+  <div class="two-col" style="align-items:flex-start;gap:18px">
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <div class="card">
+        <div class="card-head" data-en="Sentiment Analysis" data-ar="تحليل المشاعر">Sentiment Analysis</div>
+        <div class="two-col" style="gap:12px;align-items:center">
+          <div class="chart-wrap" style="height:180px" id="sentimentWrap"><canvas id="sentimentChart"></canvas></div>
+          <div class="gauge-wrap" id="treatGauge">
+            <div class="gauge-circle">
+              <svg width="100" height="100" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="40" fill="none" stroke="var(--border)" stroke-width="10"/>
+                <circle id="gaugeArc" cx="50" cy="50" r="40" fill="none" stroke="var(--blue)" stroke-width="10" stroke-linecap="round" stroke-dasharray="0 251.2" style="transition:stroke-dasharray 1s ease"/>
+              </svg>
+              <div class="gauge-text">
+                <div class="gauge-num" id="gaugeNum">—</div>
+                <div class="gauge-lbl" data-en="/100" data-ar="/100">/100</div>
+              </div>
             </div>
-          </div>
-          <div style="text-align:center">
-            <div style="font-size:12px;font-weight:700;color:var(--navy)" data-en="Avg Treatment Score" data-ar="متوسط نقاط المعاملة">Avg Treatment Score</div>
-            <div style="font-size:11px;color:var(--text-light);margin-top:2px" data-en="Agent interaction quality" data-ar="جودة تفاعل الوكيل">Agent interaction quality</div>
+            <div style="text-align:center">
+              <div style="font-size:12px;font-weight:700;color:var(--navy)" data-en="Avg Treatment Score" data-ar="متوسط نقاط المعاملة">Avg Treatment Score</div>
+              <div style="font-size:11px;color:var(--text-light);margin-top:2px" data-en="Agent interaction quality" data-ar="جودة تفاعل الوكيل">Agent interaction quality</div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-    <div class="card">
-      <div class="card-head" data-en="Topics &amp; Risk Flags" data-ar="المواضيع وعلامات الخطر">Topics &amp; Risk Flags</div>
-      <div style="margin-bottom:14px">
-        <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px" data-en="TOP TOPICS" data-ar="أهم المواضيع">TOP TOPICS</div>
-        <div id="topicsWrap"><div class="skeleton" style="height:100px;border-radius:6px"></div></div>
+      <div class="card">
+        <div class="card-head" data-en="Topics &amp; Risk Flags" data-ar="المواضيع وعلامات الخطر">Topics &amp; Risk Flags</div>
+        <div style="margin-bottom:14px">
+          <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px" data-en="TOP TOPICS" data-ar="أهم المواضيع">TOP TOPICS</div>
+          <div id="topicsWrap"><div class="skeleton" style="height:100px;border-radius:6px"></div></div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px" data-en="RISK FLAGS" data-ar="علامات الخطر">RISK FLAGS</div>
+          <div id="riskList"><div class="skeleton" style="height:60px"></div></div>
+        </div>
       </div>
-      <div>
-        <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px" data-en="RISK FLAGS" data-ar="علامات الخطر">RISK FLAGS</div>
-        <div id="riskList"><div class="skeleton" style="height:60px"></div></div>
-      </div>
     </div>
-  </div>
-
-  <!-- FAQ Analytics -->
-  <div id="faqSection" style="display:none;margin-top:4px">
-    <div class="section-label"><span data-en="Topic Examples" data-ar="أمثلة الموضوعات">Topic Examples</span></div>
-    <div class="card">
+    <div class="card" style="flex:1;min-width:0">
       <div class="card-head" data-en="Top business topics with real conversation examples" data-ar="أهم الموضوعات التجارية مع أمثلة حقيقية من المحادثات">Top business topics with real conversation examples</div>
       <div id="faqList"></div>
     </div>
@@ -1667,9 +1664,9 @@ function renderFAQ(quality) {
 // ── Sparkline ─────────────────────────────────────────────────────────────────
 function renderFAQ(quality) {
   const faq = quality.faq_topics || [];
-  const section = document.getElementById('faqSection');
-  if (!faq.length) { section.style.display = 'none'; return; }
-  section.style.display = 'block';
+  const wrap = document.getElementById('faqList');
+  if (!wrap) return;
+  if (!faq.length) { wrap.innerHTML = ''; return; }
   const maxCount = faq[0]?.count || 1;
   const topicHtml = faq.slice(0,10).map(t => {
     const examples = (t.examples || []).slice(0,2);
@@ -1682,17 +1679,9 @@ function renderFAQ(quality) {
       ${examples.length ? `<div class="topic-example-label">Examples</div><div class="topic-example-list">${examples.map(ex=>`<div class="topic-example">${esc(ex.text)}</div>`).join('')}</div>` : ''}
     </div>`;
   }).join('');
-  document.getElementById('faqList').innerHTML = `
+  wrap.innerHTML = `
     <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:14px">Business topics from analyzed conversations</div>
-    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px">
-      <div>${topicHtml}</div>
-      <div style="padding:0 4px">
-        <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">What this view shows</div>
-        <div class="risk-empty-detail" style="display:block">
-          We keep the full risk-flag detail list in the upper insight card. This section focuses on the topics customers actually discuss, with short examples under each topic.
-        </div>
-      </div>
-    </div>`;
+    <div>${topicHtml}</div>`;
 }
 
 function sparkline(trend) {
