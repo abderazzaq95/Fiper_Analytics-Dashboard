@@ -99,6 +99,17 @@ def _agent_contact(agent_name: str | None) -> dict | None:
     return None
 
 
+def _paginate(build_query) -> list:
+    rows, offset = [], 0
+    while True:
+        batch = build_query().range(offset, offset + 999).execute().data or []
+        rows.extend(batch)
+        if len(batch) < 1000:
+            break
+        offset += 1000
+    return rows
+
+
 def _agent_email(agent_name: str | None) -> str:
     env_email = os.getenv(_agent_env_key(agent_name), "")
     if env_email:
@@ -234,27 +245,21 @@ def send_supervisor_report(report_label: str = "") -> bool:
     ) or []
     open_alerts = [a for a in alerts if not a.get("resolved")]
 
-    calls = (
-        supabase.table("calls")
+    calls = _paginate(
+        lambda: supabase.table("calls")
         .select("id,outcome,duration_seconds,called_at")
         .gte("called_at", today)
-        .execute()
-        .data
-    ) or []
-    messages = (
-        supabase.table("messages")
+    )
+    messages = _paginate(
+        lambda: supabase.table("messages")
         .select("id,direction,sent_at")
         .gte("sent_at", today)
-        .execute()
-        .data
-    ) or []
-    leads = (
-        supabase.table("leads")
+    )
+    leads = _paginate(
+        lambda: supabase.table("leads")
         .select("id,channel,created_at,last_message_at")
         .gte("created_at", today)
-        .execute()
-        .data
-    ) or []
+    )
 
     severity_counts = Counter(a.get("severity") or "UNKNOWN" for a in open_alerts)
     type_counts = Counter(a.get("type") or "unknown" for a in open_alerts)
