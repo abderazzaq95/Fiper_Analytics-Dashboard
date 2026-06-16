@@ -36,9 +36,61 @@ def _upsert_alert(lead_id, agent_name, severity, alert_type, message):
         pass
 
 
-def resolve_no_reply(lead_id: str):
-    """Resolve any open no_reply alert for this lead — call when agent sends a reply."""
-    supabase.table("alerts").update({"resolved": True}).eq("lead_id", lead_id).eq("type", "no_reply").eq("resolved", False).execute()
+def _lead_ids_for_phone(phone: str | None) -> set[str]:
+    if not phone:
+        return set()
+    rows = (
+        supabase.table("leads")
+        .select("id")
+        .eq("channel", "whatsapp")
+        .eq("phone", phone)
+        .execute()
+        .data
+        or []
+    )
+    lead_ids = {row["id"] for row in rows if row.get("id")}
+    if not lead_ids:
+        rows = (
+            supabase.table("leads")
+            .select("id")
+            .eq("channel", "whatsapp")
+            .eq("wa_contact_id", phone)
+            .execute()
+            .data
+            or []
+        )
+        lead_ids.update(row["id"] for row in rows if row.get("id"))
+    return lead_ids
+
+
+def resolve_no_reply(lead_id: str | None = None, phone: str | None = None):
+    """Resolve any open no_reply alert for this conversation.
+
+    We resolve by both lead_id and phone so duplicate lead rows for the same
+    WhatsApp number cannot leave an answered conversation stuck open.
+    """
+    lead_ids: set[str] = set()
+    if lead_id:
+        lead_ids.add(lead_id)
+        row = (
+            supabase.table("leads")
+            .select("phone,wa_contact_id")
+            .eq("id", lead_id)
+            .limit(1)
+            .execute()
+            .data
+            or []
+        )
+        if row:
+            lead_phone = row[0].get("phone") or row[0].get("wa_contact_id")
+            lead_ids.update(_lead_ids_for_phone(lead_phone))
+    if phone:
+        lead_ids.update(_lead_ids_for_phone(phone))
+
+    if not lead_ids:
+        return
+
+    supabase.table("alerts").update({"resolved": True}).in_("lead_id", list(lead_ids)).eq("type", "no_reply").eq("resolved", False).execute()
 
 
 def check_no_reply():

@@ -2184,7 +2184,7 @@ async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
 
     if direction == "outbound" and lead_id:
         try:
-            alert_engine.resolve_no_reply(lead_id)
+            alert_engine.resolve_no_reply(lead_id, phone)
         except Exception as e:
             log.error(f"resolve_no_reply error: {e}")
 
@@ -2241,7 +2241,7 @@ async def _handle_mc_outbound(body: dict, now_iso: str) -> None:
         }, on_conflict="wa_message_id").execute()
 
     try:
-        alert_engine.resolve_no_reply(lead_id)
+        alert_engine.resolve_no_reply(lead_id, phone)
     except Exception as e:
         log.error(f"resolve_no_reply error: {e}")
 
