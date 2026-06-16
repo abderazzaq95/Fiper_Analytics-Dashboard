@@ -38,6 +38,30 @@ def _since(range_: str) -> str:
     return start.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
 
 
+def _digits_only(value: str | None) -> str:
+    return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def _lead_phone(lead: dict | None) -> str | None:
+    if not lead:
+        return None
+    phone = (lead.get("phone") or "").strip()
+    if phone:
+        return phone
+    wa_contact_id = str(lead.get("wa_contact_id") or "").strip()
+    if wa_contact_id and _digits_only(wa_contact_id):
+        return wa_contact_id
+    return None
+
+
+def _lead_agent_name(lead: dict | None, latest_msg: dict | None = None) -> str | None:
+    if lead and lead.get("assigned_agent"):
+        return lead.get("assigned_agent")
+    if latest_msg and latest_msg.get("agent_name"):
+        return latest_msg.get("agent_name")
+    return None
+
+
 @router.get("/api/quality")
 def quality(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
     try:
@@ -65,18 +89,36 @@ def _quality_inner(range: str):
     if all_alert_lead_ids:
         lead_rows = (
             supabase.table("leads")
-            .select("id,phone,name,assigned_agent")
+            .select("id,phone,wa_contact_id,name,assigned_agent")
             .in_("id", all_alert_lead_ids)
             .execute()
             .data
         ) or []
         lead_map = {r["id"]: r for r in lead_rows}
+        alert_msg_map = {}
+        try:
+            alert_msg_rows = (
+                supabase.table("messages")
+                .select("lead_id,direction,body,agent_name,sent_at")
+                .in_("lead_id", all_alert_lead_ids)
+                .order("sent_at", desc=True)
+                .limit(1000)
+                .execute()
+                .data
+            ) or []
+            for msg in alert_msg_rows:
+                lead_id = msg.get("lead_id")
+                if lead_id and lead_id not in alert_msg_map:
+                    alert_msg_map[lead_id] = msg
+        except Exception:
+            alert_msg_map = {}
         for a in alerts:
             lead = lead_map.get(a.get("lead_id") or "")
+            latest_msg = alert_msg_map.get(a.get("lead_id") or "", {})
             if lead:
                 if not a.get("agent_name"):
-                    a["agent_name"] = lead.get("assigned_agent")
-                a["lead_phone"] = lead.get("phone")
+                    a["agent_name"] = _lead_agent_name(lead, latest_msg)
+                a["lead_phone"] = _lead_phone(lead)
                 a["lead_name"]  = lead.get("name")
 
     # For open no_reply alerts, fetch the last unanswered inbound message body
@@ -184,7 +226,7 @@ def _quality_inner(range: str):
         try:
             lead_rows = (
                 supabase.table("leads")
-                .select("id,phone,name,assigned_agent")
+                .select("id,phone,wa_contact_id,name,assigned_agent")
                 .in_("id", analysis_lead_ids)
                 .execute()
                 .data
@@ -232,9 +274,9 @@ def _quality_inner(range: str):
                 continue
             bucket.append({
                 "lead_id": lead_id,
-                "lead_phone": lead.get("phone"),
+                "lead_phone": _lead_phone(lead),
                 "lead_name": lead.get("name"),
-                "agent_name": lead.get("assigned_agent") or latest_msg.get("agent_name"),
+                "agent_name": _lead_agent_name(lead, latest_msg),
                 "source": analysis.get("source"),
                 "analyzed_at": analysis.get("analyzed_at"),
                 "sentiment": analysis.get("sentiment"),
