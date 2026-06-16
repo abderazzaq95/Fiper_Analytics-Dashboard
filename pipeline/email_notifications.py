@@ -182,12 +182,21 @@ def send_webhook_health_alert(details: dict) -> bool:
     latest_activity = details.get("latest_activity_at") or "unknown"
     latest_stored = details.get("latest_stored_at") or "none"
     active_chats = details.get("active_chats") or 0
+    stale_lines = details.get("stale_lines") or []
+    stale_rows = "".join(
+        "<li>"
+        f"<b>Line:</b> {html.escape(str(item.get('number') or 'unknown'))}"
+        f" | <b>Reason:</b> {html.escape(str(item.get('reason') or 'stale'))}"
+        f" | <b>Last seen:</b> {html.escape(str(item.get('last_seen') or 'none'))}"
+        f" | <b>Lag:</b> {html.escape(str(item.get('lag_min') if item.get('lag_min') is not None else 'n/a'))} minutes"
+        "</li>"
+        for item in stale_lines
+    )
 
     html_body = f"""
     <h2>Fiper WhatsApp Webhook Warning</h2>
     <p>
-      ManyContacts shows recent WhatsApp activity, but message webhooks appear
-      to be delayed or disabled.
+      One or more WhatsApp webhook lines appear to be delayed, disabled, or missing heartbeat updates.
     </p>
     <ul>
       <li><b>Active WhatsApp chats:</b> {html.escape(str(active_chats))}</li>
@@ -195,6 +204,8 @@ def send_webhook_health_alert(details: dict) -> bool:
       <li><b>Latest stored message:</b> {html.escape(str(latest_stored))}</li>
       <li><b>Lag:</b> {html.escape(str(lag_min))} minutes</li>
     </ul>
+    <h3>Stale lines</h3>
+    <ul>{stale_rows or '<li>No line details available</li>'}</ul>
     <p>
       Please check ManyContacts -> API / Developers and make sure
       <b>Enable WhatsApp API webhook forwarding</b> is ON and saved.

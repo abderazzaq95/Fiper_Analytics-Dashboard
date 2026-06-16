@@ -1337,32 +1337,55 @@ def check_whatsapp_webhook_health():
         if recent_activity_count == 0:
             return
 
-        msg_rows = (
-            supabase.table("messages")
-            .select("sent_at")
-            .order("sent_at", desc=True)
-            .limit(1)
+        line_rows = (
+            supabase.table("leads")
+            .select("wa_contact_id,last_message_at")
+            .in_("wa_contact_id", [f"whatsapp_health_{n}" for n in sorted(whatsapp.BUSINESS_NUMBERS)])
             .execute().data or []
         )
-        latest_stored_raw = msg_rows[0].get("sent_at") if msg_rows else None
-        latest_stored = _parse_iso_dt(latest_stored_raw)
-        lag_min = (
-            (latest_activity - latest_stored).total_seconds() / 60
-            if latest_stored else threshold_min + 1
-        )
+        line_last_seen = {
+            str(row.get("wa_contact_id") or ""): _parse_iso_dt(row.get("last_message_at"))
+            for row in line_rows
+            if row.get("wa_contact_id")
+        }
+        stale_lines = []
+        for business_number in sorted(whatsapp.BUSINESS_NUMBERS):
+            key = f"whatsapp_health_{business_number}"
+            last_seen = line_last_seen.get(key)
+            if not last_seen:
+                stale_lines.append({
+                    "number": business_number,
+                    "last_seen": None,
+                    "lag_min": None,
+                    "reason": "missing heartbeat",
+                })
+                continue
+            lag_min = (now - last_seen).total_seconds() / 60
+            if lag_min > threshold_min:
+                stale_lines.append({
+                    "number": business_number,
+                    "last_seen": last_seen.isoformat(),
+                    "lag_min": round(lag_min, 1),
+                    "reason": "stale heartbeat",
+                })
 
-        if lag_min <= threshold_min:
+        if not stale_lines:
             return
 
+        latest_stored_raw = next(
+            (r.get("last_message_at") for r in line_rows if r.get("last_message_at")),
+            None,
+        )
         sent = email_notifications.send_webhook_health_alert({
-            "lag_min": round(lag_min, 1),
+            "lag_min": max((item.get("lag_min") or 0) for item in stale_lines) if stale_lines else None,
             "latest_activity_at": latest_activity_raw,
             "latest_stored_at": latest_stored_raw,
             "active_chats": recent_activity_count,
+            "stale_lines": stale_lines,
         })
         if sent:
             _last_webhook_health_alert = now
-            log.warning(f"WhatsApp webhook health alert sent; lag={lag_min:.1f}m")
+            log.warning(f"WhatsApp webhook health alert sent; stale_lines={stale_lines}")
     except Exception as e:
         log.error(f"WhatsApp webhook health check failed: {e}", exc_info=True)
 
@@ -1589,6 +1612,68 @@ def _pick_customer_phone(*candidates) -> str | None:
         if phone and not _is_internal_whatsapp_number(phone):
             return phone
     return None
+
+
+def _normalize_phone_digits(value: str | None) -> str:
+    return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+
+def _extract_whatsapp_business_number(body: dict) -> str | None:
+    """Best-effort extraction of the business WhatsApp line from a webhook payload."""
+    root = _first_dict(body.get("data"), body.get("payload"), body)
+    delta = _first_dict(root.get("delta"), root.get("eventData"), root.get("data"))
+    value = _first_dict(root.get("value"), delta.get("value"))
+    contact = _first_dict(root.get("contact"), delta.get("contact"), root.get("chat"), delta.get("chat"))
+    metadata = _first_dict(
+        root.get("metadata"),
+        delta.get("metadata"),
+        value.get("metadata"),
+        contact.get("metadata"),
+    )
+
+    candidates = []
+    for obj in (body, root, delta, value, metadata, contact):
+        if not isinstance(obj, dict):
+            continue
+        for key in (
+            "display_phone_number",
+            "phone_number",
+            "business_number",
+            "business_phone_number",
+            "phone_number_id",
+            "number",
+            "line_number",
+            "recipient_number",
+            "to",
+            "recipient",
+        ):
+            candidate = obj.get(key)
+            if candidate:
+                candidates.append(candidate)
+
+    for candidate in candidates:
+        normalized = _normalize_phone_digits(candidate)
+        if normalized and normalized in whatsapp.BUSINESS_NUMBERS:
+            return normalized
+    return None
+
+
+def _record_whatsapp_line_heartbeat(body: dict, now_iso: str) -> None:
+    line_number = _extract_whatsapp_business_number(body)
+    if not line_number:
+        return
+    try:
+        supabase.table("leads").upsert({
+            "wa_contact_id": f"whatsapp_health_{line_number}",
+            "name": f"WhatsApp Line {line_number}",
+            "phone": None,
+            "channel": "system",
+            "status": "active",
+            "last_message_at": now_iso,
+            "updated_at": now_iso,
+        }, on_conflict="wa_contact_id").execute()
+    except Exception as e:
+        log.debug(f"[webhook/mc] could not record heartbeat for {line_number}: {e}")
 
 
 def _find_whatsapp_lead(contact_id: str | None, phone: str | None) -> dict | None:
@@ -2178,6 +2263,7 @@ async def webhook_manycontacts(request: Request):
         _last_webhook_payloads.pop(0)
 
     now_iso = datetime.now(timezone.utc).isoformat()
+    _record_whatsapp_line_heartbeat(body, now_iso)
 
     try:
         if "entry" in body:
