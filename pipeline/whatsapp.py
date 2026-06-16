@@ -4,6 +4,7 @@ ManyContacts is Fiper's WhatsApp CRM inbox — it proxies the Meta WhatsApp
 Business API. Auth header: apikey.
 
 Fiper WhatsApp display number: +96897245526
+Secondary Fiper WhatsApp number: +905318880855
 ManyContacts account: fadad3c2-617e-43fb-85eb-a53e93f44fc2
 
 Confirmed working endpoints:
@@ -25,6 +26,24 @@ load_dotenv()
 
 BASE_URL = os.getenv("MC_BASE_URL", "https://api.manycontacts.com/v1")
 HEADERS = {"apikey": os.getenv("MC_API_KEY", "")}
+_DEFAULT_BUSINESS_NUMBERS = ("96897245526", "905318880855")
+_BUSINESS_NUMBERS_RAW = os.getenv("MC_BUSINESS_NUMBERS") or os.getenv("MC_BUSINESS_NUMBER") or ",".join(_DEFAULT_BUSINESS_NUMBERS)
+
+
+def _normalize_phone(phone: str | None) -> str:
+    return "".join(ch for ch in str(phone or "") if ch.isdigit())
+
+
+BUSINESS_NUMBERS = {
+    _normalize_phone(n)
+    for n in _BUSINESS_NUMBERS_RAW.split(",")
+    if _normalize_phone(n)
+}
+
+
+def is_internal_whatsapp_number(phone: str | None) -> bool:
+    """Return True when a phone belongs to Fiper's own WhatsApp lines."""
+    return _normalize_phone(phone) in BUSINESS_NUMBERS
 
 # Module-level agent cache: {user_id: name}
 _agent_cache: dict[str, str] = {}

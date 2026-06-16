@@ -215,6 +215,8 @@ async def ingest_manycontacts(hours_back: int = 2) -> dict:
     for contact in contacts:
         mc_id = contact.get("id")
         phone = contact.get("number", "")
+        if _is_internal_whatsapp_number(phone):
+            continue
         name = contact.get("name")
         open_status = contact.get("open", 1)
         last_user_id = contact.get("last_user_id")
@@ -324,6 +326,8 @@ async def ingest_manycontacts_activity(days_back: int = 1) -> dict:
         mc_id = contact.get("id")
         phone = contact.get("number") or contact.get("phone")
         if not (mc_id or phone):
+            continue
+        if _is_internal_whatsapp_number(phone):
             continue
         updated_at = (
             contact.get("updatedAt") or contact.get("updated_at")
@@ -1577,8 +1581,24 @@ def _first_list_item(value):
     return value[0] if isinstance(value, list) and value else value
 
 
+def _is_internal_whatsapp_number(phone: str | None) -> bool:
+    return whatsapp.is_internal_whatsapp_number(phone)
+
+
+def _pick_customer_phone(*candidates) -> str | None:
+    for candidate in candidates:
+        if not candidate:
+            continue
+        phone = str(candidate).split("@")[0].strip()
+        if phone and not _is_internal_whatsapp_number(phone):
+            return phone
+    return None
+
+
 def _find_whatsapp_lead(contact_id: str | None, phone: str | None) -> dict | None:
     """Find an existing WhatsApp lead by ManyContacts id or phone."""
+    if _is_internal_whatsapp_number(phone):
+        phone = None
     lookups = []
     if contact_id:
         lookups.append(("wa_contact_id", contact_id))
@@ -1812,6 +1832,9 @@ async def _handle_meta_format(body: dict, now_iso: str) -> None:
                     body_text = f"[{msg_type}]"
 
                 sent_at = _ts_to_iso(msg.get("timestamp"), now_iso)
+                if _is_internal_whatsapp_number(phone):
+                    log.info(f"[webhook/mc] inbound skipped internal number | from={phone!r}")
+                    continue
 
                 log.info(
                     f"[webhook/mc] inbound | from={phone!r} msg_id={msg_id!r} "
@@ -1870,6 +1893,9 @@ async def _handle_mc_contact_created(body: dict, now_iso: str) -> None:
 
     if not phone:
         log.warning(f"[webhook/mc] contact_created: no phone — contact={contact}")
+        return
+    if _is_internal_whatsapp_number(phone):
+        log.info(f"[webhook/mc] contact_created skipped internal number | phone={phone!r}")
         return
 
     supabase.table("leads").upsert({
@@ -1934,6 +1960,15 @@ async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
     )
     if isinstance(phone, str) and "@" in phone:
         phone = phone.split("@")[0]
+    phone = _pick_customer_phone(
+        phone,
+        message.get("from"),
+        message.get("to"),
+        contact.get("number"),
+        contact.get("phone"),
+        root.get("number"),
+        root.get("phone"),
+    )
     name = contact.get("name")
     msg_id = message.get("id") or message.get("wamid")
     msg_type = (
@@ -2065,6 +2100,9 @@ async def _handle_mc_outbound(body: dict, now_iso: str) -> None:
 
     if not phone:
         log.warning(f"[webhook/mc] outbound: no phone found — keys={list(body.keys())}")
+        return
+    if _is_internal_whatsapp_number(phone):
+        log.warning(f"[webhook/mc] outbound skipped internal number â€” phone={phone!r}")
         return
 
     # Upsert lead (may already exist from inbound messages)

@@ -3,6 +3,7 @@ from supabase import create_client
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
+from pipeline.whatsapp import is_internal_whatsapp_number
 
 load_dotenv()
 router = APIRouter()
@@ -80,7 +81,7 @@ def _overview_count_fallback(range: str) -> dict:
             active_whatsapp = len({
                 r.get("phone") or r.get("id")
                 for r in wa_rows
-                if r.get("phone") or r.get("id")
+                if (r.get("phone") or r.get("id")) and not is_internal_whatsapp_number(r.get("phone"))
             })
         except Exception:
             active_whatsapp = 0
@@ -168,10 +169,12 @@ def _overview_inner(range: str):
         .gte("last_message_at", since)
     )
     active_whatsapp_conversations = len({
-        l.get("phone") or l.get("id") for l in wa_activity if l.get("phone") or l.get("id")
+        l.get("phone") or l.get("id")
+        for l in wa_activity
+        if (l.get("phone") or l.get("id")) and not is_internal_whatsapp_number(l.get("phone"))
     })
-    active_whatsapp_phones = {l.get("phone") for l in wa_activity if l.get("phone")}
-    active_whatsapp_lead_ids = {l.get("id") for l in wa_activity if l.get("id")}
+    active_whatsapp_phones = {l.get("phone") for l in wa_activity if l.get("phone") and not is_internal_whatsapp_number(l.get("phone"))}
+    active_whatsapp_lead_ids = {l.get("id") for l in wa_activity if l.get("id") and not is_internal_whatsapp_number(l.get("phone"))}
     if active_whatsapp_phones:
         phones = list(active_whatsapp_phones)
         idx = 0
@@ -249,10 +252,10 @@ def _overview_inner(range: str):
 
     # Count DISTINCT phone numbers — same person may have a Maqsam lead and a
     # WhatsApp lead; we want unique people, not unique DB rows.
-    unique_phones = {l.get("phone") for l in leads if l.get("phone")}
+    unique_phones = {l.get("phone") for l in leads if l.get("phone") and not is_internal_whatsapp_number(l.get("phone"))}
     total_leads = len(unique_phones)
     # A phone is "converted" if any of its lead records has status=converted
-    converted_phones = {l.get("phone") for l in leads if l.get("status") == "converted" and l.get("phone")}
+    converted_phones = {l.get("phone") for l in leads if l.get("status") == "converted" and l.get("phone") and not is_internal_whatsapp_number(l.get("phone"))}
     converted = len(converted_phones)
     conversion_rate = round((converted / total_leads * 100) if total_leads else 0, 1)
     scored_leads = [l for l in leads if l.get("score") is not None]
@@ -274,7 +277,9 @@ def _overview_inner(range: str):
             stored_message_keys.update(
                 r.get("phone") or r.get("id")
                 for r in rows
-                if r.get("channel") == "whatsapp" and (r.get("phone") or r.get("id"))
+                if r.get("channel") == "whatsapp"
+                and (r.get("phone") or r.get("id"))
+                and not is_internal_whatsapp_number(r.get("phone"))
             )
             idx += BATCH_SIZE
         active_whatsapp_conversations = len(stored_message_keys)
