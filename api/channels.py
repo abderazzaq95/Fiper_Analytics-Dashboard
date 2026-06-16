@@ -3,8 +3,6 @@ from supabase import create_client
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
-from pipeline.whatsapp import is_internal_whatsapp_number
-
 load_dotenv()
 router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
@@ -121,7 +119,7 @@ def _channels_inner(range: str):
     active_whatsapp_conversations = len({
         l.get("phone") or l.get("id")
         for l in wa_activity
-        if (l.get("phone") or l.get("id")) and not is_internal_whatsapp_number(l.get("phone"))
+        if l.get("phone") or l.get("id")
     })
 
     total_calls_maqsam = _exact_count(
@@ -134,7 +132,7 @@ def _channels_inner(range: str):
     active_whatsapp_keys = {
         l.get("phone") or l.get("id")
         for l in wa_activity
-        if (l.get("phone") or l.get("id")) and not is_internal_whatsapp_number(l.get("phone"))
+        if l.get("phone") or l.get("id")
     }
     mq_call_lead_ids = {c["lead_id"] for c in call_rows if c.get("lead_id")}
     mq_call_leads = []
@@ -158,7 +156,7 @@ def _channels_inner(range: str):
     wa_converted_people = {
         l.get("phone") or l.get("id")
         for l in wa_activity
-        if l.get("status") == "converted" and (l.get("phone") or l.get("id")) and not is_internal_whatsapp_number(l.get("phone"))
+        if l.get("status") == "converted" and (l.get("phone") or l.get("id"))
     }
     mq_converted_people = {
         l.get("phone") or l.get("id")
