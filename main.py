@@ -1353,12 +1353,6 @@ def check_whatsapp_webhook_health():
             key = f"whatsapp_health_{business_number}"
             last_seen = line_last_seen.get(key)
             if not last_seen:
-                stale_lines.append({
-                    "number": business_number,
-                    "last_seen": None,
-                    "lag_min": None,
-                    "reason": "missing heartbeat",
-                })
                 continue
             lag_min = (now - last_seen).total_seconds() / 60
             if lag_min > threshold_min:
