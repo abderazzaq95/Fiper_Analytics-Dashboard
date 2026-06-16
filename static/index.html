@@ -654,9 +654,9 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 
   <!-- FAQ Analytics -->
   <div id="faqSection" style="display:none;margin-top:4px">
-    <div class="section-label"><span data-en="FAQ Analytics — Top Conversation Topics" data-ar="تحليل الأسئلة الشائعة — أهم موضوعات المحادثة">FAQ Analytics — Top Conversation Topics</span></div>
+    <div class="section-label"><span data-en="Topic Examples" data-ar="أمثلة الموضوعات">Topic Examples</span></div>
     <div class="card">
-      <div class="card-head" data-en="Ranked by frequency across all analyzed conversations" data-ar="مرتبة حسب التكرار عبر جميع المحادثات المحللة">Ranked by frequency across all analyzed conversations</div>
+      <div class="card-head" data-en="Top business topics with real conversation examples" data-ar="أهم الموضوعات التجارية مع أمثلة حقيقية من المحادثات">Top business topics with real conversation examples</div>
       <div id="faqList"></div>
     </div>
   </div>
@@ -1671,16 +1671,6 @@ function renderFAQ(quality) {
   if (!faq.length) { section.style.display = 'none'; return; }
   section.style.display = 'block';
   const maxCount = faq[0]?.count || 1;
-  const riskRaw = quality?.top_risk_flags || {};
-  const riskKeys = Object.keys(riskRaw).slice(0,10);
-  const riskLabels = {
-    unanswered: lang === 'ar' ? 'Unanswered' : 'Unanswered',
-    profit_expectations: lang === 'ar' ? 'Profit Expectations' : 'Profit Expectations',
-    beginner_risk: lang === 'ar' ? 'Beginner Risk' : 'Beginner Risk',
-    stale_callback: lang === 'ar' ? 'Stale Callback' : 'Stale Callback',
-    negative_sentiment: lang === 'ar' ? 'Negative Sentiment' : 'Negative Sentiment',
-    slow_response: lang === 'ar' ? 'Slow Response' : 'Slow Response'
-  };
   const topicHtml = faq.slice(0,10).map(t => {
     const examples = (t.examples || []).slice(0,2);
     return `<div class="faq-bar-row">
@@ -1692,16 +1682,15 @@ function renderFAQ(quality) {
       ${examples.length ? `<div class="topic-example-label">Examples</div><div class="topic-example-list">${examples.map(ex=>`<div class="topic-example">${esc(ex.text)}</div>`).join('')}</div>` : ''}
     </div>`;
   }).join('');
-  const riskHtml = riskKeys.length
-    ? riskKeys.map(k=>`<div class="risk-block"><div class="risk-item"><span class="risk-name">${esc(riskLabels[k] || k.replaceAll('_',' '))}</span><span class="risk-count">${fmt(riskRaw[k])}</span></div>${riskDetailsInlineHtml(k,2)}</div>`).join('')
-    : `<div style="color:var(--text-light);font-size:12px">No risk flags detected</div>`;
   document.getElementById('faqList').innerHTML = `
     <div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:14px">Business topics from analyzed conversations</div>
-    <div class="topic-risk-grid">
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px">
       <div>${topicHtml}</div>
-      <div>
-        <div class="topic-risk-title">Risk Flags</div>
-        ${riskHtml}
+      <div style="padding:0 4px">
+        <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">What this view shows</div>
+        <div class="risk-empty-detail" style="display:block">
+          We keep the full risk-flag detail list in the upper insight card. This section focuses on the topics customers actually discuss, with short examples under each topic.
+        </div>
       </div>
     </div>`;
 }
