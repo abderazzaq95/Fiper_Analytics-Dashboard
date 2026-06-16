@@ -1953,9 +1953,8 @@ function renderAlerts(quality) {
   const typeLabels = {no_reply:lang==='ar'?'لا رد':'No Reply',weak_engagement:lang==='ar'?'تفاعل ضعيف':'Weak Engagement',negative_sentiment:lang==='ar'?'مشاعر سلبية':'Negative Sentiment',poor_treatment:lang==='ar'?'معاملة سيئة':'Poor Treatment',beginner_risk:lang==='ar'?'خطر مبتدئ':'Beginner Risk',slow_response:lang==='ar'?'رد بطيء':'Slow Response',stale_callback:lang==='ar'?'معاودة متأخرة':'Stale Callback',profit_expectations:lang==='ar'?'توقعات مفرطة':'Profit Expectations'};
   const ALERT_LIMIT = 5;
   const mkAlert = a => {
-    const leadDisplay = a.lead_name
-      ? `${a.lead_name}${a.lead_phone ? ' · ' + fmtPhone(a.lead_phone) : ''}`
-      : a.lead_phone ? fmtPhone(a.lead_phone) : '';
+    const leadPhone = a.lead_phone ? fmtPhone(a.lead_phone) : '';
+    const leadName = a.lead_name && a.lead_name !== leadPhone ? a.lead_name : '';
     return `
     <div class="alert-item ${(a.severity||'').toLowerCase()}">
       <span class="pill ${a.severity==='HIGH'?'pill-red':a.severity==='MED'?'pill-warn':'pill-blue'}" style="flex-shrink:0;margin-top:1px">${a.severity}</span>
@@ -1963,7 +1962,8 @@ function renderAlerts(quality) {
         <div class="alert-msg">${typeLabels[a.type]||a.type} — ${a.message||''}</div>
         ${a.last_message_body?`<div class="alert-last-msg">💬 "${esc(a.last_message_body)}"</div>`:''}
         <div class="alert-meta">
-          ${leadDisplay?`<span style="font-weight:700;color:var(--navy)">📱 ${esc(leadDisplay)}</span>`:''}
+          ${leadPhone?`<span style="font-weight:700;color:var(--navy)">📱 ${esc(leadPhone)}</span>`:''}
+          ${leadName?`<span>${esc(leadName)}</span>`:''}
           ${a.agent_name?`<span>👤 ${esc(a.agent_name)}</span>`:''}
           ${a.created_at?`<span>🕐 ${ago(a.created_at)}</span>`:''}
         </div>
