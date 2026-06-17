@@ -725,7 +725,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   <!-- Lead Journey Tracker v2 -->
   <div id="sec-journey" class="section-label" style="margin-top:32px">
     <span data-en="Lead Journey Tracker" data-ar="متتبع رحلة العميل">Lead Journey Tracker</span>
-    <span style="font-size:10px;color:var(--text-light);font-weight:500;margin-left:6px" data-en="All leads · last 7 days · click to expand" data-ar="جميع العملاء · آخر 7 أيام · انقر للتوسيع">All leads · last 7 days · click to expand</span>
+    <span style="font-size:10px;color:var(--text-light);font-weight:500;margin-left:6px" data-en="Matches the selected time range · click to expand" data-ar="يطابق النطاق الزمني المحدد · انقر للتوسيع">Matches the selected time range · click to expand</span>
   </div>
 
   <!-- Filter bar -->
@@ -2646,7 +2646,7 @@ async function loadJourneyV2() {
 }
 
 function _journeyParams(page=1, limit=20, filters=jFilters) {
-  const p = new URLSearchParams({ page, limit, sort_by:filters.sort_by });
+  const p = new URLSearchParams({ page, limit, sort_by:filters.sort_by, range });
   if (filters.phone_search)     p.set('phone_search', filters.phone_search);
   if (filters.countries.length) p.set('country', filters.countries.join(','));
   if (filters.min_score > 0)    p.set('min_score', filters.min_score);

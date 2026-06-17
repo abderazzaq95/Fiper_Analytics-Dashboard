@@ -32,6 +32,19 @@ _BAD_FIPER_NAMES = re.compile(
 )
 
 
+def _since(range_: str) -> str:
+    now = datetime.now(timezone.utc)
+    if range_ == "today":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    if range_ in ("week", "7d"):
+        start = now - timedelta(days=now.weekday())
+        return start.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    if range_ in ("month", "30d"):
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    start = now - timedelta(days=now.weekday())
+    return start.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+
 def _detect_cc(phone: str) -> str:
     if not phone:
         return 'OTHER'
@@ -185,6 +198,7 @@ def _merge_by_phone(raw_leads: list[dict]) -> list[dict]:
 def leads_journey_v2(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=5000),
+    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
     phone_search: str = Query(""),
     country: str = Query(""),
     min_score: int = Query(0, ge=0, le=100),
@@ -197,7 +211,7 @@ def leads_journey_v2(
     lang: str = Query("en"),
 ):
     try:
-        return _inner(page, limit, phone_search, country,
+        return _inner(page, limit, range, phone_search, country,
                       min_score, max_score, channel, outcome,
                       agent, high_risk_only, sort_by, lang)
     except Exception as e:
@@ -206,13 +220,13 @@ def leads_journey_v2(
         return {"leads": [], "total": 0, "page": page, "pages": 0, "meta": {"agents": []}}
 
 
-def _inner(page, limit, phone_search, country, min_score, max_score,
+def _inner(page, limit, range, phone_search, country, min_score, max_score,
            channel, outcome, agent, high_risk_only, sort_by, lang="en"):
-    since_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    since = _since(range)
 
-    # ── 1. Collect active lead IDs from last 7 days ───────────────────────────
+    # ── 1. Collect active lead IDs from selected range ────────────────────────
     call_rows = _paginate(
-        lambda: supabase.table("calls").select("lead_id,called_at").gte("called_at", since_7d)
+        lambda: supabase.table("calls").select("lead_id,called_at").gte("called_at", since)
     )
     call_lead_ids: set[str] = set()
     call_counts: dict[str, int] = defaultdict(int)
@@ -224,7 +238,7 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
 
     msg_lead_rows = (
         supabase.table("leads").select("id")
-        .gte("last_message_at", since_7d)
+        .gte("last_message_at", since)
         .execute().data or []
     )
     msg_lead_ids = {r["id"] for r in msg_lead_rows}
@@ -615,14 +629,14 @@ def _inner(page, limit, phone_search, country, min_score, max_score,
     }
 
 
-def _export_rows_light(phone_search, country, min_score, max_score,
+def _export_rows_light(range, phone_search, country, min_score, max_score,
                        channel, outcome, agent, high_risk_only, sort_by):
-    since_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    since = _since(range)
 
     call_rows = _paginate(
         lambda: supabase.table("calls")
         .select("lead_id,outcome,called_at")
-        .gte("called_at", since_7d)
+        .gte("called_at", since)
     )
     call_lead_ids: set[str] = set()
     call_counts: dict[str, int] = defaultdict(int)
@@ -638,7 +652,7 @@ def _export_rows_light(phone_search, country, min_score, max_score,
 
     msg_lead_rows = (
         supabase.table("leads").select("id")
-        .gte("last_message_at", since_7d)
+        .gte("last_message_at", since)
         .execute().data or []
     )
     msg_lead_ids = {r["id"] for r in msg_lead_rows if r.get("id")}
@@ -766,6 +780,7 @@ def _export_rows_light(phone_search, country, min_score, max_score,
 
 @router.get("/api/leads/journey/v2/export")
 def leads_journey_v2_export(
+    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
     phone_search: str = Query(""),
     country: str = Query(""),
     min_score: int = Query(0, ge=0, le=100),
@@ -777,7 +792,7 @@ def leads_journey_v2_export(
     sort_by: str = Query("score"),
 ):
     rows = _export_rows_light(
-        phone_search, country, min_score, max_score,
+        range, phone_search, country, min_score, max_score,
         channel, outcome, agent, high_risk_only, sort_by,
     )
     if not rows:
