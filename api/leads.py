@@ -61,6 +61,31 @@ def _bucket_scores(rows):
     return score_buckets
 
 
+def _merge_by_phone(rows):
+    merged = {}
+    for row in rows:
+        phone = row.get("phone") or row.get("id")
+        if not phone:
+            continue
+        cur = merged.get(phone)
+        if not cur:
+            merged[phone] = {
+                **row,
+                "lead_ids": [row.get("id")] if row.get("id") else [],
+            }
+            continue
+        if row.get("id") and row["id"] not in cur["lead_ids"]:
+            cur["lead_ids"].append(row["id"])
+        # Prefer the most recent activity, but keep the highest score.
+        if (row.get("last_message_at") or "") > (cur.get("last_message_at") or ""):
+            for key in ("name", "status", "assigned_agent", "channel", "last_message_at", "created_at"):
+                if row.get(key) is not None:
+                    cur[key] = row.get(key)
+        if (row.get("score") or 0) > (cur.get("score") or 0):
+            cur["score"] = row.get("score")
+    return list(merged.values())
+
+
 def _score_distribution():
     score_buckets = dict(EMPTY_SCORE_BUCKETS)
     offset = 0
@@ -147,6 +172,7 @@ def _leads_inner(range_: str):
         if lead["id"] not in seen:
             seen.add(lead["id"])
             all_leads.append(lead)
+    all_leads = _merge_by_phone(all_leads)
     all_leads.sort(key=lambda l: l.get("score") or 0, reverse=True)
 
     # Join AI summaries
