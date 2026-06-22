@@ -73,6 +73,25 @@ header{
   min-width:180px;
 }
 .wa-line-select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(7,116,255,.08)}
+.wa-line-state{
+  font-size:11px;
+  color:var(--text-light);
+  display:flex;
+  align-items:center;
+  gap:6px;
+  white-space:nowrap;
+}
+.wa-line-state .dot{
+  width:7px;height:7px;border-radius:50%;
+  background:var(--text-light);
+  flex-shrink:0;
+}
+.wa-line-state.loading{color:#c47a00}
+.wa-line-state.loading .dot{background:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.16)}
+.wa-line-state.ready{color:#0f9d58}
+.wa-line-state.ready .dot{background:#0f9d58;box-shadow:0 0 0 3px rgba(15,157,88,.14)}
+.wa-line-state.error{color:#d11b1b}
+.wa-line-state.error .dot{background:#d11b1b;box-shadow:0 0 0 3px rgba(209,27,27,.14)}
 
 /* ── Main layout ── */
 main{padding:24px 28px;max-width:1600px;margin:0 auto}
@@ -560,10 +579,11 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   <div class="header-right">
     <span class="last-upd" id="lastUpd"><span class="live-dot" id="liveDot"></span><span id="lastUpdText">—</span></span>
     <select class="wa-line-select" id="waLineSelect" onchange="setWaLine(this.value)" aria-label="WhatsApp line">
-      <option value="all">All WhatsApp lines</option>
+      <option value="all">All WhatsApp numbers</option>
       <option value="96897245526">+968 9724 5526</option>
       <option value="905318880855">+90 531 888 0855</option>
     </select>
+    <span class="wa-line-state" id="waLineState"><span class="dot"></span><span id="waLineStateText">Ready</span></span>
     <button class="btn-icon" id="refreshBtn" onclick="triggerRefresh()">↻ <span data-en="Refresh" data-ar="تحديث">Refresh</span></button>
     <button class="btn-lang" onclick="toggleLang()" id="langBtn">العربية</button>
   </div>
@@ -878,7 +898,7 @@ let _lastRenderedData = null;
 let _riskFlagDetails = {};
 
 // ── Persistent cache (survives page refresh) ──────────────────────────────────
-const _CACHE_VER = 'v8';
+const _CACHE_VER = 'v9';
 const _CACHE_TTL = 12 * 60 * 60 * 1000; // 12h
 
 function _storageKey(r, line = waLine) { return `fiper_${_CACHE_VER}_${r}_${line || 'all'}`; }
@@ -914,6 +934,15 @@ function _applyStoredCache(r) {
   _lastRenderedData = safeStored;
   _rangeCache[_cacheKey(r)] = { status: {}, data: safeStored };
   return true;
+}
+
+function setWaLineState(state, text) {
+  const el = document.getElementById('waLineState');
+  const txt = document.getElementById('waLineStateText');
+  if (!el || !txt) return;
+  el.classList.remove('loading', 'ready', 'error');
+  if (state) el.classList.add(state);
+  txt.textContent = text || '';
 }
 
 // ── Language ──────────────────────────────────────────────────────────────────
@@ -1923,8 +1952,9 @@ function setWaLine(value) {
   localStorage.setItem('fiper_wa_line', waLine);
   const sel = document.getElementById('waLineSelect');
   if (sel && sel.value !== waLine) sel.value = waLine;
+  setWaLineState('loading', waLine === 'all' ? 'Loading all numbers...' : `Loading ${waLine}...`);
   loadAll();
-  loadJourneyV2();
+  Promise.resolve(loadJourneyV2()).catch(() => {});
 }
 
 function openRiskFlagDetails(flag) {
@@ -2756,6 +2786,9 @@ async function exportJourneyCSV() {
 // bgRefresh=true: silent background update, doesn't reset journey or show errors
 async function loadAll(bgRefresh = false) {
   try {
+    if (!bgRefresh) {
+      setWaLineState('loading', waLine === 'all' ? 'Loading all numbers...' : `Loading ${waLine}...`);
+    }
     const previous = _rangeCache[_cacheKey(range)]?.data || _cache || _lastRenderedData;
     // Phase 1 — fast APIs: render KPIs, charts, leads immediately
     const statusP  = fetch(`${API}/api/status`).then(r => r.ok ? r.json() : Promise.resolve({}));
@@ -2813,11 +2846,15 @@ async function loadAll(bgRefresh = false) {
     renderChannels(ch, quality);
     document.getElementById('lastUpdText').textContent =
       (lang==='ar' ? 'تحديث: ' : 'Updated: ') + new Date().toLocaleTimeString();
+    if (!bgRefresh) {
+      setWaLineState('ready', waLine === 'all' ? 'All numbers ready' : `Loaded ${waLine}`);
+    }
     applyLang();
   } catch(e) {
     if (!bgRefresh) {
       console.error('Load failed:', e);
       document.getElementById('kpiGrid').innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:32px;color:var(--red)">${lang==='ar'?'فشل التحميل: ':'Load failed: '}${e.message}</div>`;
+      setWaLineState('error', 'Load failed');
     }
   }
 }

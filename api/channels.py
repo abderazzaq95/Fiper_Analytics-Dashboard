@@ -225,33 +225,24 @@ def _channels_traffic_inner(wa_line: str = "all"):
     result: dict = {}
     for label, cutoff_dt in [("today", start_today), ("week", start_week), ("month", start_month)]:
         cutoff = cutoff_dt.isoformat()
-        wa = _exact_count(
+        wa_rows = _paginate(
             lambda cutoff=cutoff: supabase.table("leads")
             .select("id,phone,status,channel")
             .eq("channel", "whatsapp")
             .gte("last_message_at", cutoff)
         )
         if wa_line and wa_line.lower() not in ("all", "*", "any"):
-            wa_rows = _paginate(
-                lambda cutoff=cutoff: supabase.table("leads")
-                .select("id,phone,status,channel")
-                .eq("channel", "whatsapp")
-                .gte("last_message_at", cutoff)
-            )
-            wa = len([r for r in wa_rows if matches_business_line(r, wa_line)])
+            wa_rows = [r for r in wa_rows if matches_business_line(r, wa_line)]
+        wa = len(wa_rows)
         mq = _unique_call_leads_count(cutoff)
-        msgs = _exact_count(
+        msg_rows = _paginate(
             lambda cutoff=cutoff: supabase.table("messages")
             .select("id,direction,lead_id")
             .gte("sent_at", cutoff)
         )
         if wa_line and wa_line.lower() not in ("all", "*", "any"):
-            msg_rows = _paginate(
-                lambda cutoff=cutoff: supabase.table("messages")
-                .select("id,direction,lead_id")
-                .gte("sent_at", cutoff)
-            )
-            msgs = len([m for m in msg_rows if matches_business_line(m, wa_line)])
+            msg_rows = [m for m in msg_rows if matches_business_line(m, wa_line)]
+        msgs = len(msg_rows)
         cls = _exact_count(
             lambda cutoff=cutoff: supabase.table("calls")
             .select("id", count="exact")
