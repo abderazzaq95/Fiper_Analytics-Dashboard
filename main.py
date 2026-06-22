@@ -1654,7 +1654,29 @@ def _extract_whatsapp_business_number(body: dict) -> str | None:
     for candidate in candidates:
         normalized = _normalize_phone_digits(candidate)
         if normalized and normalized in whatsapp.BUSINESS_NUMBERS:
+            # Find which key produced this match for backfill diagnostics
+            for obj in (body, root, delta, value, metadata, contact):
+                if not isinstance(obj, dict):
+                    continue
+                for key in (
+                    "display_phone_number", "phone_number", "business_number",
+                    "business_phone_number", "phone_number_id", "number",
+                    "line_number", "recipient_number", "to", "recipient",
+                ):
+                    if _normalize_phone_digits(str(obj.get(key) or "")) == normalized:
+                        log.info(
+                            f"[wa_line] extracted={normalized!r} via key={key!r} "
+                            f"obj_keys={list(obj.keys())[:10]}"
+                        )
+                        break
             return normalized
+
+    # Extraction failed — log available top-level keys to help identify the right field
+    top_keys = sorted(set(
+        k for obj in (body, root, delta, value, metadata, contact)
+        if isinstance(obj, dict) for k in obj.keys()
+    ))
+    log.debug(f"[wa_line] extraction failed — all available keys: {top_keys}")
     return None
 
 

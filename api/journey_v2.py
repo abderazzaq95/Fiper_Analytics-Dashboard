@@ -171,6 +171,8 @@ def _merge_by_phone(raw_leads: list[dict]) -> list[dict]:
         agent = next((l.get("assigned_agent") for l in group if l.get("assigned_agent")), None)
         # Prefer maqsam lead as primary (has calls); else first in group
         primary = next((l for l in group if l.get("channel") == "maqsam"), group[0])
+        # Carry whatsapp_business_number: first non-null value across the group
+        wa_line_val = next((l.get("whatsapp_business_number") for l in group if l.get("whatsapp_business_number")), None)
 
         merged.append({
             "id": primary["id"],
@@ -183,6 +185,7 @@ def _merge_by_phone(raw_leads: list[dict]) -> list[dict]:
             "channel": "+".join(channels),
             "channels": channels,
             "last_message_at": last_msg,
+            **({"whatsapp_business_number": wa_line_val} if wa_line_val else {}),
         })
 
     # Leads with no phone are kept as-is (single-channel, no merge possible)
@@ -256,7 +259,7 @@ def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_sc
     for batch in _chunks(all_active_ids, 500):
         raw_leads += (
             supabase.table("leads")
-            .select("id,phone,name,score,status,assigned_agent,channel,last_message_at")
+            .select(add_whatsapp_line_select("id,phone,name,score,status,assigned_agent,channel,last_message_at"))
             .in_("id", batch)
             .execute().data or []
         )
@@ -674,7 +677,7 @@ def _export_rows_light(range, wa_line, phone_search, country, min_score, max_sco
     for batch in _chunks(all_active_ids, 500):
         raw_leads += (
             supabase.table("leads")
-            .select("id,phone,name,score,status,assigned_agent,channel,last_message_at")
+            .select(add_whatsapp_line_select("id,phone,name,score,status,assigned_agent,channel,last_message_at"))
             .in_("id", batch)
             .execute().data or []
         )
