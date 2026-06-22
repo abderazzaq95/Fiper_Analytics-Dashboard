@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
 <meta charset="UTF-8"/>
@@ -24,15 +24,15 @@ html{font-family:var(--font-en);background:var(--bg);color:var(--text);font-size
 html[dir=rtl]{font-family:var(--font-ar)}
 body{min-height:100vh}
 
-/* ── Shimmer skeleton ── */
+/* â”€â”€ Shimmer skeleton â”€â”€ */
 @keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
 .skeleton{background:linear-gradient(90deg,#e8edf5 25%,#f0f4fc 50%,#e8edf5 75%);background-size:800px 100%;animation:shimmer 1.4s infinite;border-radius:6px}
 
-/* ── Fade in ── */
+/* â”€â”€ Fade in â”€â”€ */
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 .fade-in{animation:fadeUp .4s ease both}
 
-/* ── Header ── */
+/* â”€â”€ Header â”€â”€ */
 header{
   background:#fff;border-bottom:1px solid var(--border);
   padding:14px 28px;display:flex;align-items:center;justify-content:space-between;
@@ -93,12 +93,12 @@ header{
 .wa-line-state.error{color:#d11b1b}
 .wa-line-state.error .dot{background:#d11b1b;box-shadow:0 0 0 3px rgba(209,27,27,.14)}
 
-/* ── Main layout ── */
+/* â”€â”€ Main layout â”€â”€ */
 main{padding:24px 28px;max-width:1600px;margin:0 auto}
 .section-label{font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.1em;margin:28px 0 14px;display:flex;align-items:center;gap:8px}
 .section-label::after{content:'';flex:1;height:1px;background:var(--border)}
 
-/* ── KPI grid ── */
+/* â”€â”€ KPI grid â”€â”€ */
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}
 .kpi-card{background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:20px 22px;box-shadow:var(--shadow);transition:transform .2s,box-shadow .2s;position:relative;overflow:hidden}
 .kpi-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
@@ -120,13 +120,13 @@ html[dir=rtl] .kpi-value{font-family:var(--font-ar)}
 .progress-bar-wrap{background:var(--bg);border-radius:4px;height:4px;margin-top:10px;overflow:hidden}
 .progress-bar-fill{height:100%;border-radius:4px;background:var(--blue-grad);transition:width .8s ease}
 
-/* ── 2-col / 3-col ── */
+/* â”€â”€ 2-col / 3-col â”€â”€ */
 .two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px}
 @media(max-width:1100px){.three-col{grid-template-columns:1fr 1fr}}
 @media(max-width:760px){.two-col,.three-col{grid-template-columns:1fr}}
 
-/* ── Cards ── */
+/* â”€â”€ Cards â”€â”€ */
 .card{background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:22px 24px;box-shadow:var(--shadow)}
 .card-head{font-size:13px;font-weight:700;color:var(--navy);margin-bottom:18px;display:flex;align-items:center;gap:8px}
 .card-head .ch-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
@@ -140,7 +140,7 @@ html[dir=rtl] .kpi-value{font-family:var(--font-ar)}
 .ch-row-label{font-size:12px;color:var(--text-light);font-weight:500}
 .ch-row-val{font-size:14px;font-weight:700;color:var(--navy)}
 
-/* ── Geo section ── */
+/* â”€â”€ Geo section â”€â”€ */
 .geo-item{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)}
 .geo-item:last-child{border-bottom:none}
 .geo-flag{font-size:20px;width:28px;text-align:center}
@@ -150,7 +150,7 @@ html[dir=rtl] .kpi-value{font-family:var(--font-ar)}
 .geo-count{font-size:12px;font-weight:700;color:var(--text);min-width:48px;text-align:right}
 .geo-pct{font-size:11px;color:var(--text-light);min-width:38px;text-align:right}
 
-/* ── Agents table ── */
+/* â”€â”€ Agents table â”€â”€ */
 .table-wrap{overflow-x:auto;border-radius:0 0 var(--r) var(--r)}
 table{width:100%;border-collapse:collapse;min-width:700px}
 thead tr{background:var(--bg)}
@@ -187,7 +187,7 @@ tr:hover td{background:#fafbff}
 .agent-alert-title{font-size:13px;font-weight:800;color:var(--navy)}
 .agent-alert-msg{font-size:13px;color:var(--text);line-height:1.45}
 
-/* ── Alert list ── */
+/* â”€â”€ Alert list â”€â”€ */
 .alert-item{display:flex;align-items:flex-start;gap:14px;padding:14px 22px;border-bottom:1px solid var(--border);border-left:4px solid transparent;transition:background .15s}
 html[dir=rtl] .alert-item{border-left:none;border-right:4px solid transparent}
 .alert-item:last-child{border-bottom:none}
@@ -204,7 +204,7 @@ html[dir=rtl] .alert-item{border-left:none;border-right:4px solid transparent}
 .empty-text{font-size:14px;font-weight:600;color:var(--navy)}
 .empty-sub{font-size:12px;margin-top:4px}
 
-/* ── Treatment gauge ── */
+/* â”€â”€ Treatment gauge â”€â”€ */
 .gauge-wrap{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 0}
 .gauge-circle{position:relative;width:100px;height:100px}
 .gauge-circle svg{transform:rotate(-90deg)}
@@ -212,7 +212,7 @@ html[dir=rtl] .alert-item{border-left:none;border-right:4px solid transparent}
 .gauge-num{font-size:22px;font-weight:800;color:var(--navy);font-family:var(--font-en)}
 .gauge-lbl{font-size:9px;color:var(--text-light);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
 
-/* ── Risk flags ── */
+/* â”€â”€ Risk flags â”€â”€ */
 .risk-item{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)}
 .risk-item:last-child{border-bottom:none}
 .risk-block{padding:8px 0;border-bottom:1px solid var(--border)}
@@ -223,7 +223,7 @@ html[dir=rtl] .alert-item{border-left:none;border-right:4px solid transparent}
 .risk-detail-meta{font-size:11px;color:var(--text-light);margin-top:5px;display:flex;gap:6px;flex-wrap:wrap}
 .risk-empty-detail{font-size:11px;color:var(--text-light);margin-top:6px;font-style:italic}
 
-/* ── Lead Journey Tracker ── */
+/* â”€â”€ Lead Journey Tracker â”€â”€ */
 .journey-lead{border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px;overflow:hidden;transition:box-shadow .2s}
 .journey-lead:hover{box-shadow:var(--shadow-md)}
 .journey-header{display:flex;align-items:center;gap:14px;padding:14px 18px;cursor:pointer;background:#fff;user-select:none;transition:background .15s}
@@ -280,21 +280,21 @@ html[dir=rtl] .alert-item{border-left:none;border-right:4px solid transparent}
   box-shadow:var(--shadow-sm);
 }
 
-/* Scroll to top ── */
+/* Scroll to top â”€â”€ */
 .scroll-top{position:fixed;bottom:24px;right:24px;background:var(--blue);color:#fff;border:none;width:40px;height:40px;border-radius:50%;cursor:pointer;font-size:18px;box-shadow:var(--shadow-md);opacity:0;transition:opacity .3s;display:flex;align-items:center;justify-content:center}
 .scroll-top.visible{opacity:1}
 html[dir=rtl] .scroll-top{right:auto;left:24px}
 
-/* ── Score badge ── */
+/* â”€â”€ Score badge â”€â”€ */
 .score-badge{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;flex-shrink:0;font-family:var(--font-en)}
 
-/* ── Lead row ── */
+/* â”€â”€ Lead row â”€â”€ */
 .lead-row{display:flex;align-items:flex-start;gap:14px;padding:12px 22px;border-bottom:1px solid var(--border);transition:background .15s}
 .lead-row:last-child{border-bottom:none}
 .lead-row:hover{background:#fafbff}
 .lead-summary{font-size:11px;color:var(--text-light);margin-top:3px;line-height:1.45;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 
-/* ── Traffic table ── */
+/* â”€â”€ Traffic table â”€â”€ */
 .traffic-tbl{width:100%;border-collapse:collapse}
 .traffic-tbl th{padding:8px 16px;text-align:left;font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid var(--border);background:var(--bg)}
 html[dir=rtl] .traffic-tbl th{text-align:right}
@@ -304,7 +304,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 .trend-arrow{font-size:16px;font-weight:800}
 .trend-up{color:var(--green)}.trend-dn{color:var(--red)}.trend-flat{color:var(--text-light)}
 
-/* ── Topic bars ── */
+/* â”€â”€ Topic bars â”€â”€ */
 .topic-bar-row{margin-bottom:10px}
 .topic-bar-row:last-child{margin-bottom:0}
 .topic-bar-meta{display:flex;justify-content:space-between;margin-bottom:4px}
@@ -319,7 +319,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 @media(max-width:900px){.topic-risk-grid{grid-template-columns:1fr}}
 .topic-risk-title{font-size:12px;font-weight:800;color:var(--navy);margin-bottom:10px}
 
-/* ── Hot leads ── */
+/* â”€â”€ Hot leads â”€â”€ */
 .hot-lead-row{display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--border);transition:background .15s}
 .hot-lead-row:last-child{border-bottom:none}
 .hot-lead-row:hover{background:#fff5f5}
@@ -328,17 +328,17 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 @keyframes hotPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,0,3,.4)}50%{box-shadow:0 0 0 8px rgba(255,0,3,0)}}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* ── Sparkline ── */
+/* â”€â”€ Sparkline â”€â”€ */
 .sparkline-cell{display:flex;align-items:center;gap:4px}
 
-/* ── Hourly chart ── */
+/* â”€â”€ Hourly chart â”€â”€ */
 #hourlySection .card-head{margin-bottom:8px}
 
-/* ── FAQ bars ── */
+/* â”€â”€ FAQ bars â”€â”€ */
 .faq-bar-row{margin-bottom:12px}
 .faq-bar-row:last-child{margin-bottom:0}
 
-/* ── Top Nav Bar ── */
+/* â”€â”€ Top Nav Bar â”€â”€ */
 :root{--red-brand:#C0392B}
 #topNav{
   position:sticky;top:65px;z-index:99;
@@ -362,7 +362,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 }
 #topNav a:hover{color:var(--red-brand);border-bottom-color:rgba(192,57,43,.3)}
 #topNav a.nav-active{color:var(--red-brand);border-bottom-color:var(--red-brand)}
-/* Hamburger — hidden on desktop */
+/* Hamburger â€” hidden on desktop */
 #navHamburger{
   display:none;position:absolute;right:16px;top:50%;transform:translateY(-50%);
   background:none;border:none;font-size:20px;cursor:pointer;
@@ -386,7 +386,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   [dir=rtl] #topNav a.nav-active{border-right-color:var(--red-brand);border-left:none}
 }
 
-/* ── Journey filter bar ── */
+/* â”€â”€ Journey filter bar â”€â”€ */
 .jfilter-bar{
   background:#fff;border:1px solid var(--border);border-radius:var(--r);
   padding:14px 18px;margin-bottom:12px;
@@ -496,7 +496,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 .jpage-btn:disabled{opacity:.35;cursor:default}
 .jpage-info{font-size:12px;font-weight:700;color:var(--navy);padding:0 6px}
 
-/* ── Responsive ── */
+/* â”€â”€ Responsive â”€â”€ */
 @media(max-width:600px){
   header{padding:12px 16px}
   #topNav{padding:0 16px}
@@ -504,7 +504,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   .kpi-grid{grid-template-columns:1fr 1fr}
   .jfilter-bar{gap:8px}
 }
-/* ── Login gate ─────────────────────────────────────────────── */
+/* â”€â”€ Login gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 #loginOverlay {
   position:fixed;inset:0;z-index:9999;
   background:var(--bg);
@@ -565,42 +565,42 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
     <img src="https://fiper.me/assets/logo.png" alt="Fiper" onerror="this.style.display='none';document.getElementById('logoFallback').style.display='flex'"/>
     <div id="logoFallback" style="display:none;width:36px;height:36px;background:var(--blue-grad);border-radius:8px;color:#fff;font-weight:800;font-size:16px;align-items:center;justify-content:center">F</div>
     <div>
-      <div style="font-weight:800;font-size:15px;color:var(--navy)" data-en="Intelligence Dashboard" data-ar="لوحة ذكاء الأعمال">Intelligence Dashboard</div>
-      <div class="subtitle" data-en="CRM Analytics Platform" data-ar="منصة تحليلات إدارة العملاء">CRM Analytics Platform</div>
+      <div style="font-weight:800;font-size:15px;color:var(--navy)" data-en="Intelligence Dashboard" data-ar="Ù„ÙˆØ­Ø© Ø°ÙƒØ§Ø¡ Ø§Ù„Ø£Ø¹Ù…Ø§Ù„">Intelligence Dashboard</div>
+      <div class="subtitle" data-en="CRM Analytics Platform" data-ar="Ù…Ù†ØµØ© ØªØ­Ù„ÙŠÙ„Ø§Øª Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø¹Ù…Ù„Ø§Ø¡">CRM Analytics Platform</div>
     </div>
   </div>
 
   <div class="tabs">
-    <button onclick="setRange('today')" data-en="Today" data-ar="اليوم">Today</button>
-    <button onclick="setRange('week')" class="active" data-en="This Week" data-ar="هذا الأسبوع">This Week</button>
-    <button onclick="setRange('month')" data-en="This Month" data-ar="هذا الشهر">This Month</button>
+    <button onclick="setRange('today')" data-en="Today" data-ar="Ø§Ù„ÙŠÙˆÙ…">Today</button>
+    <button onclick="setRange('week')" class="active" data-en="This Week" data-ar="Ù‡Ø°Ø§ Ø§Ù„Ø£Ø³Ø¨ÙˆØ¹">This Week</button>
+    <button onclick="setRange('month')" data-en="This Month" data-ar="Ù‡Ø°Ø§ Ø§Ù„Ø´Ù‡Ø±">This Month</button>
   </div>
 
   <div class="header-right">
-    <span class="last-upd" id="lastUpd"><span class="live-dot" id="liveDot"></span><span id="lastUpdText">—</span></span>
+    <span class="last-upd" id="lastUpd"><span class="live-dot" id="liveDot"></span><span id="lastUpdText">â€”</span></span>
     <select class="wa-line-select" id="waLineSelect" onchange="setWaLine(this.value)" aria-label="WhatsApp line">
       <option value="all">All WhatsApp numbers</option>
       <option value="96897245526">+968 9724 5526</option>
       <option value="905318880855">+90 531 888 0855</option>
     </select>
     <span class="wa-line-state" id="waLineState"><span class="dot"></span><span id="waLineStateText">Ready</span></span>
-    <button class="btn-icon" id="refreshBtn" onclick="triggerRefresh()">↻ <span data-en="Refresh" data-ar="تحديث">Refresh</span></button>
-    <button class="btn-lang" onclick="toggleLang()" id="langBtn">العربية</button>
+    <button class="btn-icon" id="refreshBtn" onclick="triggerRefresh()">â†» <span data-en="Refresh" data-ar="ØªØ­Ø¯ÙŠØ«">Refresh</span></button>
+    <button class="btn-lang" onclick="toggleLang()" id="langBtn">Ø§Ù„Ø¹Ø±Ø¨ÙŠØ©</button>
   </div>
 </header>
 
 <!-- Top Navigation Bar -->
 <nav id="topNav">
-  <button id="navHamburger" onclick="toggleNavMenu()" aria-label="Menu">☰</button>
+  <button id="navHamburger" onclick="toggleNavMenu()" aria-label="Menu">â˜°</button>
   <div id="navLinks">
-    <a href="#sec-overview" onclick="smoothScrollTo('sec-overview',event)" data-en="Overview"     data-ar="نظرة عامة">Overview</a>
-    <a href="#sec-channels" onclick="smoothScrollTo('sec-channels',event)" data-en="Channels"     data-ar="القنوات">Channels</a>
-    <a href="#sec-pipeline" onclick="smoothScrollTo('sec-pipeline',event)" data-en="Lead Pipeline" data-ar="خط العملاء">Lead Pipeline</a>
-    <a href="#sec-insights" onclick="smoothScrollTo('sec-insights',event)" data-en="AI Insights"  data-ar="رؤى الذكاء الاصطناعي">AI Insights</a>
-    <a href="#sec-geo"      onclick="smoothScrollTo('sec-geo',event)"      data-en="Geographic"   data-ar="الجغرافي">Geographic</a>
-    <a href="#sec-agents"   onclick="smoothScrollTo('sec-agents',event)"   data-en="Agents"       data-ar="الوكلاء">Agents</a>
-    <a href="#sec-alerts"   onclick="smoothScrollTo('sec-alerts',event)"   data-en="Alerts"       data-ar="التنبيهات">Alerts</a>
-    <a href="#sec-journey"  onclick="smoothScrollTo('sec-journey',event)"  data-en="Lead Journey" data-ar="رحلة العميل">Lead Journey</a>
+    <a href="#sec-overview" onclick="smoothScrollTo('sec-overview',event)" data-en="Overview"     data-ar="Ù†Ø¸Ø±Ø© Ø¹Ø§Ù…Ø©">Overview</a>
+    <a href="#sec-channels" onclick="smoothScrollTo('sec-channels',event)" data-en="Channels"     data-ar="Ø§Ù„Ù‚Ù†ÙˆØ§Øª">Channels</a>
+    <a href="#sec-pipeline" onclick="smoothScrollTo('sec-pipeline',event)" data-en="Lead Pipeline" data-ar="Ø®Ø· Ø§Ù„Ø¹Ù…Ù„Ø§Ø¡">Lead Pipeline</a>
+    <a href="#sec-insights" onclick="smoothScrollTo('sec-insights',event)" data-en="AI Insights"  data-ar="Ø±Ø¤Ù‰ Ø§Ù„Ø°ÙƒØ§Ø¡ Ø§Ù„Ø§ØµØ·Ù†Ø§Ø¹ÙŠ">AI Insights</a>
+    <a href="#sec-geo"      onclick="smoothScrollTo('sec-geo',event)"      data-en="Geographic"   data-ar="Ø§Ù„Ø¬ØºØ±Ø§ÙÙŠ">Geographic</a>
+    <a href="#sec-agents"   onclick="smoothScrollTo('sec-agents',event)"   data-en="Agents"       data-ar="Ø§Ù„ÙˆÙƒÙ„Ø§Ø¡">Agents</a>
+    <a href="#sec-alerts"   onclick="smoothScrollTo('sec-alerts',event)"   data-en="Alerts"       data-ar="Ø§Ù„ØªÙ†Ø¨ÙŠÙ‡Ø§Øª">Alerts</a>
+    <a href="#sec-journey"  onclick="smoothScrollTo('sec-journey',event)"  data-en="Lead Journey" data-ar="Ø±Ø­Ù„Ø© Ø§Ù„Ø¹Ù…ÙŠÙ„">Lead Journey</a>
   </div>
 </nav>
 
@@ -608,7 +608,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 
   <!-- Hot Leads Alert -->
   <div id="hotLeadsSection" style="display:none;margin-bottom:24px">
-    <div class="section-label" style="color:var(--red)"><span data-en="🔥 Hot Leads — Immediate Attention" data-ar="🔥 عملاء ساخنون — تحتاج اهتمام فوري">🔥 Hot Leads — Immediate Attention</span></div>
+    <div class="section-label" style="color:var(--red)"><span data-en="ðŸ”¥ Hot Leads â€” Immediate Attention" data-ar="ðŸ”¥ Ø¹Ù…Ù„Ø§Ø¡ Ø³Ø§Ø®Ù†ÙˆÙ† â€” ØªØ­ØªØ§Ø¬ Ø§Ù‡ØªÙ…Ø§Ù… ÙÙˆØ±ÙŠ">ðŸ”¥ Hot Leads â€” Immediate Attention</span></div>
     <div class="card" style="border:2px solid var(--red);padding:0;overflow:hidden">
       <div style="padding:10px 20px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-light)">
         <span data-en="Hot = score 80+ and status is new." data-ar="Hot = score 80+ and status is new.">Hot = score 80+ and status is new.</span>
@@ -621,7 +621,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   </div>
 
   <!-- KPI -->
-  <div id="sec-overview" class="section-label"><span data-en="Key Metrics" data-ar="المؤشرات الرئيسية">Key Metrics</span></div>
+  <div id="sec-overview" class="section-label"><span data-en="Key Metrics" data-ar="Ø§Ù„Ù…Ø¤Ø´Ø±Ø§Øª Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ©">Key Metrics</span></div>
   <div class="kpi-grid" id="kpiGrid">
     <div class="kpi-card"><div class="skeleton" style="height:60px"></div></div>
     <div class="kpi-card"><div class="skeleton" style="height:60px"></div></div>
@@ -632,7 +632,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   </div>
 
   <!-- Channels -->
-  <div id="sec-channels" class="section-label"><span data-en="Channel Performance" data-ar="أداء القنوات">Channel Performance</span></div>
+  <div id="sec-channels" class="section-label"><span data-en="Channel Performance" data-ar="Ø£Ø¯Ø§Ø¡ Ø§Ù„Ù‚Ù†ÙˆØ§Øª">Channel Performance</span></div>
   <div class="two-col">
     <div class="card" id="waCard"><div class="skeleton" style="height:120px"></div></div>
     <div class="card" id="mqCard"><div class="skeleton" style="height:120px"></div></div>
@@ -641,34 +641,34 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   <!-- Channel Traffic -->
   <div class="card" style="margin-top:18px;padding:0;overflow:hidden">
     <div style="padding:16px 22px 12px;border-bottom:1px solid var(--border)">
-      <div class="card-head" style="margin:0" data-en="Channel Traffic — Today / This Week / This Month" data-ar="حركة القنوات — اليوم / هذا الأسبوع / هذا الشهر">Channel Traffic — Today / This Week / This Month</div>
+      <div class="card-head" style="margin:0" data-en="Channel Traffic â€” Today / This Week / This Month" data-ar="Ø­Ø±ÙƒØ© Ø§Ù„Ù‚Ù†ÙˆØ§Øª â€” Ø§Ù„ÙŠÙˆÙ… / Ù‡Ø°Ø§ Ø§Ù„Ø£Ø³Ø¨ÙˆØ¹ / Ù‡Ø°Ø§ Ø§Ù„Ø´Ù‡Ø±">Channel Traffic â€” Today / This Week / This Month</div>
     </div>
     <div id="trafficTable"><div class="skeleton" style="height:80px;margin:16px;border-radius:6px"></div></div>
   </div>
 
   <!-- Peak Hours -->
   <div id="hourlySection" style="display:none;margin-top:18px">
-    <div class="section-label"><span data-en="Peak Call Hours" data-ar="ساعات الذروة للمكالمات">Peak Call Hours</span></div>
+    <div class="section-label"><span data-en="Peak Call Hours" data-ar="Ø³Ø§Ø¹Ø§Øª Ø§Ù„Ø°Ø±ÙˆØ© Ù„Ù„Ù…ÙƒØ§Ù„Ù…Ø§Øª">Peak Call Hours</span></div>
     <div class="card">
-      <div class="card-head" data-en="Calls by Hour of Day (UTC)" data-ar="المكالمات حسب ساعة اليوم (UTC)">Calls by Hour of Day (UTC)</div>
+      <div class="card-head" data-en="Calls by Hour of Day (UTC)" data-ar="Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø§Øª Ø­Ø³Ø¨ Ø³Ø§Ø¹Ø© Ø§Ù„ÙŠÙˆÙ… (UTC)">Calls by Hour of Day (UTC)</div>
       <div class="chart-wrap" style="height:180px"><canvas id="hourlyChart"></canvas></div>
     </div>
   </div>
 
   <!-- Charts -->
-  <div id="sec-pipeline" class="section-label"><span data-en="Lead Pipeline &amp; Call Analytics" data-ar="خط العملاء وتحليل المكالمات">Lead Pipeline &amp; Call Analytics</span></div>
+  <div id="sec-pipeline" class="section-label"><span data-en="Lead Pipeline &amp; Call Analytics" data-ar="Ø®Ø· Ø§Ù„Ø¹Ù…Ù„Ø§Ø¡ ÙˆØªØ­Ù„ÙŠÙ„ Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø§Øª">Lead Pipeline &amp; Call Analytics</span></div>
   <div class="three-col">
-    <div class="card"><div class="card-head" data-en="Lead Status Funnel" data-ar="مسار حالة العملاء">Lead Status Funnel</div><div class="chart-wrap"><canvas id="funnelChart"></canvas></div></div>
-    <div class="card"><div class="card-head" data-en="Call Outcomes" data-ar="نتائج المكالمات">Call Outcomes</div><div class="chart-wrap" id="outcomesWrap"><canvas id="outcomesChart"></canvas></div></div>
-    <div class="card"><div class="card-head" data-en="Lead Score Distribution" data-ar="توزيع نقاط العملاء">Lead Score Distribution</div><div class="chart-wrap"><canvas id="scoreChart"></canvas></div></div>
+    <div class="card"><div class="card-head" data-en="Lead Status Funnel" data-ar="Ù…Ø³Ø§Ø± Ø­Ø§Ù„Ø© Ø§Ù„Ø¹Ù…Ù„Ø§Ø¡">Lead Status Funnel</div><div class="chart-wrap"><canvas id="funnelChart"></canvas></div></div>
+    <div class="card"><div class="card-head" data-en="Call Outcomes" data-ar="Ù†ØªØ§Ø¦Ø¬ Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø§Øª">Call Outcomes</div><div class="chart-wrap" id="outcomesWrap"><canvas id="outcomesChart"></canvas></div></div>
+    <div class="card"><div class="card-head" data-en="Lead Score Distribution" data-ar="ØªÙˆØ²ÙŠØ¹ Ù†Ù‚Ø§Ø· Ø§Ù„Ø¹Ù…Ù„Ø§Ø¡">Lead Score Distribution</div><div class="chart-wrap"><canvas id="scoreChart"></canvas></div></div>
   </div>
 
   <!-- AI Insights -->
-  <div id="sec-insights" class="section-label"><span data-en="AI Insights" data-ar="رؤى الذكاء الاصطناعي">AI Insights</span></div>
+  <div id="sec-insights" class="section-label"><span data-en="AI Insights" data-ar="Ø±Ø¤Ù‰ Ø§Ù„Ø°ÙƒØ§Ø¡ Ø§Ù„Ø§ØµØ·Ù†Ø§Ø¹ÙŠ">AI Insights</span></div>
   <div class="two-col" style="align-items:flex-start;gap:18px">
     <div style="display:flex;flex-direction:column;gap:18px">
       <div class="card">
-        <div class="card-head" data-en="Sentiment Analysis" data-ar="تحليل المشاعر">Sentiment Analysis</div>
+        <div class="card-head" data-en="Sentiment Analysis" data-ar="ØªØ­Ù„ÙŠÙ„ Ø§Ù„Ù…Ø´Ø§Ø¹Ø±">Sentiment Analysis</div>
         <div class="two-col" style="gap:12px;align-items:center">
           <div class="chart-wrap" style="height:180px" id="sentimentWrap"><canvas id="sentimentChart"></canvas></div>
           <div class="gauge-wrap" id="treatGauge">
@@ -678,49 +678,49 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
                 <circle id="gaugeArc" cx="50" cy="50" r="40" fill="none" stroke="var(--blue)" stroke-width="10" stroke-linecap="round" stroke-dasharray="0 251.2" style="transition:stroke-dasharray 1s ease"/>
               </svg>
               <div class="gauge-text">
-                <div class="gauge-num" id="gaugeNum">—</div>
+                <div class="gauge-num" id="gaugeNum">â€”</div>
                 <div class="gauge-lbl" data-en="/100" data-ar="/100">/100</div>
               </div>
             </div>
             <div style="text-align:center">
-              <div style="font-size:12px;font-weight:700;color:var(--navy)" data-en="Avg Treatment Score" data-ar="متوسط نقاط المعاملة">Avg Treatment Score</div>
-              <div style="font-size:11px;color:var(--text-light);margin-top:2px" data-en="Agent interaction quality" data-ar="جودة تفاعل الوكيل">Agent interaction quality</div>
+              <div style="font-size:12px;font-weight:700;color:var(--navy)" data-en="Avg Treatment Score" data-ar="Ù…ØªÙˆØ³Ø· Ù†Ù‚Ø§Ø· Ø§Ù„Ù…Ø¹Ø§Ù…Ù„Ø©">Avg Treatment Score</div>
+              <div style="font-size:11px;color:var(--text-light);margin-top:2px" data-en="Agent interaction quality" data-ar="Ø¬ÙˆØ¯Ø© ØªÙØ§Ø¹Ù„ Ø§Ù„ÙˆÙƒÙŠÙ„">Agent interaction quality</div>
             </div>
           </div>
         </div>
       </div>
       <div class="card">
-        <div class="card-head" data-en="Topics &amp; Risk Flags" data-ar="المواضيع وعلامات الخطر">Topics &amp; Risk Flags</div>
+        <div class="card-head" data-en="Topics &amp; Risk Flags" data-ar="Ø§Ù„Ù…ÙˆØ§Ø¶ÙŠØ¹ ÙˆØ¹Ù„Ø§Ù…Ø§Øª Ø§Ù„Ø®Ø·Ø±">Topics &amp; Risk Flags</div>
         <div style="margin-bottom:14px">
-          <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px" data-en="TOP TOPICS" data-ar="أهم المواضيع">TOP TOPICS</div>
+          <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px" data-en="TOP TOPICS" data-ar="Ø£Ù‡Ù… Ø§Ù„Ù…ÙˆØ§Ø¶ÙŠØ¹">TOP TOPICS</div>
           <div id="topicsWrap"><div class="skeleton" style="height:100px;border-radius:6px"></div></div>
         </div>
         <div>
-          <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px" data-en="RISK FLAGS" data-ar="علامات الخطر">RISK FLAGS</div>
+          <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px" data-en="RISK FLAGS" data-ar="Ø¹Ù„Ø§Ù…Ø§Øª Ø§Ù„Ø®Ø·Ø±">RISK FLAGS</div>
           <div id="riskList"><div class="skeleton" style="height:60px"></div></div>
         </div>
       </div>
     </div>
     <div class="card" style="flex:1;min-width:0">
-      <div class="card-head" data-en="Top business topics with real conversation examples" data-ar="أهم الموضوعات التجارية مع أمثلة حقيقية من المحادثات">Top business topics with real conversation examples</div>
+      <div class="card-head" data-en="Top business topics with real conversation examples" data-ar="Ø£Ù‡Ù… Ø§Ù„Ù…ÙˆØ¶ÙˆØ¹Ø§Øª Ø§Ù„ØªØ¬Ø§Ø±ÙŠØ© Ù…Ø¹ Ø£Ù…Ø«Ù„Ø© Ø­Ù‚ÙŠÙ‚ÙŠØ© Ù…Ù† Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø§Øª">Top business topics with real conversation examples</div>
       <div id="faqList"></div>
     </div>
   </div>
 
   <!-- Geographic -->
-  <div id="sec-geo" class="section-label"><span data-en="Geographic Distribution" data-ar="التوزيع الجغرافي">Geographic Distribution</span></div>
+  <div id="sec-geo" class="section-label"><span data-en="Geographic Distribution" data-ar="Ø§Ù„ØªÙˆØ²ÙŠØ¹ Ø§Ù„Ø¬ØºØ±Ø§ÙÙŠ">Geographic Distribution</span></div>
   <div class="card">
-    <div class="card-head" data-en="Leads by Country" data-ar="العملاء حسب الدولة">Leads by Country</div>
+    <div class="card-head" data-en="Leads by Country" data-ar="Ø§Ù„Ø¹Ù…Ù„Ø§Ø¡ Ø­Ø³Ø¨ Ø§Ù„Ø¯ÙˆÙ„Ø©">Leads by Country</div>
     <div id="geoList"><div class="skeleton" style="height:120px"></div></div>
   </div>
 
   <!-- Quality & Risk -->
-  <div class="section-label"><span data-en="Quality &amp; Risk Overview" data-ar="الجودة والمخاطر">Quality &amp; Risk Overview</span></div>
+  <div class="section-label"><span data-en="Quality &amp; Risk Overview" data-ar="Ø§Ù„Ø¬ÙˆØ¯Ø© ÙˆØ§Ù„Ù…Ø®Ø§Ø·Ø±">Quality &amp; Risk Overview</span></div>
   <div id="qualityRiskPanel"><div class="skeleton" style="height:200px;border-radius:var(--r)"></div></div>
 
   <!-- Recent Leads -->
   <div class="section-label" style="margin-top:28px">
-    <span data-en="Recent Leads" data-ar="العملاء الأخيرون">Recent Leads</span>
+    <span data-en="Recent Leads" data-ar="Ø§Ù„Ø¹Ù…Ù„Ø§Ø¡ Ø§Ù„Ø£Ø®ÙŠØ±ÙˆÙ†">Recent Leads</span>
     <span id="leadsCount" style="font-size:11px;color:var(--text-light);font-weight:500;margin-left:8px"></span>
   </div>
   <div class="card" style="padding:0;overflow:hidden">
@@ -731,20 +731,20 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   </div>
 
   <!-- Agents -->
-  <div id="sec-agents" class="section-label"><span data-en="Agent Performance" data-ar="أداء الوكلاء">Agent Performance</span></div>
+  <div id="sec-agents" class="section-label"><span data-en="Agent Performance" data-ar="Ø£Ø¯Ø§Ø¡ Ø§Ù„ÙˆÙƒÙ„Ø§Ø¡">Agent Performance</span></div>
   <div class="card" style="padding:0;overflow:hidden">
     <div style="padding:18px 22px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-      <div class="card-head" style="margin:0" data-en="Agent Leaderboard" data-ar="لوحة الوكلاء">Agent Leaderboard</div>
+      <div class="card-head" style="margin:0" data-en="Agent Leaderboard" data-ar="Ù„ÙˆØ­Ø© Ø§Ù„ÙˆÙƒÙ„Ø§Ø¡">Agent Leaderboard</div>
       <span id="agentCount" style="font-size:11px;color:var(--text-light)"></span>
     </div>
     <div class="table-wrap"><div id="agentTable"><div class="skeleton" style="height:120px;margin:16px"></div></div></div>
   </div>
 
   <!-- Alerts -->
-  <div id="sec-alerts" class="section-label"><span data-en="Active Alerts" data-ar="التنبيهات النشطة">Active Alerts</span></div>
+  <div id="sec-alerts" class="section-label"><span data-en="Active Alerts" data-ar="Ø§Ù„ØªÙ†Ø¨ÙŠÙ‡Ø§Øª Ø§Ù„Ù†Ø´Ø·Ø©">Active Alerts</span></div>
   <div class="card" style="padding:0;overflow:hidden">
     <div style="padding:18px 22px 14px;border-bottom:1px solid var(--border)">
-      <div class="card-head" style="margin:0" data-en="Open Alerts" data-ar="التنبيهات المفتوحة">Open Alerts</div>
+      <div class="card-head" style="margin:0" data-en="Open Alerts" data-ar="Ø§Ù„ØªÙ†Ø¨ÙŠÙ‡Ø§Øª Ø§Ù„Ù…ÙØªÙˆØ­Ø©">Open Alerts</div>
     </div>
   <div id="alertsList"><div class="skeleton" style="height:80px;margin:16px"></div></div>
   </div>
@@ -753,7 +753,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
     <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="agentAlertsTitle" onclick="event.stopPropagation()">
       <div class="modal-head">
         <div class="modal-title" id="agentAlertsTitle">Agent Alerts</div>
-        <button class="modal-close" type="button" onclick="closeAgentAlertsModal()" aria-label="Close">×</button>
+        <button class="modal-close" type="button" onclick="closeAgentAlertsModal()" aria-label="Close">Ã—</button>
       </div>
       <div class="modal-body" id="agentAlertsBody"></div>
     </div>
@@ -761,79 +761,79 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 
   <!-- Lead Journey Tracker v2 -->
   <div id="sec-journey" class="section-label" style="margin-top:32px">
-    <span data-en="Lead Journey Tracker" data-ar="متتبع رحلة العميل">Lead Journey Tracker</span>
-    <span style="font-size:10px;color:var(--text-light);font-weight:500;margin-left:6px" data-en="Matches the selected time range · click to expand" data-ar="يطابق النطاق الزمني المحدد · انقر للتوسيع">Matches the selected time range · click to expand</span>
+    <span data-en="Lead Journey Tracker" data-ar="Ù…ØªØªØ¨Ø¹ Ø±Ø­Ù„Ø© Ø§Ù„Ø¹Ù…ÙŠÙ„">Lead Journey Tracker</span>
+    <span style="font-size:10px;color:var(--text-light);font-weight:500;margin-left:6px" data-en="Matches the selected time range Â· click to expand" data-ar="ÙŠØ·Ø§Ø¨Ù‚ Ø§Ù„Ù†Ø·Ø§Ù‚ Ø§Ù„Ø²Ù…Ù†ÙŠ Ø§Ù„Ù…Ø­Ø¯Ø¯ Â· Ø§Ù†Ù‚Ø± Ù„Ù„ØªÙˆØ³ÙŠØ¹">Matches the selected time range Â· click to expand</span>
   </div>
 
   <!-- Filter bar -->
   <div class="jfilter-bar">
     <div class="jfilter-group">
-      <div class="jfilter-label" data-en="Search" data-ar="بحث">Search</div>
+      <div class="jfilter-label" data-en="Search" data-ar="Ø¨Ø­Ø«">Search</div>
       <input class="jfilter-input" id="jSearch" type="text"
-        placeholder="Phone number…"
-        data-placeholder-en="Phone number…" data-placeholder-ar="رقم الهاتف…"
+        placeholder="Phone numberâ€¦"
+        data-placeholder-en="Phone numberâ€¦" data-placeholder-ar="Ø±Ù‚Ù… Ø§Ù„Ù‡Ø§ØªÙâ€¦"
         oninput="jFilterChange('phone_search',this.value)">
     </div>
     <div class="jfilter-group">
-      <div class="jfilter-label" data-en="Country" data-ar="الدولة">Country</div>
+      <div class="jfilter-label" data-en="Country" data-ar="Ø§Ù„Ø¯ÙˆÙ„Ø©">Country</div>
       <div class="jms-wrap" id="jmsCountry">
         <button class="jms-trigger" type="button" onclick="toggleJms('jmsCountry')">
-          <span class="jms-label" id="jmsCountryLabel" data-en="All Countries" data-ar="كل الدول">All Countries</span>
-          <span class="jms-caret">▾</span>
+          <span class="jms-label" id="jmsCountryLabel" data-en="All Countries" data-ar="ÙƒÙ„ Ø§Ù„Ø¯ÙˆÙ„">All Countries</span>
+          <span class="jms-caret">â–¾</span>
         </button>
         <div class="jms-panel">
-          <label class="jms-opt"><input type="checkbox" value="IQ" onchange="jmsChange('countries','IQ',this.checked,'jmsCountry','jmsCountryLabel')"> 🇮🇶 Iraq</label>
-          <label class="jms-opt"><input type="checkbox" value="OM" onchange="jmsChange('countries','OM',this.checked,'jmsCountry','jmsCountryLabel')"> 🇴🇲 Oman</label>
-          <label class="jms-opt"><input type="checkbox" value="SA" onchange="jmsChange('countries','SA',this.checked,'jmsCountry','jmsCountryLabel')"> 🇸🇦 Saudi Arabia</label>
-          <label class="jms-opt"><input type="checkbox" value="AE" onchange="jmsChange('countries','AE',this.checked,'jmsCountry','jmsCountryLabel')"> 🇦🇪 UAE</label>
-          <label class="jms-opt"><input type="checkbox" value="KW" onchange="jmsChange('countries','KW',this.checked,'jmsCountry','jmsCountryLabel')"> 🇰🇼 Kuwait</label>
-          <label class="jms-opt"><input type="checkbox" value="JO" onchange="jmsChange('countries','JO',this.checked,'jmsCountry','jmsCountryLabel')"> 🇯🇴 Jordan</label>
-          <label class="jms-opt"><input type="checkbox" value="MA" onchange="jmsChange('countries','MA',this.checked,'jmsCountry','jmsCountryLabel')"> 🇲🇦 Morocco</label>
-          <label class="jms-opt"><input type="checkbox" value="EG" onchange="jmsChange('countries','EG',this.checked,'jmsCountry','jmsCountryLabel')"> 🇪🇬 Egypt</label>
-          <label class="jms-opt"><input type="checkbox" value="TR" onchange="jmsChange('countries','TR',this.checked,'jmsCountry','jmsCountryLabel')"> 🇹🇷 Turkey</label>
-          <label class="jms-opt"><input type="checkbox" value="OTHER" onchange="jmsChange('countries','OTHER',this.checked,'jmsCountry','jmsCountryLabel')"> 🌍 Other</label>
+          <label class="jms-opt"><input type="checkbox" value="IQ" onchange="jmsChange('countries','IQ',this.checked,'jmsCountry','jmsCountryLabel')"> ðŸ‡®ðŸ‡¶ Iraq</label>
+          <label class="jms-opt"><input type="checkbox" value="OM" onchange="jmsChange('countries','OM',this.checked,'jmsCountry','jmsCountryLabel')"> ðŸ‡´ðŸ‡² Oman</label>
+          <label class="jms-opt"><input type="checkbox" value="SA" onchange="jmsChange('countries','SA',this.checked,'jmsCountry','jmsCountryLabel')"> ðŸ‡¸ðŸ‡¦ Saudi Arabia</label>
+          <label class="jms-opt"><input type="checkbox" value="AE" onchange="jmsChange('countries','AE',this.checked,'jmsCountry','jmsCountryLabel')"> ðŸ‡¦ðŸ‡ª UAE</label>
+          <label class="jms-opt"><input type="checkbox" value="KW" onchange="jmsChange('countries','KW',this.checked,'jmsCountry','jmsCountryLabel')"> ðŸ‡°ðŸ‡¼ Kuwait</label>
+          <label class="jms-opt"><input type="checkbox" value="JO" onchange="jmsChange('countries','JO',this.checked,'jmsCountry','jmsCountryLabel')"> ðŸ‡¯ðŸ‡´ Jordan</label>
+          <label class="jms-opt"><input type="checkbox" value="MA" onchange="jmsChange('countries','MA',this.checked,'jmsCountry','jmsCountryLabel')"> ðŸ‡²ðŸ‡¦ Morocco</label>
+          <label class="jms-opt"><input type="checkbox" value="EG" onchange="jmsChange('countries','EG',this.checked,'jmsCountry','jmsCountryLabel')"> ðŸ‡ªðŸ‡¬ Egypt</label>
+          <label class="jms-opt"><input type="checkbox" value="TR" onchange="jmsChange('countries','TR',this.checked,'jmsCountry','jmsCountryLabel')"> ðŸ‡¹ðŸ‡· Turkey</label>
+          <label class="jms-opt"><input type="checkbox" value="OTHER" onchange="jmsChange('countries','OTHER',this.checked,'jmsCountry','jmsCountryLabel')"> ðŸŒ Other</label>
         </div>
       </div>
     </div>
     <div class="jfilter-group">
-      <div class="jfilter-label" data-en="Channel" data-ar="القناة">Channel</div>
+      <div class="jfilter-label" data-en="Channel" data-ar="Ø§Ù„Ù‚Ù†Ø§Ø©">Channel</div>
       <select class="jfilter-select" id="jChannel" onchange="jFilterChange('channel',this.value)">
-        <option value="" data-en="All" data-ar="الكل">All</option>
-        <option value="maqsam" data-en="Maqsam only" data-ar="مقسم فقط">Maqsam only</option>
-        <option value="whatsapp" data-en="WhatsApp only" data-ar="واتساب فقط">WhatsApp only</option>
-        <option value="both" data-en="Both channels" data-ar="القناتان">Both channels</option>
+        <option value="" data-en="All" data-ar="Ø§Ù„ÙƒÙ„">All</option>
+        <option value="maqsam" data-en="Maqsam only" data-ar="Ù…Ù‚Ø³Ù… ÙÙ‚Ø·">Maqsam only</option>
+        <option value="whatsapp" data-en="WhatsApp only" data-ar="ÙˆØ§ØªØ³Ø§Ø¨ ÙÙ‚Ø·">WhatsApp only</option>
+        <option value="both" data-en="Both channels" data-ar="Ø§Ù„Ù‚Ù†Ø§ØªØ§Ù†">Both channels</option>
       </select>
     </div>
     <div class="jfilter-group">
-      <div class="jfilter-label" data-en="Outcome" data-ar="النتيجة">Outcome</div>
+      <div class="jfilter-label" data-en="Outcome" data-ar="Ø§Ù„Ù†ØªÙŠØ¬Ø©">Outcome</div>
       <div class="jms-wrap" id="jmsOutcome">
         <button class="jms-trigger" type="button" onclick="toggleJms('jmsOutcome')">
-          <span class="jms-label" id="jmsOutcomeLabel" data-en="All" data-ar="الكل">All</span>
-          <span class="jms-caret">▾</span>
+          <span class="jms-label" id="jmsOutcomeLabel" data-en="All" data-ar="Ø§Ù„ÙƒÙ„">All</span>
+          <span class="jms-caret">â–¾</span>
         </button>
         <div class="jms-panel">
-          <label class="jms-opt"><input type="checkbox" value="converted"     onchange="jmsChange('outcomes','converted',this.checked,'jmsOutcome','jmsOutcomeLabel')"> ✅ Converted</label>
-          <label class="jms-opt"><input type="checkbox" value="callback"      onchange="jmsChange('outcomes','callback',this.checked,'jmsOutcome','jmsOutcomeLabel')"> 📞 Callback</label>
-          <label class="jms-opt"><input type="checkbox" value="not_interested" onchange="jmsChange('outcomes','not_interested',this.checked,'jmsOutcome','jmsOutcomeLabel')"> ❌ Not interested</label>
-          <label class="jms-opt"><input type="checkbox" value="no_answer"     onchange="jmsChange('outcomes','no_answer',this.checked,'jmsOutcome','jmsOutcomeLabel')"> 📵 No answer</label>
-          <label class="jms-opt"><input type="checkbox" value="ongoing"       onchange="jmsChange('outcomes','ongoing',this.checked,'jmsOutcome','jmsOutcomeLabel')"> 🔄 Ongoing</label>
+          <label class="jms-opt"><input type="checkbox" value="converted"     onchange="jmsChange('outcomes','converted',this.checked,'jmsOutcome','jmsOutcomeLabel')"> âœ… Converted</label>
+          <label class="jms-opt"><input type="checkbox" value="callback"      onchange="jmsChange('outcomes','callback',this.checked,'jmsOutcome','jmsOutcomeLabel')"> ðŸ“ž Callback</label>
+          <label class="jms-opt"><input type="checkbox" value="not_interested" onchange="jmsChange('outcomes','not_interested',this.checked,'jmsOutcome','jmsOutcomeLabel')"> âŒ Not interested</label>
+          <label class="jms-opt"><input type="checkbox" value="no_answer"     onchange="jmsChange('outcomes','no_answer',this.checked,'jmsOutcome','jmsOutcomeLabel')"> ðŸ“µ No answer</label>
+          <label class="jms-opt"><input type="checkbox" value="ongoing"       onchange="jmsChange('outcomes','ongoing',this.checked,'jmsOutcome','jmsOutcomeLabel')"> ðŸ”„ Ongoing</label>
         </div>
       </div>
     </div>
     <div class="jfilter-group">
-      <div class="jfilter-label" data-en="Agent" data-ar="الوكيل">Agent</div>
+      <div class="jfilter-label" data-en="Agent" data-ar="Ø§Ù„ÙˆÙƒÙŠÙ„">Agent</div>
       <div class="jms-wrap" id="jmsAgent">
         <button class="jms-trigger" type="button" onclick="toggleJms('jmsAgent')">
-          <span class="jms-label" id="jmsAgentLabel" data-en="All agents" data-ar="كل الوكلاء">All agents</span>
-          <span class="jms-caret">▾</span>
+          <span class="jms-label" id="jmsAgentLabel" data-en="All agents" data-ar="ÙƒÙ„ Ø§Ù„ÙˆÙƒÙ„Ø§Ø¡">All agents</span>
+          <span class="jms-caret">â–¾</span>
         </button>
         <div class="jms-panel" id="jmsAgentPanel">
-          <label class="jms-opt"><input type="checkbox" value="__unassigned__" onchange="jmsChange('agents','__unassigned__',this.checked,'jmsAgent','jmsAgentLabel')"> — Unassigned</label>
+          <label class="jms-opt"><input type="checkbox" value="__unassigned__" onchange="jmsChange('agents','__unassigned__',this.checked,'jmsAgent','jmsAgentLabel')"> â€” Unassigned</label>
         </div>
       </div>
     </div>
     <div class="jfilter-group">
-      <div class="jfilter-label"><span data-en="Score" data-ar="النقاط">Score</span>: <span id="jScoreLabel">0–100</span></div>
+      <div class="jfilter-label"><span data-en="Score" data-ar="Ø§Ù„Ù†Ù‚Ø§Ø·">Score</span>: <span id="jScoreLabel">0â€“100</span></div>
       <div class="score-slider-wrap">
         <div class="score-slider-track"></div>
         <div class="score-slider-fill" id="jScoreFill" style="left:0%;width:100%"></div>
@@ -842,20 +842,20 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
       </div>
     </div>
     <div class="jfilter-group">
-      <div class="jfilter-label" data-en="Sort by" data-ar="الترتيب">Sort by</div>
+      <div class="jfilter-label" data-en="Sort by" data-ar="Ø§Ù„ØªØ±ØªÙŠØ¨">Sort by</div>
       <select class="jfilter-select" id="jSort" onchange="jFilterChange('sort_by',this.value)">
-        <option value="score"   data-en="Highest score"    data-ar="أعلى نقاط">Highest score</option>
-        <option value="recent"  data-en="Most recent"      data-ar="الأحدث">Most recent</option>
-        <option value="waiting" data-en="Longest waiting"  data-ar="الأطول انتظاراً">Longest waiting</option>
-        <option value="calls"   data-en="Most calls"       data-ar="الأكثر مكالمات">Most calls</option>
+        <option value="score"   data-en="Highest score"    data-ar="Ø£Ø¹Ù„Ù‰ Ù†Ù‚Ø§Ø·">Highest score</option>
+        <option value="recent"  data-en="Most recent"      data-ar="Ø§Ù„Ø£Ø­Ø¯Ø«">Most recent</option>
+        <option value="waiting" data-en="Longest waiting"  data-ar="Ø§Ù„Ø£Ø·ÙˆÙ„ Ø§Ù†ØªØ¸Ø§Ø±Ø§Ù‹">Longest waiting</option>
+        <option value="calls"   data-en="Most calls"       data-ar="Ø§Ù„Ø£ÙƒØ«Ø± Ù…ÙƒØ§Ù„Ù…Ø§Øª">Most calls</option>
       </select>
     </div>
     <div class="jfilter-sep"></div>
-    <button class="jfilter-toggle" id="jHighRisk" onclick="toggleHighRisk()">⚠️ <span data-en="High Risk Only" data-ar="عالي الخطورة فقط">High Risk Only</span></button>
+    <button class="jfilter-toggle" id="jHighRisk" onclick="toggleHighRisk()">âš ï¸ <span data-en="High Risk Only" data-ar="Ø¹Ø§Ù„ÙŠ Ø§Ù„Ø®Ø·ÙˆØ±Ø© ÙÙ‚Ø·">High Risk Only</span></button>
     <div class="jfilter-actions">
-      <button class="btn-primary jfilter-apply" onclick="applyJourneyFilters()">🔍 <span data-en="Apply Filters" data-ar="تطبيق الفلاتر">Apply Filters</span></button>
-      <a href="#" class="jfilter-reset" onclick="resetJourneyFilters(event)" data-en="Reset" data-ar="إعادة تعيين">Reset</a>
-      <button class="btn-icon" id="journeyExportBtn" onclick="exportJourneyCSV(event)" title="Export CSV">📥 <span data-en="Export CSV" data-ar="تصدير CSV">Export CSV</span></button>
+      <button class="btn-primary jfilter-apply" onclick="applyJourneyFilters()">ðŸ” <span data-en="Apply Filters" data-ar="ØªØ·Ø¨ÙŠÙ‚ Ø§Ù„ÙÙ„Ø§ØªØ±">Apply Filters</span></button>
+      <a href="#" class="jfilter-reset" onclick="resetJourneyFilters(event)" data-en="Reset" data-ar="Ø¥Ø¹Ø§Ø¯Ø© ØªØ¹ÙŠÙŠÙ†">Reset</a>
+      <button class="btn-icon" id="journeyExportBtn" onclick="exportJourneyCSV(event)" title="Export CSV">ðŸ“¥ <span data-en="Export CSV" data-ar="ØªØµØ¯ÙŠØ± CSV">Export CSV</span></button>
     </div>
   </div>
 
@@ -863,9 +863,9 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   <div class="journey-meta-row">
     <span class="journey-count-label" id="journeyCount"></span>
     <div class="jpagination" id="journeyPagination" style="display:none">
-      <button class="jpage-btn" id="jPrevBtn" onclick="jChangePage(-1)">‹ <span data-en="Prev" data-ar="السابق">Prev</span></button>
+      <button class="jpage-btn" id="jPrevBtn" onclick="jChangePage(-1)">â€¹ <span data-en="Prev" data-ar="Ø§Ù„Ø³Ø§Ø¨Ù‚">Prev</span></button>
       <span class="jpage-info" id="jPageInfo"></span>
-      <button class="jpage-btn" id="jNextBtn" onclick="jChangePage(1)"><span data-en="Next" data-ar="التالي">Next</span> ›</button>
+      <button class="jpage-btn" id="jNextBtn" onclick="jChangePage(1)"><span data-en="Next" data-ar="Ø§Ù„ØªØ§Ù„ÙŠ">Next</span> â€º</button>
     </div>
   </div>
 
@@ -877,7 +877,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 
 </main>
 
-<button class="scroll-top" id="scrollTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+<button class="scroll-top" id="scrollTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">â†‘</button>
 
 <script>
 const API = '';
@@ -893,11 +893,11 @@ let _lastGoodOv      = null;
 let _lastGoodCh      = null;
 let _lastGoodLeads   = null;
 let _lastGoodTraffic = null;
-let _rangeCache = {};   // range → {status, data} — instant switching
+let _rangeCache = {};   // range â†’ {status, data} â€” instant switching
 let _lastRenderedData = null;
 let _riskFlagDetails = {};
 
-// ── Persistent cache (survives page refresh) ──────────────────────────────────
+// â”€â”€ Persistent cache (survives page refresh) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const _CACHE_VER = 'v9';
 const _CACHE_TTL = 12 * 60 * 60 * 1000; // 12h
 
@@ -945,12 +945,12 @@ function setWaLineState(state, text) {
   txt.textContent = text || '';
 }
 
-// ── Language ──────────────────────────────────────────────────────────────────
+// â”€â”€ Language â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function applyLang() {
   const isAr = lang === 'ar';
   document.documentElement.lang = isAr ? 'ar' : 'en';
   document.documentElement.dir  = isAr ? 'rtl' : 'ltr';
-  document.getElementById('langBtn').textContent = isAr ? 'English' : 'العربية';
+  document.getElementById('langBtn').textContent = isAr ? 'English' : 'Ø§Ù„Ø¹Ø±Ø¨ÙŠØ©';
   document.querySelectorAll('[data-en]').forEach(el => {
     el.textContent = isAr ? (el.dataset.ar || el.dataset.en) : el.dataset.en;
   });
@@ -971,7 +971,7 @@ function toggleLang() {
   loadJourneyV2();
 }
 
-// ── Range tabs ────────────────────────────────────────────────────────────────
+// â”€â”€ Range tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function setRange(r) {
   range = r;
   document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
@@ -999,17 +999,17 @@ async function _silentRefresh() {
   if (dot) dot.className = 'live-dot on';
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-const fmt   = (n, d=0) => n == null ? '—' : Number(n).toLocaleString('en', {minimumFractionDigits:d, maximumFractionDigits:d});
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const fmt   = (n, d=0) => n == null ? 'â€”' : Number(n).toLocaleString('en', {minimumFractionDigits:d, maximumFractionDigits:d});
 const pct   = n => fmt(n,1) + '%';
 const dur   = s => { if (!s) return '0s'; return s >= 60 ? fmt(s/60,1)+'m' : fmt(s,0)+'s'; };
 const ago   = ts => {
   if (!ts) return '';
   const diff = (Date.now() - new Date(ts).getTime()) / 1000;
-  if (diff < 60)   return lang==='ar' ? `منذ ${Math.round(diff)} ث` : `${Math.round(diff)}s ago`;
-  if (diff < 3600) return lang==='ar' ? `منذ ${Math.round(diff/60)} د` : `${Math.round(diff/60)}m ago`;
-  if (diff < 86400) return lang==='ar' ? `منذ ${Math.round(diff/3600)} س` : `${Math.round(diff/3600)}h ago`;
-  return lang==='ar' ? `منذ ${Math.round(diff/86400)} ي` : `${Math.round(diff/86400)}d ago`;
+  if (diff < 60)   return lang==='ar' ? `Ù…Ù†Ø° ${Math.round(diff)} Ø«` : `${Math.round(diff)}s ago`;
+  if (diff < 3600) return lang==='ar' ? `Ù…Ù†Ø° ${Math.round(diff/60)} Ø¯` : `${Math.round(diff/60)}m ago`;
+  if (diff < 86400) return lang==='ar' ? `Ù…Ù†Ø° ${Math.round(diff/3600)} Ø³` : `${Math.round(diff/3600)}h ago`;
+  return lang==='ar' ? `Ù…Ù†Ø° ${Math.round(diff/86400)} ÙŠ` : `${Math.round(diff/86400)}d ago`;
 };
 async function get(path) {
   const sep = path.includes('?') ? '&' : '?';
@@ -1137,12 +1137,12 @@ function renderAgentsLoading() {
   const el = document.getElementById('agentTable');
   if (!el || el.querySelector('table')) return;
   document.getElementById('agentCount').textContent = '';
-  el.innerHTML = `<div class="empty-state"><div class="empty-icon">...</div><div class="empty-text">${lang==='ar'?'جار تحميل بيانات الوكلاء...':'Loading agent data...'}</div></div>`;
+  el.innerHTML = `<div class="empty-state"><div class="empty-icon">...</div><div class="empty-text">${lang==='ar'?'Ø¬Ø§Ø± ØªØ­Ù…ÙŠÙ„ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„ÙˆÙƒÙ„Ø§Ø¡...':'Loading agent data...'}</div></div>`;
 }
 function renderQualityLoading() {
   const wrap = document.getElementById('outcomesWrap');
   if (wrap && !document.getElementById('outcomesChart')) {
-    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">...</div><div class="empty-text">${lang==='ar'?'جار تحميل النتائج...':'Loading call outcomes...'}</div></div>`;
+    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">...</div><div class="empty-text">${lang==='ar'?'Ø¬Ø§Ø± ØªØ­Ù…ÙŠÙ„ Ø§Ù„Ù†ØªØ§Ø¦Ø¬...':'Loading call outcomes...'}</div></div>`;
   }
 }
 function esc(str) {
@@ -1152,22 +1152,22 @@ function destroyChart(id) {
   if (charts[id]) { charts[id].destroy(); delete charts[id]; }
 }
 
-// ── Geography ─────────────────────────────────────────────────────────────────
+// â”€â”€ Geography â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const GEO = [
-  {prefix:'968', en:'Oman',         ar:'عمان',           flag:'🇴🇲'},
-  {prefix:'964', en:'Iraq',         ar:'العراق',          flag:'🇮🇶'},
-  {prefix:'9665',en:'Saudi Arabia', ar:'السعودية',        flag:'🇸🇦'},
-  {prefix:'966', en:'Saudi Arabia', ar:'السعودية',        flag:'🇸🇦'},
-  {prefix:'971', en:'UAE',          ar:'الإمارات',        flag:'🇦🇪'},
-  {prefix:'965', en:'Kuwait',       ar:'الكويت',          flag:'🇰🇼'},
-  {prefix:'962', en:'Jordan',       ar:'الأردن',          flag:'🇯🇴'},
-  {prefix:'212', en:'Morocco',      ar:'المغرب',          flag:'🇲🇦'},
-  {prefix:'249', en:'Sudan',        ar:'السودان',         flag:'🇸🇩'},
-  {prefix:'20',  en:'Egypt',        ar:'مصر',             flag:'🇪🇬'},
-  {prefix:'90',  en:'Turkey',       ar:'تركيا',           flag:'🇹🇷'},
-  {prefix:'44',  en:'UK',           ar:'المملكة المتحدة', flag:'🇬🇧'},
-  {prefix:'7',   en:'Russia',       ar:'روسيا',           flag:'🇷🇺'},
-  {prefix:'1',   en:'USA/Canada',   ar:'أمريكا/كندا',     flag:'🇺🇸'},
+  {prefix:'968', en:'Oman',         ar:'Ø¹Ù…Ø§Ù†',           flag:'ðŸ‡´ðŸ‡²'},
+  {prefix:'964', en:'Iraq',         ar:'Ø§Ù„Ø¹Ø±Ø§Ù‚',          flag:'ðŸ‡®ðŸ‡¶'},
+  {prefix:'9665',en:'Saudi Arabia', ar:'Ø§Ù„Ø³Ø¹ÙˆØ¯ÙŠØ©',        flag:'ðŸ‡¸ðŸ‡¦'},
+  {prefix:'966', en:'Saudi Arabia', ar:'Ø§Ù„Ø³Ø¹ÙˆØ¯ÙŠØ©',        flag:'ðŸ‡¸ðŸ‡¦'},
+  {prefix:'971', en:'UAE',          ar:'Ø§Ù„Ø¥Ù…Ø§Ø±Ø§Øª',        flag:'ðŸ‡¦ðŸ‡ª'},
+  {prefix:'965', en:'Kuwait',       ar:'Ø§Ù„ÙƒÙˆÙŠØª',          flag:'ðŸ‡°ðŸ‡¼'},
+  {prefix:'962', en:'Jordan',       ar:'Ø§Ù„Ø£Ø±Ø¯Ù†',          flag:'ðŸ‡¯ðŸ‡´'},
+  {prefix:'212', en:'Morocco',      ar:'Ø§Ù„Ù…ØºØ±Ø¨',          flag:'ðŸ‡²ðŸ‡¦'},
+  {prefix:'249', en:'Sudan',        ar:'Ø§Ù„Ø³ÙˆØ¯Ø§Ù†',         flag:'ðŸ‡¸ðŸ‡©'},
+  {prefix:'20',  en:'Egypt',        ar:'Ù…ØµØ±',             flag:'ðŸ‡ªðŸ‡¬'},
+  {prefix:'90',  en:'Turkey',       ar:'ØªØ±ÙƒÙŠØ§',           flag:'ðŸ‡¹ðŸ‡·'},
+  {prefix:'44',  en:'UK',           ar:'Ø§Ù„Ù…Ù…Ù„ÙƒØ© Ø§Ù„Ù…ØªØ­Ø¯Ø©', flag:'ðŸ‡¬ðŸ‡§'},
+  {prefix:'7',   en:'Russia',       ar:'Ø±ÙˆØ³ÙŠØ§',           flag:'ðŸ‡·ðŸ‡º'},
+  {prefix:'1',   en:'USA/Canada',   ar:'Ø£Ù…Ø±ÙŠÙƒØ§/ÙƒÙ†Ø¯Ø§',     flag:'ðŸ‡ºðŸ‡¸'},
 ];
 function detectCountry(phone) {
   if (!phone) return null;
@@ -1180,7 +1180,7 @@ function detectCountry(phone) {
   for (const g of sorted) {
     if (p.startsWith(g.prefix)) return g;
   }
-  return {en:'Other', ar:'أخرى', flag:'🌐'};
+  return {en:'Other', ar:'Ø£Ø®Ø±Ù‰', flag:'ðŸŒ'};
 }
 function renderGeo(leads) {
   const counts = {};
@@ -1194,7 +1194,7 @@ function renderGeo(leads) {
   const sorted = Object.values(counts).sort((a,b)=>b.count-a.count);
   const total  = sorted.reduce((s,c)=>s+c.count, 0);
   if (!sorted.length) {
-    document.getElementById('geoList').innerHTML = `<div class="empty-state"><div class="empty-icon">🌍</div><div class="empty-text" data-en="No location data" data-ar="لا توجد بيانات جغرافية">No location data</div></div>`;
+    document.getElementById('geoList').innerHTML = `<div class="empty-state"><div class="empty-icon">ðŸŒ</div><div class="empty-text" data-en="No location data" data-ar="Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¨ÙŠØ§Ù†Ø§Øª Ø¬ØºØ±Ø§ÙÙŠØ©">No location data</div></div>`;
     return;
   }
   const max = sorted[0].count;
@@ -1204,87 +1204,87 @@ function renderGeo(leads) {
       <div class="geo-country">${lang==='ar'?g.ar:g.en}</div>
       <div class="geo-bar-wrap"><div class="geo-bar-fill" style="width:${max?Math.round(g.count/max*100):0}%"></div></div>
       <div class="geo-count">${fmt(g.count)}</div>
-      <div class="geo-pct">${total?pct(g.count/total*100):'—'}</div>
+      <div class="geo-pct">${total?pct(g.count/total*100):'â€”'}</div>
     </div>`).join('');
 
 }
 
-// ── Pipeline freshness helpers ────────────────────────────────────────────────
+// â”€â”€ Pipeline freshness helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let _pipelineStatus = null;
 function _relTime(isoStr) {
   if (!isoStr) return null;
   const diffMs = Date.now() - new Date(isoStr).getTime();
   const m = Math.round(diffMs / 60000);
-  if (m < 1)  return lang==='ar'?'الآن':'just now';
-  if (m < 60) return lang==='ar'?`منذ ${m} د`:`${m}m ago`;
+  if (m < 1)  return lang==='ar'?'Ø§Ù„Ø¢Ù†':'just now';
+  if (m < 60) return lang==='ar'?`Ù…Ù†Ø° ${m} Ø¯`:`${m}m ago`;
   const h = Math.floor(m / 60), rm = m % 60;
-  return lang==='ar'?`منذ ${h}س ${rm}د`:`${h}h ${rm}m ago`;
+  return lang==='ar'?`Ù…Ù†Ø° ${h}Ø³ ${rm}Ø¯`:`${h}h ${rm}m ago`;
 }
 function _timeUntil(isoStr) {
   if (!isoStr) return null;
   const diffMs = new Date(isoStr).getTime() - Date.now();
-  if (diffMs <= 0) return lang==='ar'?'قريباً':'soon';
+  if (diffMs <= 0) return lang==='ar'?'Ù‚Ø±ÙŠØ¨Ø§Ù‹':'soon';
   const m = Math.round(diffMs / 60000);
-  if (m < 60) return lang==='ar'?`${m} د`:`${m}m`;
+  if (m < 60) return lang==='ar'?`${m} Ø¯`:`${m}m`;
   const h = Math.floor(m / 60), rm = m % 60;
-  return lang==='ar'?`${h}س ${rm}د`:`${h}h ${rm}m`;
+  return lang==='ar'?`${h}Ø³ ${rm}Ø¯`:`${h}h ${rm}m`;
 }
 function _syncBadge() {
   if (!_pipelineStatus) return '';
   const last = _relTime(_pipelineStatus.last_pipeline_run);
   const next = _timeUntil(_pipelineStatus.next_pipeline_run);
-  const lastTxt = last ? (lang==='ar'?`آخر تحديث: ${last}`:`synced ${last}`) : '';
-  const nextTxt = next ? (lang==='ar'?`التالي: ${next}`:`next in ${next}`) : '';
-  return `<div class="kpi-sync">${lastTxt}${lastTxt && nextTxt ? ' · ' : ''}${nextTxt}</div>`;
+  const lastTxt = last ? (lang==='ar'?`Ø¢Ø®Ø± ØªØ­Ø¯ÙŠØ«: ${last}`:`synced ${last}`) : '';
+  const nextTxt = next ? (lang==='ar'?`Ø§Ù„ØªØ§Ù„ÙŠ: ${next}`:`next in ${next}`) : '';
+  return `<div class="kpi-sync">${lastTxt}${lastTxt && nextTxt ? ' Â· ' : ''}${nextTxt}</div>`;
 }
 
-// ── KPI ───────────────────────────────────────────────────────────────────────
+// â”€â”€ KPI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderKPI(ov, ch) {
   const answerRate = 0;
   const ar_color = 'red';
-  const waManyContactsLabel = lang==='ar' ? 'من ManyContacts' : 'from ManyContacts';
+  const waManyContactsLabel = lang==='ar' ? 'Ù…Ù† ManyContacts' : 'from ManyContacts';
 
   document.getElementById('kpiGrid').innerHTML = `
     <div class="kpi-card fade-in">
-      <div class="kpi-label" data-en="Unique Leads" data-ar="عملاء فريدون">${lang==='ar'?'عملاء فريدون':'Unique Leads'}</div>
+      <div class="kpi-label" data-en="Unique Leads" data-ar="Ø¹Ù…Ù„Ø§Ø¡ ÙØ±ÙŠØ¯ÙˆÙ†">${lang==='ar'?'Ø¹Ù…Ù„Ø§Ø¡ ÙØ±ÙŠØ¯ÙˆÙ†':'Unique Leads'}</div>
       <div class="kpi-value">${fmt(ov.leads.total)}</div>
-      <div class="kpi-sub">${fmt(ov.leads.converted)} ${lang==='ar'?'محول':'converted'} · ${lang==='ar'?'بالهاتف':'by phone'}</div>
+      <div class="kpi-sub">${fmt(ov.leads.converted)} ${lang==='ar'?'Ù…Ø­ÙˆÙ„':'converted'} Â· ${lang==='ar'?'Ø¨Ø§Ù„Ù‡Ø§ØªÙ':'by phone'}</div>
       <span class="kpi-badge badge-blue">${pct(ov.leads.conversion_rate)} CVR</span>
     </div>
     <div class="kpi-card fade-in" style="animation-delay:.05s">
-      <div class="kpi-label" data-en="Total Calls" data-ar="إجمالي المكالمات">${lang==='ar'?'إجمالي المكالمات':'Total Calls'}</div>
+      <div class="kpi-label" data-en="Total Calls" data-ar="Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø§Øª">${lang==='ar'?'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø§Øª':'Total Calls'}</div>
       <div class="kpi-value">${fmt(ov.calls.total)}</div>
-      <div class="kpi-sub">${lang==='ar'?'متوسط المدة':'Avg'}: ${dur(ov.calls.avg_duration_seconds)}</div>
+      <div class="kpi-sub">${lang==='ar'?'Ù…ØªÙˆØ³Ø· Ø§Ù„Ù…Ø¯Ø©':'Avg'}: ${dur(ov.calls.avg_duration_seconds)}</div>
       ${_syncBadge()}
-      <span class="kpi-badge badge-blue">${lang==='ar'?'مقصام':'Maqsam'}</span>
+      <span class="kpi-badge badge-blue">${lang==='ar'?'Ù…Ù‚ØµØ§Ù…':'Maqsam'}</span>
     </div>
     <div class="kpi-card ${ar_color} fade-in" style="animation-delay:.1s" id="kpiAnswerRate">
-      <div class="kpi-label" data-en="Pickup Rate" data-ar="معدل الرد">${lang==='ar'?'معدل الرد':'Pickup Rate'}</div>
-      <div class="kpi-value" id="answerRateVal">—</div>
-      <div class="kpi-sub">${lang==='ar'?'مثل Maqsam':'Maqsam formula'}</div>
+      <div class="kpi-label" data-en="Pickup Rate" data-ar="Ù…Ø¹Ø¯Ù„ Ø§Ù„Ø±Ø¯">${lang==='ar'?'Ù…Ø¹Ø¯Ù„ Ø§Ù„Ø±Ø¯':'Pickup Rate'}</div>
+      <div class="kpi-value" id="answerRateVal">â€”</div>
+      <div class="kpi-sub">${lang==='ar'?'Ù…Ø«Ù„ Maqsam':'Maqsam formula'}</div>
     </div>
     <div class="kpi-card fade-in" style="animation-delay:.15s">
-      <div class="kpi-label" data-en="WhatsApp Activity" data-ar="نشاط واتساب">${lang==='ar'?'نشاط واتساب':'WhatsApp Activity'}</div>
+      <div class="kpi-label" data-en="WhatsApp Activity" data-ar="Ù†Ø´Ø§Ø· ÙˆØ§ØªØ³Ø§Ø¨">${lang==='ar'?'Ù†Ø´Ø§Ø· ÙˆØ§ØªØ³Ø§Ø¨':'WhatsApp Activity'}</div>
       <div class="kpi-value">${fmt(ov.messages.total)}</div>
-      <div class="kpi-sub">${lang==='ar'?'محادثات نشطة':'active chats'}</div>
-      <div class="kpi-sub">${fmt(ov.messages.inbound)} ${lang==='ar'?'وارد':'in'} / ${fmt(ov.messages.outbound)} ${lang==='ar'?'صادر':'out'}</div>
+      <div class="kpi-sub">${lang==='ar'?'Ù…Ø­Ø§Ø¯Ø«Ø§Øª Ù†Ø´Ø·Ø©':'active chats'}</div>
+      <div class="kpi-sub">${fmt(ov.messages.inbound)} ${lang==='ar'?'ÙˆØ§Ø±Ø¯':'in'} / ${fmt(ov.messages.outbound)} ${lang==='ar'?'ØµØ§Ø¯Ø±':'out'}</div>
       <span class="kpi-badge badge-green">WhatsApp</span>
     </div>
     <div class="kpi-card ${ov.alerts.open>0?'red':''} fade-in" style="animation-delay:.2s">
-      <div class="kpi-label" data-en="Open Alerts" data-ar="التنبيهات المفتوحة">${lang==='ar'?'التنبيهات المفتوحة':'Open Alerts'}</div>
+      <div class="kpi-label" data-en="Open Alerts" data-ar="Ø§Ù„ØªÙ†Ø¨ÙŠÙ‡Ø§Øª Ø§Ù„Ù…ÙØªÙˆØ­Ø©">${lang==='ar'?'Ø§Ù„ØªÙ†Ø¨ÙŠÙ‡Ø§Øª Ø§Ù„Ù…ÙØªÙˆØ­Ø©':'Open Alerts'}</div>
       <div class="kpi-value" style="color:${ov.alerts.open>0?'var(--red)':'var(--navy)'}">${fmt(ov.alerts.open)}</div>
-      <div class="kpi-sub">${fmt(ov.alerts.high)} ${lang==='ar'?'عالية الخطورة':'high severity'}</div>
-      <span class="kpi-badge ${ov.alerts.open>0?'badge-red':'badge-green'}">${ov.alerts.open>0?(lang==='ar'?'يحتاج إجراء':'Action needed'):(lang==='ar'?'بخير':'All clear')}</span>
+      <div class="kpi-sub">${fmt(ov.alerts.high)} ${lang==='ar'?'Ø¹Ø§Ù„ÙŠØ© Ø§Ù„Ø®Ø·ÙˆØ±Ø©':'high severity'}</div>
+      <span class="kpi-badge ${ov.alerts.open>0?'badge-red':'badge-green'}">${ov.alerts.open>0?(lang==='ar'?'ÙŠØ­ØªØ§Ø¬ Ø¥Ø¬Ø±Ø§Ø¡':'Action needed'):(lang==='ar'?'Ø¨Ø®ÙŠØ±':'All clear')}</span>
     </div>
     <div class="kpi-card fade-in" style="animation-delay:.25s">
-      <div class="kpi-label" data-en="Avg Lead Score" data-ar="متوسط نقاط العميل">${lang==='ar'?'متوسط نقاط العميل':'Avg Lead Score'}</div>
+      <div class="kpi-label" data-en="Avg Lead Score" data-ar="Ù…ØªÙˆØ³Ø· Ù†Ù‚Ø§Ø· Ø§Ù„Ø¹Ù…ÙŠÙ„">${lang==='ar'?'Ù…ØªÙˆØ³Ø· Ù†Ù‚Ø§Ø· Ø§Ù„Ø¹Ù…ÙŠÙ„':'Avg Lead Score'}</div>
       <div class="kpi-value">${fmt(ov.leads.avg_score,1)}</div>
-      <div class="kpi-sub">${lang==='ar'?'من 100':'out of 100'}</div>
+      <div class="kpi-sub">${lang==='ar'?'Ù…Ù† 100':'out of 100'}</div>
       <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${ov.leads.avg_score||0}%"></div></div>
     </div>`;
 }
 
-// ── Channels ──────────────────────────────────────────────────────────────────
+// â”€â”€ Channels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderChannels(ch, quality) {
   // Compute answer rate from quality call outcomes
   const outcomes = quality?.call_outcomes || {};
@@ -1304,33 +1304,33 @@ function renderChannels(ch, quality) {
 
   document.getElementById('waCard').innerHTML = `
     <div class="card-head">
-      <div class="ch-icon ch-green">💬</div>
+      <div class="ch-icon ch-green">ðŸ’¬</div>
       <div>
-        <div style="font-weight:700;color:var(--navy)" data-en="WhatsApp" data-ar="واتساب">${lang==='ar'?'واتساب':'WhatsApp'}</div>
+        <div style="font-weight:700;color:var(--navy)" data-en="WhatsApp" data-ar="ÙˆØ§ØªØ³Ø§Ø¨">${lang==='ar'?'ÙˆØ§ØªØ³Ø§Ø¨':'WhatsApp'}</div>
         <div style="font-size:11px;color:var(--text-light)">ManyContacts</div>
       </div>
     </div>
-    <div class="ch-row"><span class="ch-row-label" data-en="Total Leads" data-ar="إجمالي العملاء">${lang==='ar'?'إجمالي العملاء':'Total Leads'}</span><span class="ch-row-val">${fmt(ch.whatsapp.leads)}</span></div>
-    <div class="ch-row"><span class="ch-row-label" data-en="Active Chats" data-ar="المحادثات النشطة">${lang==='ar'?'المحادثات النشطة':'Active Chats'}</span><span class="ch-row-val">${fmt(ch.whatsapp.messages)}</span></div>
-    <div class="ch-row"><span class="ch-row-label" data-en="Stored Messages" data-ar="الرسائل المحفوظة">${lang==='ar'?'الرسائل المحفوظة':'Stored Messages'}</span><span class="ch-row-val">${fmt(ch.whatsapp.stored_messages ?? ch.whatsapp.messages)}</span></div>
-    <div class="ch-row"><span class="ch-row-label" data-en="Avg Response Time" data-ar="متوسط وقت الرد">${lang==='ar'?'متوسط وقت الرد':'Avg Response Time'}</span><span class="ch-row-val">${ch.whatsapp.avg_response_time_min ? fmt(ch.whatsapp.avg_response_time_min,1)+'m' : '—'}</span></div>
-    <div class="ch-row"><span class="ch-row-label" data-en="Conversion Rate" data-ar="معدل التحويل">${lang==='ar'?'معدل التحويل':'Conversion Rate'}</span><span class="ch-row-val"><span class="pill ${ch.whatsapp.conversion_rate>0?'pill-green':'pill-gray'}">${pct(ch.whatsapp.conversion_rate)}</span></span></div>`;
+    <div class="ch-row"><span class="ch-row-label" data-en="Total Leads" data-ar="Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø¹Ù…Ù„Ø§Ø¡">${lang==='ar'?'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø¹Ù…Ù„Ø§Ø¡':'Total Leads'}</span><span class="ch-row-val">${fmt(ch.whatsapp.leads)}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Active Chats" data-ar="Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø§Øª Ø§Ù„Ù†Ø´Ø·Ø©">${lang==='ar'?'Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø§Øª Ø§Ù„Ù†Ø´Ø·Ø©':'Active Chats'}</span><span class="ch-row-val">${fmt(ch.whatsapp.messages)}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Stored Messages" data-ar="Ø§Ù„Ø±Ø³Ø§Ø¦Ù„ Ø§Ù„Ù…Ø­ÙÙˆØ¸Ø©">${lang==='ar'?'Ø§Ù„Ø±Ø³Ø§Ø¦Ù„ Ø§Ù„Ù…Ø­ÙÙˆØ¸Ø©':'Stored Messages'}</span><span class="ch-row-val">${fmt(ch.whatsapp.stored_messages ?? ch.whatsapp.messages)}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Avg Response Time" data-ar="Ù…ØªÙˆØ³Ø· ÙˆÙ‚Øª Ø§Ù„Ø±Ø¯">${lang==='ar'?'Ù…ØªÙˆØ³Ø· ÙˆÙ‚Øª Ø§Ù„Ø±Ø¯':'Avg Response Time'}</span><span class="ch-row-val">${ch.whatsapp.avg_response_time_min ? fmt(ch.whatsapp.avg_response_time_min,1)+'m' : 'â€”'}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Conversion Rate" data-ar="Ù…Ø¹Ø¯Ù„ Ø§Ù„ØªØ­ÙˆÙŠÙ„">${lang==='ar'?'Ù…Ø¹Ø¯Ù„ Ø§Ù„ØªØ­ÙˆÙŠÙ„':'Conversion Rate'}</span><span class="ch-row-val"><span class="pill ${ch.whatsapp.conversion_rate>0?'pill-green':'pill-gray'}">${pct(ch.whatsapp.conversion_rate)}</span></span></div>`;
 
   document.getElementById('mqCard').innerHTML = `
     <div class="card-head">
-      <div class="ch-icon ch-blue">📞</div>
+      <div class="ch-icon ch-blue">ðŸ“ž</div>
       <div>
-        <div style="font-weight:700;color:var(--navy)" data-en="Maqsam Calls" data-ar="مكالمات مقسم">${lang==='ar'?'مكالمات مقسم':'Maqsam Calls'}</div>
+        <div style="font-weight:700;color:var(--navy)" data-en="Maqsam Calls" data-ar="Ù…ÙƒØ§Ù„Ù…Ø§Øª Ù…Ù‚Ø³Ù…">${lang==='ar'?'Ù…ÙƒØ§Ù„Ù…Ø§Øª Ù…Ù‚Ø³Ù…':'Maqsam Calls'}</div>
         <div style="font-size:11px;color:var(--text-light)">Call Center</div>
       </div>
     </div>
-    <div class="ch-row"><span class="ch-row-label" data-en="Total Leads" data-ar="إجمالي العملاء">${lang==='ar'?'إجمالي العملاء':'Total Leads'}</span><span class="ch-row-val">${fmt(ch.maqsam.leads)}</span></div>
-    <div class="ch-row"><span class="ch-row-label" data-en="Total Calls" data-ar="إجمالي المكالمات">${lang==='ar'?'إجمالي المكالمات':'Total Calls'}</span><span class="ch-row-val">${fmt(ch.maqsam.calls)}</span></div>
-    <div class="ch-row"><span class="ch-row-label" data-en="Avg Call Duration" data-ar="متوسط مدة المكالمة">${lang==='ar'?'متوسط مدة المكالمة':'Avg Call Duration'}</span><span class="ch-row-val">${dur(ch.maqsam.avg_call_duration_seconds)}</span></div>
-    <div class="ch-row"><span class="ch-row-label" data-en="Conversion Rate" data-ar="معدل التحويل">${lang==='ar'?'معدل التحويل':'Conversion Rate'}</span><span class="ch-row-val"><span class="pill ${ch.maqsam.conversion_rate>0?'pill-green':'pill-gray'}">${pct(ch.maqsam.conversion_rate)}</span></span></div>`;
+    <div class="ch-row"><span class="ch-row-label" data-en="Total Leads" data-ar="Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø¹Ù…Ù„Ø§Ø¡">${lang==='ar'?'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø¹Ù…Ù„Ø§Ø¡':'Total Leads'}</span><span class="ch-row-val">${fmt(ch.maqsam.leads)}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Total Calls" data-ar="Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø§Øª">${lang==='ar'?'Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø§Øª':'Total Calls'}</span><span class="ch-row-val">${fmt(ch.maqsam.calls)}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Avg Call Duration" data-ar="Ù…ØªÙˆØ³Ø· Ù…Ø¯Ø© Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø©">${lang==='ar'?'Ù…ØªÙˆØ³Ø· Ù…Ø¯Ø© Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø©':'Avg Call Duration'}</span><span class="ch-row-val">${dur(ch.maqsam.avg_call_duration_seconds)}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Conversion Rate" data-ar="Ù…Ø¹Ø¯Ù„ Ø§Ù„ØªØ­ÙˆÙŠÙ„">${lang==='ar'?'Ù…Ø¹Ø¯Ù„ Ø§Ù„ØªØ­ÙˆÙŠÙ„':'Conversion Rate'}</span><span class="ch-row-val"><span class="pill ${ch.maqsam.conversion_rate>0?'pill-green':'pill-gray'}">${pct(ch.maqsam.conversion_rate)}</span></span></div>`;
 }
 
-// ── Charts ────────────────────────────────────────────────────────────────────
+// â”€â”€ Charts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const CHART_OPTS = {
   responsive:true, maintainAspectRatio:false,
   plugins:{legend:{labels:{color:'#4C5671',font:{family:'Plus Jakarta Sans',size:11},boxWidth:10,padding:10}}},
@@ -1339,7 +1339,7 @@ const CHART_OPTS = {
 function renderFunnel(leadsData) {
   destroyChart('funnel');
   const f = leadsData.funnel || {};
-  const labels = Object.keys(f).map(l => lang==='ar' ? ({new:'جديد',engaged:'منخرط',converted:'محول',lost:'مفقود',callback:'متابعة'}[l]||l) : l.charAt(0).toUpperCase()+l.slice(1));
+  const labels = Object.keys(f).map(l => lang==='ar' ? ({new:'Ø¬Ø¯ÙŠØ¯',engaged:'Ù…Ù†Ø®Ø±Ø·',converted:'Ù…Ø­ÙˆÙ„',lost:'Ù…ÙÙ‚ÙˆØ¯',callback:'Ù…ØªØ§Ø¨Ø¹Ø©'}[l]||l) : l.charAt(0).toUpperCase()+l.slice(1));
   const values = Object.values(f);
   const colors = {new:'#0774FF',engaged:'#8B5CF6',converted:'#26CF4B',lost:'#FF0003',callback:'#FF8F3C'};
   charts.funnel = new Chart(document.getElementById('funnelChart').getContext('2d'), {
@@ -1354,20 +1354,20 @@ function renderOutcomes(quality) {
   const wrap = document.getElementById('outcomesWrap');
   const outcomes = quality?.call_outcomes || {};
   if (!Object.keys(outcomes).length) {
-    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">📊</div><div class="empty-text">${lang==='ar'?'لا توجد بيانات':'No call outcome data'}</div></div>`;
+    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">ðŸ“Š</div><div class="empty-text">${lang==='ar'?'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¨ÙŠØ§Ù†Ø§Øª':'No call outcome data'}</div></div>`;
     return;
   }
   if (!document.getElementById('outcomesChart')) {
     wrap.innerHTML = '<canvas id="outcomesChart"></canvas>';
   }
   const OUTCOME_META = {
-    completed:   {en:'Completed',  ar:'مكتمل',   color:'#26CF4B'},
-    no_answer:   {en:'No Answer',  ar:'لا رد',    color:'#FF0003'},
-    busy:        {en:'Busy',       ar:'مشغول',    color:'#FF8F3C'},
-    failed:      {en:'Failed',     ar:'فشل',      color:'#2D3C58'},
-    abandoned:   {en:'Abandoned',  ar:'تخلى',     color:'#8D9097'},
-    in_progress: {en:'In Progress',ar:'جارٍ',     color:'#0774FF'},
-    unknown:     {en:'Unknown',    ar:'غير معروف', color:'#E9EDFF'},
+    completed:   {en:'Completed',  ar:'Ù…ÙƒØªÙ…Ù„',   color:'#26CF4B'},
+    no_answer:   {en:'No Answer',  ar:'Ù„Ø§ Ø±Ø¯',    color:'#FF0003'},
+    busy:        {en:'Busy',       ar:'Ù…Ø´ØºÙˆÙ„',    color:'#FF8F3C'},
+    failed:      {en:'Failed',     ar:'ÙØ´Ù„',      color:'#2D3C58'},
+    abandoned:   {en:'Abandoned',  ar:'ØªØ®Ù„Ù‰',     color:'#8D9097'},
+    in_progress: {en:'In Progress',ar:'Ø¬Ø§Ø±Ù',     color:'#0774FF'},
+    unknown:     {en:'Unknown',    ar:'ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ', color:'#E9EDFF'},
   };
   const keys   = Object.keys(outcomes);
   const labels = keys.map(k => (OUTCOME_META[k]?.[lang==='ar'?'ar':'en'] || k));
@@ -1385,7 +1385,7 @@ function renderScoreDist(leadsData) {
   const vals = [d['0-25']||0, d['26-50']||0, d['51-75']||0, d['76-100']||0];
   charts.score = new Chart(document.getElementById('scoreChart').getContext('2d'), {
     type:'bar',
-    data:{ labels:['0–25','26–50','51–75','76–100'], datasets:[{ data:vals, backgroundColor:['#FF0003','#FF8F3C','#0774FF','#26CF4B'], borderRadius:6, borderWidth:0 }] },
+    data:{ labels:['0â€“25','26â€“50','51â€“75','76â€“100'], datasets:[{ data:vals, backgroundColor:['#FF0003','#FF8F3C','#0774FF','#26CF4B'], borderRadius:6, borderWidth:0 }] },
     options:{...CHART_OPTS, plugins:{...CHART_OPTS.plugins,legend:{display:false}}, scales:{x:{ticks:{color:'#8D9097'},grid:{display:false}}, y:{ticks:{color:'#8D9097'},grid:{color:'#E9EDFF'}}}}
   });
 }
@@ -1396,14 +1396,14 @@ function renderSentiment(quality) {
   const s = quality?.sentiment || {};
   const pos=s.positive||0, neu=s.neutral||0, neg=s.negative||0, tot=pos+neu+neg;
   if (!tot) {
-    wrap.innerHTML = `<div class="empty-state" style="height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center"><div class="empty-icon">💬</div><div class="empty-text" style="font-size:12px">${lang==='ar'?'في انتظار بيانات':'Pending webhook data'}</div></div>`;
+    wrap.innerHTML = `<div class="empty-state" style="height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center"><div class="empty-icon">ðŸ’¬</div><div class="empty-text" style="font-size:12px">${lang==='ar'?'ÙÙŠ Ø§Ù†ØªØ¸Ø§Ø± Ø¨ÙŠØ§Ù†Ø§Øª':'Pending webhook data'}</div></div>`;
   } else {
     if (!document.getElementById('sentimentChart')) {
       wrap.innerHTML = '<canvas id="sentimentChart"></canvas>';
     }
     charts.sentiment = new Chart(document.getElementById('sentimentChart').getContext('2d'), {
       type:'doughnut',
-      data:{ labels:[lang==='ar'?'إيجابي':'Positive',lang==='ar'?'محايد':'Neutral',lang==='ar'?'سلبي':'Negative'], datasets:[{ data:[pos,neu,neg], backgroundColor:['#26CF4B','#0774FF','#FF0003'], borderWidth:0, hoverOffset:6 }] },
+      data:{ labels:[lang==='ar'?'Ø¥ÙŠØ¬Ø§Ø¨ÙŠ':'Positive',lang==='ar'?'Ù…Ø­Ø§ÙŠØ¯':'Neutral',lang==='ar'?'Ø³Ù„Ø¨ÙŠ':'Negative'], datasets:[{ data:[pos,neu,neg], backgroundColor:['#26CF4B','#0774FF','#FF0003'], borderWidth:0, hoverOffset:6 }] },
       options:{...CHART_OPTS}
     });
   }
@@ -1418,39 +1418,39 @@ function renderSentiment(quality) {
 }
 
 const TOPIC_LABELS = {
-  pricing:            {en:'Pricing',           ar:'التسعير'},
-  product_fit:        {en:'Product Fit',        ar:'ملاءمة المنتج'},
-  competitor:         {en:'Competitor',          ar:'منافس'},
-  follow_up:          {en:'Follow-up',           ar:'متابعة'},
-  trading_education:  {en:'Trading Education',   ar:'تعليم التداول'},
-  profit_expectations:{en:'Profit Expectations', ar:'توقعات الربح'},
-  greetings:          {en:'Greetings',           ar:'تحيات'},
-  account_info:       {en:'Account Info',        ar:'معلومات الحساب'},
-  risk_management:       {en:'Risk Management',     ar:'إدارة المخاطر'},
-  withdrawal:            {en:'Withdrawal',           ar:'السحب'},
-  not_decision_maker:    {en:'Not Decision Maker',   ar:'ليس صانع قرار'},
-  no_answer:             {en:'No Answer',             ar:'لا إجابة'},
-  objection_handling:    {en:'Objection Handling',   ar:'معالجة الاعتراضات'},
-  deposit:               {en:'Deposit',               ar:'الإيداع'},
-  leverage:              {en:'Leverage',              ar:'الرافعة المالية'},
+  pricing:            {en:'Pricing',           ar:'Ø§Ù„ØªØ³Ø¹ÙŠØ±'},
+  product_fit:        {en:'Product Fit',        ar:'Ù…Ù„Ø§Ø¡Ù…Ø© Ø§Ù„Ù…Ù†ØªØ¬'},
+  competitor:         {en:'Competitor',          ar:'Ù…Ù†Ø§ÙØ³'},
+  follow_up:          {en:'Follow-up',           ar:'Ù…ØªØ§Ø¨Ø¹Ø©'},
+  trading_education:  {en:'Trading Education',   ar:'ØªØ¹Ù„ÙŠÙ… Ø§Ù„ØªØ¯Ø§ÙˆÙ„'},
+  profit_expectations:{en:'Profit Expectations', ar:'ØªÙˆÙ‚Ø¹Ø§Øª Ø§Ù„Ø±Ø¨Ø­'},
+  greetings:          {en:'Greetings',           ar:'ØªØ­ÙŠØ§Øª'},
+  account_info:       {en:'Account Info',        ar:'Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ø§Ù„Ø­Ø³Ø§Ø¨'},
+  risk_management:       {en:'Risk Management',     ar:'Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ù…Ø®Ø§Ø·Ø±'},
+  withdrawal:            {en:'Withdrawal',           ar:'Ø§Ù„Ø³Ø­Ø¨'},
+  not_decision_maker:    {en:'Not Decision Maker',   ar:'Ù„ÙŠØ³ ØµØ§Ù†Ø¹ Ù‚Ø±Ø§Ø±'},
+  no_answer:             {en:'No Answer',             ar:'Ù„Ø§ Ø¥Ø¬Ø§Ø¨Ø©'},
+  objection_handling:    {en:'Objection Handling',   ar:'Ù…Ø¹Ø§Ù„Ø¬Ø© Ø§Ù„Ø§Ø¹ØªØ±Ø§Ø¶Ø§Øª'},
+  deposit:               {en:'Deposit',               ar:'Ø§Ù„Ø¥ÙŠØ¯Ø§Ø¹'},
+  leverage:              {en:'Leverage',              ar:'Ø§Ù„Ø±Ø§ÙØ¹Ø© Ø§Ù„Ù…Ø§Ù„ÙŠØ©'},
 };
 
 function riskDetailsInlineHtml(flag, maxRows=3) {
   const rows = ((_riskFlagDetails && _riskFlagDetails[flag]) || []).slice(0, maxRows);
   if (!rows.length) {
-    return `<div class="risk-empty-detail">${lang==='ar'?'لا توجد تفاصيل محفوظة لهذا الخطر':'No saved detail rows for this risk flag yet'}</div>`;
+    return `<div class="risk-empty-detail">${lang==='ar'?'Ù„Ø§ ØªÙˆØ¬Ø¯ ØªÙØ§ØµÙŠÙ„ Ù…Ø­ÙÙˆØ¸Ø© Ù„Ù‡Ø°Ø§ Ø§Ù„Ø®Ø·Ø±':'No saved detail rows for this risk flag yet'}</div>`;
   }
   return rows.map(item => {
-    const phone = item.lead_phone ? fmtPhone(item.lead_phone) : (lang==='ar'?'رقم غير معروف':'Unknown number');
-    const leadName = item.lead_name ? ` · ${esc(item.lead_name)}` : '';
-    const agent = item.agent_name || (lang==='ar'?'غير معروف':'unknown');
-    const when = item.analyzed_at ? new Date(item.analyzed_at).toLocaleString() : '—';
+    const phone = item.lead_phone ? fmtPhone(item.lead_phone) : (lang==='ar'?'Ø±Ù‚Ù… ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ':'Unknown number');
+    const leadName = item.lead_name ? ` Â· ${esc(item.lead_name)}` : '';
+    const agent = item.agent_name || (lang==='ar'?'ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ':'unknown');
+    const when = item.analyzed_at ? new Date(item.analyzed_at).toLocaleString() : 'â€”';
     const source = item.source || 'analysis';
-    const score = item.treatment_score != null ? ` · ${esc(String(item.treatment_score))}/100` : '';
+    const score = item.treatment_score != null ? ` Â· ${esc(String(item.treatment_score))}/100` : '';
     const msgLabel = item.message_direction === 'outbound' ? 'Agent' : 'Customer';
     return `<div class="risk-detail-line">
       <div><b>${esc(phone)}${leadName}</b></div>
-      <div class="risk-detail-meta">Agent: ${esc(agent)} · ${esc(source)} · ${esc(when)}${score}</div>
+      <div class="risk-detail-meta">Agent: ${esc(agent)} Â· ${esc(source)} Â· ${esc(when)}${score}</div>
       ${item.summary ? `<div style="margin-top:5px"><b>AI:</b> ${esc(item.summary)}</div>` : ''}
       ${item.message ? `<div style="margin-top:5px"><b>${esc(msgLabel)}:</b> ${esc(item.message)}</div>` : ''}
     </div>`;
@@ -1476,34 +1476,34 @@ function renderTopics(quality) {
           <div class="topic-bar-track"><div class="topic-bar-fill" style="width:${barW}%"></div></div>
         </div>`;
       }).join('')
-    : `<div style="text-align:center;padding:20px;color:var(--text-light);font-size:12px">${lang==='ar'?'لا توجد بيانات بعد':'No topic data yet'}</div>`;
+    : `<div style="text-align:center;padding:20px;color:var(--text-light);font-size:12px">${lang==='ar'?'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¨ÙŠØ§Ù†Ø§Øª Ø¨Ø¹Ø¯':'No topic data yet'}</div>`;
 
   const riskKeys   = Object.keys(riskRaw).slice(0,5);
   const riskColors = {unanswered:'var(--blue)',profit_expectations:'var(--warn)',beginner_risk:'var(--red)',stale_callback:'var(--red)',negative_sentiment:'var(--red)',slow_response:'var(--warn)'};
-  const riskLabels = {unanswered:lang==='ar'?'لا إجابة':'Unanswered',profit_expectations:lang==='ar'?'توقعات مفرطة':'Profit Expectations',beginner_risk:lang==='ar'?'خطر مبتدئ':'Beginner Risk',stale_callback:lang==='ar'?'معاودة متأخرة':'Stale Callback',negative_sentiment:lang==='ar'?'مشاعر سلبية':'Negative Sentiment',slow_response:lang==='ar'?'رد بطيء':'Slow Response'};
+  const riskLabels = {unanswered:lang==='ar'?'Ù„Ø§ Ø¥Ø¬Ø§Ø¨Ø©':'Unanswered',profit_expectations:lang==='ar'?'ØªÙˆÙ‚Ø¹Ø§Øª Ù…ÙØ±Ø·Ø©':'Profit Expectations',beginner_risk:lang==='ar'?'Ø®Ø·Ø± Ù…Ø¨ØªØ¯Ø¦':'Beginner Risk',stale_callback:lang==='ar'?'Ù…Ø¹Ø§ÙˆØ¯Ø© Ù…ØªØ£Ø®Ø±Ø©':'Stale Callback',negative_sentiment:lang==='ar'?'Ù…Ø´Ø§Ø¹Ø± Ø³Ù„Ø¨ÙŠØ©':'Negative Sentiment',slow_response:lang==='ar'?'Ø±Ø¯ Ø¨Ø·ÙŠØ¡':'Slow Response'};
   document.getElementById('riskList').innerHTML = riskKeys.length
     ? riskKeys.map(k=>`<div class="risk-block"><div class="risk-item"><span class="risk-name">${riskLabels[k]||k}</span><span class="risk-count" style="color:${riskColors[k]||'var(--red)'}">${riskRaw[k]}</span></div>${riskDetailsInlineHtml(k,3)}</div>`).join('')
-    : `<div style="text-align:center;padding:16px;color:var(--text-light);font-size:12px">${lang==='ar'?'لم يتم رصد علامات خطر':'No risk flags detected'}</div>`;
+    : `<div style="text-align:center;padding:16px;color:var(--text-light);font-size:12px">${lang==='ar'?'Ù„Ù… ÙŠØªÙ… Ø±ØµØ¯ Ø¹Ù„Ø§Ù…Ø§Øª Ø®Ø·Ø±':'No risk flags detected'}</div>`;
 }
 
-// ── Channel Traffic ───────────────────────────────────────────────────────────
+// â”€â”€ Channel Traffic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderTraffic(traffic) {
   const el = document.getElementById('trafficTable');
   if (!traffic) { el.innerHTML=''; return; }
-  const pLabels = {today:{en:'Today',ar:'اليوم'},week:{en:'This Week',ar:'هذا الأسبوع'},month:{en:'This Month',ar:'هذا الشهر'}};
+  const pLabels = {today:{en:'Today',ar:'Ø§Ù„ÙŠÙˆÙ…'},week:{en:'This Week',ar:'Ù‡Ø°Ø§ Ø§Ù„Ø£Ø³Ø¨ÙˆØ¹'},month:{en:'This Month',ar:'Ù‡Ø°Ø§ Ø§Ù„Ø´Ù‡Ø±'}};
   function trendArrow(todayV,ydayV) {
-    if(!ydayV) return['→','trend-flat'];
+    if(!ydayV) return['â†’','trend-flat'];
     const r=todayV/ydayV;
-    return r>1.15?['↑','trend-up']:r<0.85?['↓','trend-dn']:['→','trend-flat'];
+    return r>1.15?['â†‘','trend-up']:r<0.85?['â†“','trend-dn']:['â†’','trend-flat'];
   }
   const rows=[
-    {ch:'whatsapp',icon:'💬',label:{en:'WA Leads',ar:'عملاء واتساب'},metric:'leads'},
-    {ch:'whatsapp',icon:'💬',label:{en:'WA Messages',ar:'رسائل واتساب'},metric:'messages'},
-    {ch:'maqsam',icon:'📞',label:{en:'Maqsam Leads',ar:'عملاء مقسم'},metric:'leads'},
-    {ch:'maqsam',icon:'📞',label:{en:'Maqsam Calls',ar:'مكالمات مقسم'},metric:'calls'},
+    {ch:'whatsapp',icon:'ðŸ’¬',label:{en:'WA Leads',ar:'Ø¹Ù…Ù„Ø§Ø¡ ÙˆØ§ØªØ³Ø§Ø¨'},metric:'leads'},
+    {ch:'whatsapp',icon:'ðŸ’¬',label:{en:'WA Messages',ar:'Ø±Ø³Ø§Ø¦Ù„ ÙˆØ§ØªØ³Ø§Ø¨'},metric:'messages'},
+    {ch:'maqsam',icon:'ðŸ“ž',label:{en:'Maqsam Leads',ar:'Ø¹Ù…Ù„Ø§Ø¡ Ù…Ù‚Ø³Ù…'},metric:'leads'},
+    {ch:'maqsam',icon:'ðŸ“ž',label:{en:'Maqsam Calls',ar:'Ù…ÙƒØ§Ù„Ù…Ø§Øª Ù…Ù‚Ø³Ù…'},metric:'calls'},
   ];
   const periods=['today','week','month'];
-  const thead=`<tr><th>${lang==='ar'?'القناة':'Channel'}</th>${periods.map(p=>`<th style="text-align:right">${lang==='ar'?pLabels[p].ar:pLabels[p].en}</th>`).join('')}<th style="text-align:center">${lang==='ar'?'الاتجاه':'Trend'}</th></tr>`;
+  const thead=`<tr><th>${lang==='ar'?'Ø§Ù„Ù‚Ù†Ø§Ø©':'Channel'}</th>${periods.map(p=>`<th style="text-align:right">${lang==='ar'?pLabels[p].ar:pLabels[p].en}</th>`).join('')}<th style="text-align:center">${lang==='ar'?'Ø§Ù„Ø§ØªØ¬Ø§Ù‡':'Trend'}</th></tr>`;
   const tbody=rows.map(r=>{
     const vals=periods.map(p=>traffic[p]?.[r.ch]?.[r.metric]||0);
     const[arrow,cls]=trendArrow(vals[0],vals[1]-vals[0]);
@@ -1512,18 +1512,18 @@ function renderTraffic(traffic) {
   el.innerHTML=`<table class="traffic-tbl"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
 }
 
-// ── Quality & Risk Panel ──────────────────────────────────────────────────────
+// â”€â”€ Quality & Risk Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderQualityRisk(quality, ov) {
   const el  = document.getElementById('qualityRiskPanel');
   const s   = quality?.sentiment||{};
   const pos = s.positive||0, neu=s.neutral||0, neg=s.negative||0, tot=pos+neu+neg;
-  const overall = tot===0?(lang==='ar'?'لا بيانات':'No data')
-    :pos>neg&&pos>neu?(lang==='ar'?'إيجابي عام':'Generally Positive')
-    :neg>pos&&neg>neu?(lang==='ar'?'سلبي عام':'Generally Negative')
-    :(lang==='ar'?'مختلط':'Mixed');
+  const overall = tot===0?(lang==='ar'?'Ù„Ø§ Ø¨ÙŠØ§Ù†Ø§Øª':'No data')
+    :pos>neg&&pos>neu?(lang==='ar'?'Ø¥ÙŠØ¬Ø§Ø¨ÙŠ Ø¹Ø§Ù…':'Generally Positive')
+    :neg>pos&&neg>neu?(lang==='ar'?'Ø³Ù„Ø¨ÙŠ Ø¹Ø§Ù…':'Generally Negative')
+    :(lang==='ar'?'Ù…Ø®ØªÙ„Ø·':'Mixed');
   const overallColor=pos>neg&&pos>neu?'var(--green)':neg>pos?'var(--red)':'var(--warn)';
   const bySev=quality?.alerts?.by_severity||{};
-  const RECS={HIGH:{en:'Immediate action required — escalate to a senior agent or supervisor.',ar:'يتطلب تدخلاً فورياً — تصعيد إلى وكيل أقدم أو مشرف الآن.'},MED:{en:'Follow up within 24 hours to prevent escalation.',ar:'متابعة خلال 24 ساعة لتجنب التصعيد.'},LOW:{en:'Monitor and address during regular workflow.',ar:'راقب وعالج ضمن سير العمل المعتاد.'}};
+  const RECS={HIGH:{en:'Immediate action required â€” escalate to a senior agent or supervisor.',ar:'ÙŠØªØ·Ù„Ø¨ ØªØ¯Ø®Ù„Ø§Ù‹ ÙÙˆØ±ÙŠØ§Ù‹ â€” ØªØµØ¹ÙŠØ¯ Ø¥Ù„Ù‰ ÙˆÙƒÙŠÙ„ Ø£Ù‚Ø¯Ù… Ø£Ùˆ Ù…Ø´Ø±Ù Ø§Ù„Ø¢Ù†.'},MED:{en:'Follow up within 24 hours to prevent escalation.',ar:'Ù…ØªØ§Ø¨Ø¹Ø© Ø®Ù„Ø§Ù„ 24 Ø³Ø§Ø¹Ø© Ù„ØªØ¬Ù†Ø¨ Ø§Ù„ØªØµØ¹ÙŠØ¯.'},LOW:{en:'Monitor and address during regular workflow.',ar:'Ø±Ø§Ù‚Ø¨ ÙˆØ¹Ø§Ù„Ø¬ Ø¶Ù…Ù† Ø³ÙŠØ± Ø§Ù„Ø¹Ù…Ù„ Ø§Ù„Ù…Ø¹ØªØ§Ø¯.'}};
   const sevCards=['HIGH','MED','LOW'].map(sev=>{
     const count=bySev[sev]||0;
     const color=sev==='HIGH'?'var(--red)':sev==='MED'?'var(--warn)':'var(--blue)';
@@ -1536,37 +1536,37 @@ function renderQualityRisk(quality, ov) {
   el.innerHTML=`<div class="two-col" style="gap:16px">
     <div style="display:flex;flex-direction:column;gap:14px">
       <div class="card" style="padding:20px">
-        <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">${lang==='ar'?'المشاعر العامة':'Overall Sentiment'}</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">${lang==='ar'?'Ø§Ù„Ù…Ø´Ø§Ø¹Ø± Ø§Ù„Ø¹Ø§Ù…Ø©':'Overall Sentiment'}</div>
         <div style="font-size:22px;font-weight:800;color:${overallColor};margin-bottom:12px">${overall}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <span class="kpi-badge badge-green">😊 ${fmt(pos)} ${lang==='ar'?'إيجابي':'positive'}</span>
-          <span class="kpi-badge badge-gray">😐 ${fmt(neu)} ${lang==='ar'?'محايد':'neutral'}</span>
-          <span class="kpi-badge badge-red">😞 ${fmt(neg)} ${lang==='ar'?'سلبي':'negative'}</span>
+          <span class="kpi-badge badge-green">ðŸ˜Š ${fmt(pos)} ${lang==='ar'?'Ø¥ÙŠØ¬Ø§Ø¨ÙŠ':'positive'}</span>
+          <span class="kpi-badge badge-gray">ðŸ˜ ${fmt(neu)} ${lang==='ar'?'Ù…Ø­Ø§ÙŠØ¯':'neutral'}</span>
+          <span class="kpi-badge badge-red">ðŸ˜ž ${fmt(neg)} ${lang==='ar'?'Ø³Ù„Ø¨ÙŠ':'negative'}</span>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
         <div class="card" style="padding:16px;text-align:center">
-          <div style="font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase;margin-bottom:8px">${lang==='ar'?'الشكاوى':'Complaints'}</div>
+          <div style="font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase;margin-bottom:8px">${lang==='ar'?'Ø§Ù„Ø´ÙƒØ§ÙˆÙ‰':'Complaints'}</div>
           <div style="font-size:26px;font-weight:800;color:${(quality?.complaints_count??neg)>0?'var(--red)':'var(--navy)'}">${fmt(quality?.complaints_count??neg)}</div>
         </div>
         <div class="card" style="padding:16px;text-align:center">
-          <div style="font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase;margin-bottom:8px">${lang==='ar'?'متوسط الرسائل':'Avg Msgs/Lead'}</div>
+          <div style="font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase;margin-bottom:8px">${lang==='ar'?'Ù…ØªÙˆØ³Ø· Ø§Ù„Ø±Ø³Ø§Ø¦Ù„':'Avg Msgs/Lead'}</div>
           <div style="font-size:26px;font-weight:800;color:var(--navy)">${fmt(quality?.avg_messages_per_lead??0,1)}</div>
         </div>
         <div class="card" style="padding:16px;text-align:center">
-          <div style="font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase;margin-bottom:8px">${lang==='ar'?'معدل التحويل':'Conv. Rate'}</div>
+          <div style="font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase;margin-bottom:8px">${lang==='ar'?'Ù…Ø¹Ø¯Ù„ Ø§Ù„ØªØ­ÙˆÙŠÙ„':'Conv. Rate'}</div>
           <div style="font-size:26px;font-weight:800;color:var(--green)">${pct(ov?.leads?.conversion_rate??0)}</div>
         </div>
       </div>
     </div>
     <div>
-      <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">${lang==='ar'?'التنبيهات حسب الخطورة':'Alerts by Severity'}</div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">${lang==='ar'?'Ø§Ù„ØªÙ†Ø¨ÙŠÙ‡Ø§Øª Ø­Ø³Ø¨ Ø§Ù„Ø®Ø·ÙˆØ±Ø©':'Alerts by Severity'}</div>
       <div style="display:flex;flex-direction:column;gap:10px">${sevCards}</div>
     </div>
   </div>`;
 }
 
-// ── Recent Leads ──────────────────────────────────────────────────────────────
+// â”€â”€ Recent Leads â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let _leadsExpanded = false;
 let _leadsData = null;
 const LEADS_DEFAULT = 5;
@@ -1590,17 +1590,17 @@ function _renderLeadsRows() {
   const list = _leadsExpanded ? all : all.slice(0, LEADS_DEFAULT);
 
   const countEl = document.getElementById('leadsCount');
-  if (countEl) countEl.textContent=`(${lang==='ar'?'أحدث':'top'} ${all.length} ${lang==='ar'?'من':'of'} ${leadsData.total||0})`;
+  if (countEl) countEl.textContent=`(${lang==='ar'?'Ø£Ø­Ø¯Ø«':'top'} ${all.length} ${lang==='ar'?'Ù…Ù†':'of'} ${leadsData.total||0})`;
 
   if (!all.length) {
-    el.innerHTML=`<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-text">${lang==='ar'?'لا توجد عملاء':'No leads'}</div></div>`;
+    el.innerHTML=`<div class="empty-state"><div class="empty-icon">ðŸ‘¥</div><div class="empty-text">${lang==='ar'?'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¹Ù…Ù„Ø§Ø¡':'No leads'}</div></div>`;
     document.getElementById('leadsToggleWrap').style.display='none';
     return;
   }
 
   const statusPillCls={new:'pill-blue',engaged:'pill-warn',converted:'pill-green',lost:'pill-gray',callback:'pill-blue'};
-  const statusLabels={new:{en:'New',ar:'جديد'},engaged:{en:'Engaged',ar:'منخرط'},converted:{en:'Converted',ar:'محول'},lost:{en:'Lost',ar:'مفقود'},callback:{en:'Callback',ar:'معاودة'}};
-  const chIcon={whatsapp:'💬',maqsam:'📞'};
+  const statusLabels={new:{en:'New',ar:'Ø¬Ø¯ÙŠØ¯'},engaged:{en:'Engaged',ar:'Ù…Ù†Ø®Ø±Ø·'},converted:{en:'Converted',ar:'Ù…Ø­ÙˆÙ„'},lost:{en:'Lost',ar:'Ù…ÙÙ‚ÙˆØ¯'},callback:{en:'Callback',ar:'Ù…Ø¹Ø§ÙˆØ¯Ø©'}};
+  const chIcon={whatsapp:'ðŸ’¬',maqsam:'ðŸ“ž'};
   el.innerHTML=list.map(l=>{
     const score=l.score;
     const bc=score==null?'#9ca3af':score>=70?'#26CF4B':score>=40?'#FF8F3C':'#FF0003';
@@ -1609,15 +1609,15 @@ function _renderLeadsRows() {
     const subPhone=l.name&&l.phone?`<span style="font-size:11px;color:var(--text-light)">${fmtPhone(l.phone)}</span>`:'';
     const summary=l.summary?`<div class="lead-summary">${l.summary}</div>`:'';
     return`<div class="lead-row">
-      <div class="score-badge" style="background:${bc}" title="AI Score">${score!=null?Math.round(score):'—'}</div>
+      <div class="score-badge" style="background:${bc}" title="AI Score">${score!=null?Math.round(score):'â€”'}</div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <span class="agent-name-cell">${l.name||l.phone||'—'}</span>${subPhone}
+          <span class="agent-name-cell">${l.name||l.phone||'â€”'}</span>${subPhone}
           <span>${chIcon[l.channel]||''}</span>${statusPill}
         </div>${summary}
       </div>
       <div style="text-align:right;flex-shrink:0">
-        ${l.assigned_agent?`<div style="font-size:11px;color:var(--text-light)">👤 ${l.assigned_agent}</div>`:''}
+        ${l.assigned_agent?`<div style="font-size:11px;color:var(--text-light)">ðŸ‘¤ ${l.assigned_agent}</div>`:''}
         ${l.last_message_at?`<div style="font-size:11px;color:var(--text-light);margin-top:2px">${ago(l.last_message_at)}</div>`:''}
       </div>
     </div>`;
@@ -1630,17 +1630,17 @@ function _renderLeadsRows() {
     wrap.style.display = 'block';
     const remaining = all.length - LEADS_DEFAULT;
     btn.textContent = _leadsExpanded
-      ? (lang==='ar' ? '↑ عرض أقل' : 'Show less ↑')
-      : (lang==='ar' ? `عرض جميع ${all.length} →` : `Show all ${all.length} →`);
+      ? (lang==='ar' ? 'â†‘ Ø¹Ø±Ø¶ Ø£Ù‚Ù„' : 'Show less â†‘')
+      : (lang==='ar' ? `Ø¹Ø±Ø¶ Ø¬Ù…ÙŠØ¹ ${all.length} â†’` : `Show all ${all.length} â†’`);
   } else {
     wrap.style.display = 'none';
   }
 }
 
-// ── Hot Leads ─────────────────────────────────────────────────────────────────
+// â”€â”€ Hot Leads â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let hotLeadsExpanded = false;
 let hotLeadsCache = [];
-// ── Peak Hours ────────────────────────────────────────────────────────────────
+// â”€â”€ Peak Hours â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderHotLeads(leadsData) {
   const hot = leadsData.hot_leads || [];
   hotLeadsCache = hot;
@@ -1705,7 +1705,7 @@ function renderHourlyChart(ov) {
   });
 }
 
-// ── FAQ Analytics ─────────────────────────────────────────────────────────────
+// â”€â”€ FAQ Analytics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderFAQ(quality) {
   const faq = quality.faq_topics || [];
   const section = document.getElementById('faqSection');
@@ -1716,13 +1716,13 @@ function renderFAQ(quality) {
     <div class="faq-bar-row">
       <div class="topic-bar-meta">
         <span class="topic-bar-label">${lang === 'ar' ? t.ar : t.en}</span>
-        <span class="topic-bar-pct">${fmt(t.count)} · ${t.pct}%</span>
+        <span class="topic-bar-pct">${fmt(t.count)} Â· ${t.pct}%</span>
       </div>
       <div class="topic-bar-track"><div class="topic-bar-fill" style="width:${Math.round(t.count / maxCount * 100)}%"></div></div>
     </div>`).join('');
 }
 
-// ── Sparkline ─────────────────────────────────────────────────────────────────
+// â”€â”€ Sparkline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderFAQ(quality) {
   const faq = quality.faq_topics || [];
   const wrap = document.getElementById('faqList');
@@ -1734,7 +1734,7 @@ function renderFAQ(quality) {
     return `<div class="faq-bar-row">
       <div class="topic-bar-meta">
         <span class="topic-bar-label">${esc(lang === 'ar' ? t.ar : t.en)}</span>
-        <span class="topic-bar-pct">${fmt(t.count)} · ${t.pct}%</span>
+        <span class="topic-bar-pct">${fmt(t.count)} Â· ${t.pct}%</span>
       </div>
       <div class="topic-bar-track"><div class="topic-bar-fill" style="width:${Math.round((t.count || 0) / maxCount * 100)}%"></div></div>
       ${examples.length ? `<div class="topic-example-label">Examples</div><div class="topic-example-list">${examples.map(ex=>`<div class="topic-example">${esc(ex.text)}</div>`).join('')}</div>` : ''}
@@ -1765,16 +1765,16 @@ function sparkline(trend) {
   </svg>`;
 }
 
-// ── Agents table ──────────────────────────────────────────────────────────────
+// â”€â”€ Agents table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let agentSortKey = 'calls_handled', agentSortAsc = false;
 let _agentAlertDetails = {};
 function renderAgents(data) {
   const agents = (data.agents||[]).slice();
   _agentAlertDetails = {};
-  document.getElementById('agentCount').textContent = `(${agents.length} ${lang==='ar'?'وكيل':'agents'})`;
+  document.getElementById('agentCount').textContent = `(${agents.length} ${lang==='ar'?'ÙˆÙƒÙŠÙ„':'agents'})`;
 
   if (!agents.length) {
-    document.getElementById('agentTable').innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-text">${lang==='ar'?'لا توجد بيانات':'No agent data'}</div></div>`;
+    document.getElementById('agentTable').innerHTML = `<div class="empty-state"><div class="empty-icon">ðŸ‘¥</div><div class="empty-text">${lang==='ar'?'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¨ÙŠØ§Ù†Ø§Øª':'No agent data'}</div></div>`;
     return;
   }
   agents.sort((a,b)=>{
@@ -1783,28 +1783,28 @@ function renderAgents(data) {
   });
 
   const cols = [
-    {key:'agent',                   en:'Agent',          ar:'الوكيل',             sort:false},
-    {key:'leads',                   en:'Leads',          ar:'العملاء',            sort:true},
-    {key:'calls_handled',           en:'Calls',          ar:'المكالمات',          sort:true},
-    {key:'avg_call_duration_seconds',en:'Avg Duration',  ar:'متوسط المدة',        sort:true},
-    {key:'avg_treatment_score',     en:'Treatment',      ar:'جودة المعاملة',      sort:true},
-    {key:'sentiment',               en:'Sentiment',      ar:'المشاعر',            sort:false},
-    {key:'open_alerts',             en:'Alerts',         ar:'التنبيهات',          sort:true},
+    {key:'agent',                   en:'Agent',          ar:'Ø§Ù„ÙˆÙƒÙŠÙ„',             sort:false},
+    {key:'leads',                   en:'Leads',          ar:'Ø§Ù„Ø¹Ù…Ù„Ø§Ø¡',            sort:true},
+    {key:'calls_handled',           en:'Calls',          ar:'Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø§Øª',          sort:true},
+    {key:'avg_call_duration_seconds',en:'Avg Duration',  ar:'Ù…ØªÙˆØ³Ø· Ø§Ù„Ù…Ø¯Ø©',        sort:true},
+    {key:'avg_treatment_score',     en:'Treatment',      ar:'Ø¬ÙˆØ¯Ø© Ø§Ù„Ù…Ø¹Ø§Ù…Ù„Ø©',      sort:true},
+    {key:'sentiment',               en:'Sentiment',      ar:'Ø§Ù„Ù…Ø´Ø§Ø¹Ø±',            sort:false},
+    {key:'open_alerts',             en:'Alerts',         ar:'Ø§Ù„ØªÙ†Ø¨ÙŠÙ‡Ø§Øª',          sort:true},
   ];
 
-  const thead = cols.map(c=>`<th ${c.sort?`onclick="sortAgents('${c.key}')" `:''}class="${c.sort?'':'no-sort'}${agentSortKey===c.key?' sorted':''}">${lang==='ar'?c.ar:c.en}${agentSortKey===c.key?(agentSortAsc?' ↑':' ↓'):''}</th>`).join('');
+  const thead = cols.map(c=>`<th ${c.sort?`onclick="sortAgents('${c.key}')" `:''}class="${c.sort?'':'no-sort'}${agentSortKey===c.key?' sorted':''}">${lang==='ar'?c.ar:c.en}${agentSortKey===c.key?(agentSortAsc?' â†‘':' â†“'):''}</th>`).join('');
 
   const rows = agents.map(a=>{
     _agentAlertDetails[a.agent || ''] = a.alert_details || [];
     const s = a.sentiment||{};
     const tot = (s.positive||0)+(s.neutral||0)+(s.negative||0);
-    const sentPill = tot===0 ? `<span class="pill pill-gray">${lang==='ar'?'لا بيانات':'No data'}</span>`
-      : (s.positive||0)>(s.negative||0) ? `<span class="pill pill-green">${lang==='ar'?'إيجابي':'Positive'} ${s.positive||0}</span>`
-      : (s.negative||0)>(s.positive||0) ? `<span class="pill pill-red">${lang==='ar'?'سلبي':'Negative'} ${s.negative||0}</span>`
-      : `<span class="pill pill-blue">${lang==='ar'?'محايد':'Neutral'} ${s.neutral||0}</span>`;
+    const sentPill = tot===0 ? `<span class="pill pill-gray">${lang==='ar'?'Ù„Ø§ Ø¨ÙŠØ§Ù†Ø§Øª':'No data'}</span>`
+      : (s.positive||0)>(s.negative||0) ? `<span class="pill pill-green">${lang==='ar'?'Ø¥ÙŠØ¬Ø§Ø¨ÙŠ':'Positive'} ${s.positive||0}</span>`
+      : (s.negative||0)>(s.positive||0) ? `<span class="pill pill-red">${lang==='ar'?'Ø³Ù„Ø¨ÙŠ':'Negative'} ${s.negative||0}</span>`
+      : `<span class="pill pill-blue">${lang==='ar'?'Ù…Ø­Ø§ÙŠØ¯':'Neutral'} ${s.neutral||0}</span>`;
 
     const ts = a.avg_treatment_score||0;
-    const tPill = ts===0 ? `<span class="pill pill-gray">—</span>`
+    const tPill = ts===0 ? `<span class="pill pill-gray">â€”</span>`
       : ts>=70 ? `<span class="pill pill-green">${fmt(ts)}</span>`
       : ts>=50 ? `<span class="pill pill-warn">${fmt(ts)}</span>`
       : `<span class="pill pill-red">${fmt(ts)}</span>`;
@@ -1815,12 +1815,12 @@ function renderAgents(data) {
       : `<span class="alert-badge no-alerts">0</span>`;
 
     const avgDur = a.avg_call_duration_seconds||0;
-    const durDisplay = avgDur>0 ? dur(avgDur) : '—';
+    const durDisplay = avgDur>0 ? dur(avgDur) : 'â€”';
 
     const spark = sparkline(a.quality_trend || []);
 
     return `<tr>
-      <td><div class="sparkline-cell"><span class="agent-name-cell">${a.agent||'—'}</span>${spark}</div></td>
+      <td><div class="sparkline-cell"><span class="agent-name-cell">${a.agent||'â€”'}</span>${spark}</div></td>
       <td>${fmt(a.leads)}</td>
       <td><strong>${fmt(a.calls_handled||0)}</strong></td>
       <td>${durDisplay}</td>
@@ -1831,8 +1831,8 @@ function renderAgents(data) {
   }).join('');
 
   const crmNote = `<div style="font-size:11px;color:var(--text-light);padding:6px 4px 10px;display:flex;align-items:center;gap:6px">
-    <span style="color:var(--warn)">⚠</span>
-    <span>${lang==='ar'?'تتطلب بيانات التحويل تكاملاً مع نظام CRM — قريباً':'Conversion tracking requires CRM integration — coming soon'}</span>
+    <span style="color:var(--warn)">âš </span>
+    <span>${lang==='ar'?'ØªØªØ·Ù„Ø¨ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„ØªØ­ÙˆÙŠÙ„ ØªÙƒØ§Ù…Ù„Ø§Ù‹ Ù…Ø¹ Ù†Ø¸Ø§Ù… CRM â€” Ù‚Ø±ÙŠØ¨Ø§Ù‹':'Conversion tracking requires CRM integration â€” coming soon'}</span>
   </div>`;
 
   document.getElementById('agentTable').innerHTML = crmNote + `<table><thead><tr>${thead}</tr></thead><tbody>${rows}</tbody></table>`;
@@ -1844,22 +1844,22 @@ function sortAgents(key) {
   else loadAll();
 }
 
-// ── Alert i18n helpers ────────────────────────────────────────────────────────
+// â”€â”€ Alert i18n helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const _ALERT_TYPE_AR = {
-  no_reply:            'لا رد',
-  stale_callback:      'مكالمة عودة متأخرة',
-  slow_response:       'استجابة بطيئة',
-  negative_sentiment:  'مشاعر سلبية',
-  poor_treatment:      'معالجة سيئة',
-  beginner_risk:       'خطر المبتدئ',
-  profit_expectations: 'توقعات أرباح غير واقعية',
-  weak_engagement:     'تفاعل ضعيف',
+  no_reply:            'Ù„Ø§ Ø±Ø¯',
+  stale_callback:      'Ù…ÙƒØ§Ù„Ù…Ø© Ø¹ÙˆØ¯Ø© Ù…ØªØ£Ø®Ø±Ø©',
+  slow_response:       'Ø§Ø³ØªØ¬Ø§Ø¨Ø© Ø¨Ø·ÙŠØ¦Ø©',
+  negative_sentiment:  'Ù…Ø´Ø§Ø¹Ø± Ø³Ù„Ø¨ÙŠØ©',
+  poor_treatment:      'Ù…Ø¹Ø§Ù„Ø¬Ø© Ø³ÙŠØ¦Ø©',
+  beginner_risk:       'Ø®Ø·Ø± Ø§Ù„Ù…Ø¨ØªØ¯Ø¦',
+  profit_expectations: 'ØªÙˆÙ‚Ø¹Ø§Øª Ø£Ø±Ø¨Ø§Ø­ ØºÙŠØ± ÙˆØ§Ù‚Ø¹ÙŠØ©',
+  weak_engagement:     'ØªÙØ§Ø¹Ù„ Ø¶Ø¹ÙŠÙ',
 };
-const _ALERT_SEV_AR = { HIGH: 'عالي', MED: 'متوسط', LOW: 'منخفض' };
+const _ALERT_SEV_AR = { HIGH: 'Ø¹Ø§Ù„ÙŠ', MED: 'Ù…ØªÙˆØ³Ø·', LOW: 'Ù…Ù†Ø®ÙØ¶' };
 
 function _alertTypeLabel(type) {
   if (lang !== 'ar') return (type || 'alert').replace(/_/g,' ');
-  return _ALERT_TYPE_AR[type] || (type || 'تنبيه').replace(/_/g,' ');
+  return _ALERT_TYPE_AR[type] || (type || 'ØªÙ†Ø¨ÙŠÙ‡').replace(/_/g,' ');
 }
 function _alertSevLabel(sev) {
   if (lang !== 'ar') return sev;
@@ -1867,34 +1867,34 @@ function _alertSevLabel(sev) {
 }
 function _alertMsgAr(msg) {
   if (!msg) return '';
-  // Dynamic patterns — extract numbers and re-build in Arabic
+  // Dynamic patterns â€” extract numbers and re-build in Arabic
   let m;
   if ((m = msg.match(/unanswered for (\d+) minutes/)))
-    return `رسالة واردة لم يتم الرد عليها منذ ${m[1]} دقيقة.`;
+    return `Ø±Ø³Ø§Ù„Ø© ÙˆØ§Ø±Ø¯Ø© Ù„Ù… ÙŠØªÙ… Ø§Ù„Ø±Ø¯ Ø¹Ù„ÙŠÙ‡Ø§ Ù…Ù†Ø° ${m[1]} Ø¯Ù‚ÙŠÙ‚Ø©.`;
   if ((m = msg.match(/not contacted in (\d+) hours/)))
-    return `لم يتم التواصل مع العميل منذ ${m[1]} ساعة.`;
+    return `Ù„Ù… ÙŠØªÙ… Ø§Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹ Ø§Ù„Ø¹Ù…ÙŠÙ„ Ù…Ù†Ø° ${m[1]} Ø³Ø§Ø¹Ø©.`;
   if ((m = msg.match(/response time is (\d+) minutes/)))
-    return `متوسط وقت الاستجابة ${m[1]} دقيقة (الحد: 15 دقيقة).`;
+    return `Ù…ØªÙˆØ³Ø· ÙˆÙ‚Øª Ø§Ù„Ø§Ø³ØªØ¬Ø§Ø¨Ø© ${m[1]} Ø¯Ù‚ÙŠÙ‚Ø© (Ø§Ù„Ø­Ø¯: 15 Ø¯Ù‚ÙŠÙ‚Ø©).`;
   if ((m = msg.match(/Low treatment score \((\d+)\/100\)/)))
-    return `درجة المعالجة منخفضة (${m[1]}/100). جودة التفاعل تحتاج مراجعة.`;
+    return `Ø¯Ø±Ø¬Ø© Ø§Ù„Ù…Ø¹Ø§Ù„Ø¬Ø© Ù…Ù†Ø®ÙØ¶Ø© (${m[1]}/100). Ø¬ÙˆØ¯Ø© Ø§Ù„ØªÙØ§Ø¹Ù„ ØªØ­ØªØ§Ø¬ Ù…Ø±Ø§Ø¬Ø¹Ø©.`;
   if (msg.includes('negative sentiment'))
-    return 'اكتشف الذكاء الاصطناعي مشاعر سلبية في هذه المحادثة.';
+    return 'Ø§ÙƒØªØ´Ù Ø§Ù„Ø°ÙƒØ§Ø¡ Ø§Ù„Ø§ØµØ·Ù†Ø§Ø¹ÙŠ Ù…Ø´Ø§Ø¹Ø± Ø³Ù„Ø¨ÙŠØ© ÙÙŠ Ù‡Ø°Ù‡ Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø©.';
   if (msg.includes('Beginner lead'))
-    return 'عميل مبتدئ لم يُقدَّم له تعليم في التداول.';
+    return 'Ø¹Ù…ÙŠÙ„ Ù…Ø¨ØªØ¯Ø¦ Ù„Ù… ÙŠÙÙ‚Ø¯ÙŽÙ‘Ù… Ù„Ù‡ ØªØ¹Ù„ÙŠÙ… ÙÙŠ Ø§Ù„ØªØ¯Ø§ÙˆÙ„.';
   if (msg.includes('profit expectations'))
-    return 'العميل لديه توقعات أرباح غير واقعية. يلزم تدريب.';
+    return 'Ø§Ù„Ø¹Ù…ÙŠÙ„ Ù„Ø¯ÙŠÙ‡ ØªÙˆÙ‚Ø¹Ø§Øª Ø£Ø±Ø¨Ø§Ø­ ØºÙŠØ± ÙˆØ§Ù‚Ø¹ÙŠØ©. ÙŠÙ„Ø²Ù… ØªØ¯Ø±ÙŠØ¨.';
   return msg; // fallback: keep original
 }
 
-// ── Agent alert popup ─────────────────────────────────────────────────────────
+// â”€â”€ Agent alert popup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function openAgentAlerts(agent) {
   const modal = document.getElementById('agentAlertsModal');
   const title = document.getElementById('agentAlertsTitle');
   const body  = document.getElementById('agentAlertsBody');
   if (!modal || !title || !body) { console.error('[alerts] modal elements missing'); return; }
 
-  title.textContent = `${agent} · ${lang==='ar'?'التنبيهات':'Alerts'}`;
-  body.innerHTML = `<div class="empty-state"><div class="skeleton" style="height:56px;margin:0 auto 12px;max-width:360px"></div><div class="empty-text">${lang==='ar'?'جاري تحميل التنبيهات...':'Downloading alerts...'}</div></div>`;
+  title.textContent = `${agent} Â· ${lang==='ar'?'Ø§Ù„ØªÙ†Ø¨ÙŠÙ‡Ø§Øª':'Alerts'}`;
+  body.innerHTML = `<div class="empty-state"><div class="skeleton" style="height:56px;margin:0 auto 12px;max-width:360px"></div><div class="empty-text">${lang==='ar'?'Ø¬Ø§Ø±ÙŠ ØªØ­Ù…ÙŠÙ„ Ø§Ù„ØªÙ†Ø¨ÙŠÙ‡Ø§Øª...':'Downloading alerts...'}</div></div>`;
   modal.classList.add('open');
 
   let alerts = [];
@@ -1904,7 +1904,7 @@ async function openAgentAlerts(agent) {
     if (Array.isArray(cached) && cached.length) {
       alerts = cached;
     } else {
-      // Direct fetch — avoid get() to prevent query-string issues
+      // Direct fetch â€” avoid get() to prevent query-string issues
       const url = `${API}/api/agents/alerts?agent=${encodeURIComponent(agent)}`;
       const r = await fetch(url);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -1913,12 +1913,12 @@ async function openAgentAlerts(agent) {
     }
   } catch(e) {
     console.error('[alerts] fetch error:', e);
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">${lang==='ar'?'فشل تحميل التنبيهات':'Failed to load alerts'}</div><div class="empty-sub">${esc(String(e))}</div></div>`;
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">âš ï¸</div><div class="empty-text">${lang==='ar'?'ÙØ´Ù„ ØªØ­Ù…ÙŠÙ„ Ø§Ù„ØªÙ†Ø¨ÙŠÙ‡Ø§Øª':'Failed to load alerts'}</div><div class="empty-sub">${esc(String(e))}</div></div>`;
     return;
   }
 
   if (!alerts.length) {
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">${lang==='ar'?'لا توجد تنبيهات مفتوحة':'No open alerts'}</div></div>`;
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">âœ…</div><div class="empty-text">${lang==='ar'?'Ù„Ø§ ØªÙˆØ¬Ø¯ ØªÙ†Ø¨ÙŠÙ‡Ø§Øª Ù…ÙØªÙˆØ­Ø©':'No open alerts'}</div></div>`;
     return;
   }
 
@@ -1926,9 +1926,9 @@ async function openAgentAlerts(agent) {
     body.innerHTML = alerts.map(a => {
       const sev    = (a.severity || 'MED').toUpperCase();
       const sevCls = sev === 'HIGH' ? 'pill-red' : sev === 'LOW' ? 'pill-blue' : 'pill-warn';
-      const phone  = a.lead_phone ? fmtPhone(a.lead_phone) : (lang==='ar'?'عميل غير معروف':'Unknown lead');
-      let created  = '—';
-      try { created = a.created_at ? new Date(a.created_at).toLocaleString() : '—'; } catch(_){}
+      const phone  = a.lead_phone ? fmtPhone(a.lead_phone) : (lang==='ar'?'Ø¹Ù…ÙŠÙ„ ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ':'Unknown lead');
+      let created  = 'â€”';
+      try { created = a.created_at ? new Date(a.created_at).toLocaleString() : 'â€”'; } catch(_){}
       const typeLabel = _alertTypeLabel(a.type);
       const sevLabel  = _alertSevLabel(sev);
       const msgText   = lang==='ar' ? _alertMsgAr(a.message) : (a.message || '');
@@ -1938,12 +1938,12 @@ async function openAgentAlerts(agent) {
           <span class="agent-alert-title">${esc(typeLabel)}</span>
         </div>
         <div class="agent-alert-msg">${esc(msgText)}</div>
-        <div class="alert-meta">👤 ${esc(phone)} · ${esc(created)}</div>
+        <div class="alert-meta">ðŸ‘¤ ${esc(phone)} Â· ${esc(created)}</div>
       </div>`;
     }).join('');
   } catch(e) {
     console.error('[alerts] render error:', e);
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Render error: ${esc(String(e))}</div></div>`;
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">âš ï¸</div><div class="empty-text">Render error: ${esc(String(e))}</div></div>`;
   }
 }
 
@@ -1952,7 +1952,7 @@ function setWaLine(value) {
   localStorage.setItem('fiper_wa_line', waLine);
   const sel = document.getElementById('waLineSelect');
   if (sel && sel.value !== waLine) sel.value = waLine;
-  setWaLineState('loading', waLine === 'all' ? 'Loading all numbers...' : `Loading ${waLine}...`);
+  setWaLineState('loading', 'Loading...');
   loadAll();
   Promise.resolve(loadJourneyV2()).catch(() => {});
 }
@@ -1965,34 +1965,34 @@ function openRiskFlagDetails(flag) {
 
   const label = _translateTag(flag).replace(/_/g, ' ');
   const items = (_riskFlagDetails && _riskFlagDetails[flag]) || [];
-  title.textContent = `${label} · ${lang==='ar'?'Ø§Ù„ØªÙØ§ØµÙŠÙ„':'Details'}`;
+  title.textContent = `${label} Â· ${lang==='ar'?'Ã˜Â§Ã™â€žÃ˜ÂªÃ™ÂÃ˜Â§Ã˜ÂµÃ™Å Ã™â€ž':'Details'}`;
   modal.classList.add('open');
 
   if (!items.length) {
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">âš ï¸</div><div class="empty-text">${lang==='ar'?'Ù„Ø§ ØªÙˆØ¬Ø¯ ØªÙØ§ØµÙŠÙ„ Ù„Ù‡Ø°Ø§ Ø§Ù„Ø®Ø·Ø±':'No detail rows for this risk flag'}</div></div>`;
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">Ã¢Å¡Â Ã¯Â¸Â</div><div class="empty-text">${lang==='ar'?'Ã™â€žÃ˜Â§ Ã˜ÂªÃ™Ë†Ã˜Â¬Ã˜Â¯ Ã˜ÂªÃ™ÂÃ˜Â§Ã˜ÂµÃ™Å Ã™â€ž Ã™â€žÃ™â€¡Ã˜Â°Ã˜Â§ Ã˜Â§Ã™â€žÃ˜Â®Ã˜Â·Ã˜Â±':'No detail rows for this risk flag'}</div></div>`;
     return;
   }
 
   body.innerHTML = items.map(item => {
-    const phone = item.lead_phone ? fmtPhone(item.lead_phone) : (lang==='ar'?'Ø±Ù‚Ù… ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ':'Unknown number');
-    const leadName = item.lead_name ? ` · ${esc(item.lead_name)}` : '';
-    const agent = item.agent_name || (lang==='ar'?'ØºÙŠØ± Ù…Ø¹Ø±ÙˆÙ':'unknown');
+    const phone = item.lead_phone ? fmtPhone(item.lead_phone) : (lang==='ar'?'Ã˜Â±Ã™â€šÃ™â€¦ Ã˜ÂºÃ™Å Ã˜Â± Ã™â€¦Ã˜Â¹Ã˜Â±Ã™Ë†Ã™Â':'Unknown number');
+    const leadName = item.lead_name ? ` Â· ${esc(item.lead_name)}` : '';
+    const agent = item.agent_name || (lang==='ar'?'Ã˜ÂºÃ™Å Ã˜Â± Ã™â€¦Ã˜Â¹Ã˜Â±Ã™Ë†Ã™Â':'unknown');
     const source = item.source || 'analysis';
-    const when = item.analyzed_at ? new Date(item.analyzed_at).toLocaleString() : '—';
+    const when = item.analyzed_at ? new Date(item.analyzed_at).toLocaleString() : 'â€”';
     const msgWhen = item.message_at ? new Date(item.message_at).toLocaleString() : '';
-    const score = item.treatment_score != null ? ` · Treatment ${esc(String(item.treatment_score))}/100` : '';
-    const sentiment = item.sentiment ? ` · ${esc(item.sentiment)}` : '';
+    const score = item.treatment_score != null ? ` Â· Treatment ${esc(String(item.treatment_score))}/100` : '';
+    const sentiment = item.sentiment ? ` Â· ${esc(item.sentiment)}` : '';
     const messageLabel = item.message_direction === 'outbound'
-      ? (lang==='ar'?'Ø±Ø³Ø§Ù„Ø© Ø§Ù„ÙˆÙƒÙŠÙ„':'Agent message')
-      : (lang==='ar'?'Ø±Ø³Ø§Ù„Ø© Ø§Ù„Ø¹Ù…ÙŠÙ„':'Customer message');
+      ? (lang==='ar'?'Ã˜Â±Ã˜Â³Ã˜Â§Ã™â€žÃ˜Â© Ã˜Â§Ã™â€žÃ™Ë†Ã™Æ’Ã™Å Ã™â€ž':'Agent message')
+      : (lang==='ar'?'Ã˜Â±Ã˜Â³Ã˜Â§Ã™â€žÃ˜Â© Ã˜Â§Ã™â€žÃ˜Â¹Ã™â€¦Ã™Å Ã™â€ž':'Customer message');
     return `<div class="agent-alert-card">
       <div class="agent-alert-top">
         <span class="pill pill-red">${esc(label)}</span>
         <span class="agent-alert-title">${esc(phone)}${leadName}</span>
       </div>
-      <div class="alert-meta">ðŸ‘¤ ${esc(agent)} · ${esc(source)} · ${esc(when)}${score}${sentiment}</div>
-      ${item.summary ? `<div class="risk-detail-line"><b>${lang==='ar'?'ØªØ­Ù„ÙŠÙ„ AI':'AI analysis'}:</b> ${esc(item.summary)}</div>` : ''}
-      ${item.message ? `<div class="risk-detail-line"><b>${esc(messageLabel)}${msgWhen ? ' · ' + esc(msgWhen) : ''}:</b> ${esc(item.message)}</div>` : ''}
+      <div class="alert-meta">Ã°Å¸â€˜Â¤ ${esc(agent)} Â· ${esc(source)} Â· ${esc(when)}${score}${sentiment}</div>
+      ${item.summary ? `<div class="risk-detail-line"><b>${lang==='ar'?'Ã˜ÂªÃ˜Â­Ã™â€žÃ™Å Ã™â€ž AI':'AI analysis'}:</b> ${esc(item.summary)}</div>` : ''}
+      ${item.message ? `<div class="risk-detail-line"><b>${esc(messageLabel)}${msgWhen ? ' Â· ' + esc(msgWhen) : ''}:</b> ${esc(item.message)}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -2006,10 +2006,10 @@ function renderAlerts(quality) {
   const list = (quality?.alerts?.list||[]).filter(a=>!a.resolved);
   const el = document.getElementById('alertsList');
   if (!list.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text" data-en="All clear — no open alerts" data-ar="لا توجد تنبيهات مفتوحة">${lang==='ar'?'لا توجد تنبيهات مفتوحة':'All clear — no open alerts'}</div><div class="empty-sub" data-en="System is operating normally" data-ar="النظام يعمل بشكل طبيعي">${lang==='ar'?'النظام يعمل بشكل طبيعي':'System is operating normally'}</div></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">âœ…</div><div class="empty-text" data-en="All clear â€” no open alerts" data-ar="Ù„Ø§ ØªÙˆØ¬Ø¯ ØªÙ†Ø¨ÙŠÙ‡Ø§Øª Ù…ÙØªÙˆØ­Ø©">${lang==='ar'?'Ù„Ø§ ØªÙˆØ¬Ø¯ ØªÙ†Ø¨ÙŠÙ‡Ø§Øª Ù…ÙØªÙˆØ­Ø©':'All clear â€” no open alerts'}</div><div class="empty-sub" data-en="System is operating normally" data-ar="Ø§Ù„Ù†Ø¸Ø§Ù… ÙŠØ¹Ù…Ù„ Ø¨Ø´ÙƒÙ„ Ø·Ø¨ÙŠØ¹ÙŠ">${lang==='ar'?'Ø§Ù„Ù†Ø¸Ø§Ù… ÙŠØ¹Ù…Ù„ Ø¨Ø´ÙƒÙ„ Ø·Ø¨ÙŠØ¹ÙŠ':'System is operating normally'}</div></div>`;
     return;
   }
-  const typeLabels = {no_reply:lang==='ar'?'لا رد':'No Reply',weak_engagement:lang==='ar'?'تفاعل ضعيف':'Weak Engagement',negative_sentiment:lang==='ar'?'مشاعر سلبية':'Negative Sentiment',poor_treatment:lang==='ar'?'معاملة سيئة':'Poor Treatment',beginner_risk:lang==='ar'?'خطر مبتدئ':'Beginner Risk',slow_response:lang==='ar'?'رد بطيء':'Slow Response',stale_callback:lang==='ar'?'معاودة متأخرة':'Stale Callback',profit_expectations:lang==='ar'?'توقعات مفرطة':'Profit Expectations'};
+  const typeLabels = {no_reply:lang==='ar'?'Ù„Ø§ Ø±Ø¯':'No Reply',weak_engagement:lang==='ar'?'ØªÙØ§Ø¹Ù„ Ø¶Ø¹ÙŠÙ':'Weak Engagement',negative_sentiment:lang==='ar'?'Ù…Ø´Ø§Ø¹Ø± Ø³Ù„Ø¨ÙŠØ©':'Negative Sentiment',poor_treatment:lang==='ar'?'Ù…Ø¹Ø§Ù…Ù„Ø© Ø³ÙŠØ¦Ø©':'Poor Treatment',beginner_risk:lang==='ar'?'Ø®Ø·Ø± Ù…Ø¨ØªØ¯Ø¦':'Beginner Risk',slow_response:lang==='ar'?'Ø±Ø¯ Ø¨Ø·ÙŠØ¡':'Slow Response',stale_callback:lang==='ar'?'Ù…Ø¹Ø§ÙˆØ¯Ø© Ù…ØªØ£Ø®Ø±Ø©':'Stale Callback',profit_expectations:lang==='ar'?'ØªÙˆÙ‚Ø¹Ø§Øª Ù…ÙØ±Ø·Ø©':'Profit Expectations'};
   const ALERT_LIMIT = 5;
   const mkAlert = a => {
     const leadPhone = a.lead_phone ? fmtPhone(a.lead_phone) : '';
@@ -2018,13 +2018,13 @@ function renderAlerts(quality) {
     <div class="alert-item ${(a.severity||'').toLowerCase()}">
       <span class="pill ${a.severity==='HIGH'?'pill-red':a.severity==='MED'?'pill-warn':'pill-blue'}" style="flex-shrink:0;margin-top:1px">${a.severity}</span>
       <div class="alert-body">
-        <div class="alert-msg">${typeLabels[a.type]||a.type} — ${a.message||''}</div>
-        ${a.last_message_body?`<div class="alert-last-msg">💬 "${esc(a.last_message_body)}"</div>`:''}
+        <div class="alert-msg">${typeLabels[a.type]||a.type} â€” ${a.message||''}</div>
+        ${a.last_message_body?`<div class="alert-last-msg">ðŸ’¬ "${esc(a.last_message_body)}"</div>`:''}
         <div class="alert-meta">
-          ${leadPhone?`<span style="font-weight:700;color:var(--navy)">📱 ${esc(leadPhone)}</span>`:''}
+          ${leadPhone?`<span style="font-weight:700;color:var(--navy)">ðŸ“± ${esc(leadPhone)}</span>`:''}
           ${leadName?`<span>${esc(leadName)}</span>`:''}
-          ${a.agent_name?`<span>👤 ${esc(a.agent_name)}</span>`:''}
-          ${a.created_at?`<span>🕐 ${ago(a.created_at)}</span>`:''}
+          ${a.agent_name?`<span>ðŸ‘¤ ${esc(a.agent_name)}</span>`:''}
+          ${a.created_at?`<span>ðŸ• ${ago(a.created_at)}</span>`:''}
         </div>
       </div>
     </div>`;
@@ -2037,12 +2037,12 @@ function renderAlerts(quality) {
         <button id="alertsToggleBtn" data-total="${list.length}"
           onclick="toggleAlerts(this)"
           style="background:none;border:none;color:var(--blue);font-size:12px;font-weight:700;cursor:pointer;padding:0">
-          ${lang==='ar'?`اعرض كل ${list.length} تنبيه ←`:`Show all ${list.length} alerts →`}
+          ${lang==='ar'?`Ø§Ø¹Ø±Ø¶ ÙƒÙ„ ${list.length} ØªÙ†Ø¨ÙŠÙ‡ â†`:`Show all ${list.length} alerts â†’`}
         </button>
       </div>` : '');
 }
 
-// ── Render all sections from cached data ─────────────────────────────────────
+// â”€â”€ Render all sections from cached data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function normalizeChannels(ov, ch) {
   const fixed = ch || {};
   fixed.whatsapp = fixed.whatsapp || {};
@@ -2111,40 +2111,40 @@ function renderAll(ov, ch, leads, agents, quality, traffic) {
   renderScoreDist(leads);
   renderLeadsList(leads);
   renderGeo(allLeads);
-  // Sections that need quality/agents data — skip if not yet loaded
+  // Sections that need quality/agents data â€” skip if not yet loaded
   if (quality) { renderOutcomes(quality); renderSentiment(quality); renderTopics(quality); renderFAQ(quality); renderQualityRisk(quality, ov); renderAlerts(quality); }
   else { renderQualityLoading(); }
   if (agents)  { renderAgents(agents); }
   else { renderAgentsLoading(); }
-  document.getElementById('lastUpdText').textContent = (lang==='ar'?'تحديث: ':'Updated: ') + new Date().toLocaleTimeString();
+  document.getElementById('lastUpdText').textContent = (lang==='ar'?'ØªØ­Ø¯ÙŠØ«: ':'Updated: ') + new Date().toLocaleTimeString();
   applyLang();
 }
 
-// ── Lead Journey Tracker ──────────────────────────────────────────────────────
+// â”€â”€ Lead Journey Tracker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const EVENT_ICONS = {
-  call:      '📞', whatsapp: '💬', ai: '🤖',
-  alert:     '⚠️', account: '🏦', next_action: '↪',
+  call:      'ðŸ“ž', whatsapp: 'ðŸ’¬', ai: 'ðŸ¤–',
+  alert:     'âš ï¸', account: 'ðŸ¦', next_action: 'â†ª',
 };
-const SENTIMENT_EMOJI = { positive:'😊', neutral:'😐', negative:'😔' };
-const SENTIMENT_AR    = { positive:'إيجابي', neutral:'محايد', negative:'سلبي' };
-const AR_ORDINALS     = ['','الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة','السابعة','الثامنة','التاسعة','العاشرة'];
+const SENTIMENT_EMOJI = { positive:'ðŸ˜Š', neutral:'ðŸ˜', negative:'ðŸ˜”' };
+const SENTIMENT_AR    = { positive:'Ø¥ÙŠØ¬Ø§Ø¨ÙŠ', neutral:'Ù…Ø­Ø§ÙŠØ¯', negative:'Ø³Ù„Ø¨ÙŠ' };
+const AR_ORDINALS     = ['','Ø§Ù„Ø£ÙˆÙ„Ù‰','Ø§Ù„Ø«Ø§Ù†ÙŠØ©','Ø§Ù„Ø«Ø§Ù„Ø«Ø©','Ø§Ù„Ø±Ø§Ø¨Ø¹Ø©','Ø§Ù„Ø®Ø§Ù…Ø³Ø©','Ø§Ù„Ø³Ø§Ø¯Ø³Ø©','Ø§Ù„Ø³Ø§Ø¨Ø¹Ø©','Ø§Ù„Ø«Ø§Ù…Ù†Ø©','Ø§Ù„ØªØ§Ø³Ø¹Ø©','Ø§Ù„Ø¹Ø§Ø´Ø±Ø©'];
 
 const TOPIC_AR = {
-  pricing:            'التسعير',
-  product_fit:        'ملاءمة المنتج',
-  trading_education:  'تعليم التداول',
-  competitor:         'منافس',
-  follow_up:          'متابعة',
-  not_decision_maker: 'ليس صاحب القرار',
-  account_info:       'معلومات الحساب',
-  greetings:          'ترحيب',
-  profit_expectations:'توقعات الأرباح',
-  technical:          'تقني',
-  beginner_risk:      'خطر المبتدئين',
-  unanswered:         'لم يُجب',
-  slow_response:      'رد بطيء',
-  stale_callback:     'معاودة متأخرة',
-  negative_sentiment: 'مشاعر سلبية',
+  pricing:            'Ø§Ù„ØªØ³Ø¹ÙŠØ±',
+  product_fit:        'Ù…Ù„Ø§Ø¡Ù…Ø© Ø§Ù„Ù…Ù†ØªØ¬',
+  trading_education:  'ØªØ¹Ù„ÙŠÙ… Ø§Ù„ØªØ¯Ø§ÙˆÙ„',
+  competitor:         'Ù…Ù†Ø§ÙØ³',
+  follow_up:          'Ù…ØªØ§Ø¨Ø¹Ø©',
+  not_decision_maker: 'Ù„ÙŠØ³ ØµØ§Ø­Ø¨ Ø§Ù„Ù‚Ø±Ø§Ø±',
+  account_info:       'Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ø§Ù„Ø­Ø³Ø§Ø¨',
+  greetings:          'ØªØ±Ø­ÙŠØ¨',
+  profit_expectations:'ØªÙˆÙ‚Ø¹Ø§Øª Ø§Ù„Ø£Ø±Ø¨Ø§Ø­',
+  technical:          'ØªÙ‚Ù†ÙŠ',
+  beginner_risk:      'Ø®Ø·Ø± Ø§Ù„Ù…Ø¨ØªØ¯Ø¦ÙŠÙ†',
+  unanswered:         'Ù„Ù… ÙŠÙØ¬Ø¨',
+  slow_response:      'Ø±Ø¯ Ø¨Ø·ÙŠØ¡',
+  stale_callback:     'Ù…Ø¹Ø§ÙˆØ¯Ø© Ù…ØªØ£Ø®Ø±Ø©',
+  negative_sentiment: 'Ù…Ø´Ø§Ø¹Ø± Ø³Ù„Ø¨ÙŠØ©',
 };
 function _translateTag(tag) {
   return lang === 'ar' ? (TOPIC_AR[tag] || tag.replace(/_/g,' ')) : tag.replace(/_/g,' ');
@@ -2153,33 +2153,33 @@ function _translateTag(tag) {
 function _translateTitle(ev) {
   if (lang !== 'ar') return ev.title;
   if (ev.type === 'call') {
-    if (ev.title === 'First Call') return 'المكالمة الأولى';
-    if (ev.title === 'First Call Attempt') return 'محاولة الاتصال الأولى';
-    if (ev.title === 'First Answered Call') return 'أول مكالمة مجابة';
+    if (ev.title === 'First Call') return 'Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø© Ø§Ù„Ø£ÙˆÙ„Ù‰';
+    if (ev.title === 'First Call Attempt') return 'Ù…Ø­Ø§ÙˆÙ„Ø© Ø§Ù„Ø§ØªØµØ§Ù„ Ø§Ù„Ø£ÙˆÙ„Ù‰';
+    if (ev.title === 'First Answered Call') return 'Ø£ÙˆÙ„ Ù…ÙƒØ§Ù„Ù…Ø© Ù…Ø¬Ø§Ø¨Ø©';
     const am = ev.title.match(/^Call Attempt #(\d+)$/);
     if (am) {
       const n = parseInt(am[1]);
-      return `محاولة الاتصال ${n < AR_ORDINALS.length ? AR_ORDINALS[n] : '#' + n}`;
+      return `Ù…Ø­Ø§ÙˆÙ„Ø© Ø§Ù„Ø§ØªØµØ§Ù„ ${n < AR_ORDINALS.length ? AR_ORDINALS[n] : '#' + n}`;
     }
     const m = ev.title.match(/^Call #(\d+)$/);
     if (m) {
       const n = parseInt(m[1]);
-      return `المكالمة ${n < AR_ORDINALS.length ? AR_ORDINALS[n] : '#' + n}`;
+      return `Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø© ${n < AR_ORDINALS.length ? AR_ORDINALS[n] : '#' + n}`;
     }
   }
   if (ev.type === 'whatsapp') {
-    if (ev.title === 'First WhatsApp Message') return 'أول رسالة واتساب';
-    if (ev.title === 'First Agent Reply')       return 'أول رد من الوكيل';
-    if (ev.title === 'WhatsApp Conversation Updated') return 'تحديث محادثة واتساب';
+    if (ev.title === 'First WhatsApp Message') return 'Ø£ÙˆÙ„ Ø±Ø³Ø§Ù„Ø© ÙˆØ§ØªØ³Ø§Ø¨';
+    if (ev.title === 'First Agent Reply')       return 'Ø£ÙˆÙ„ Ø±Ø¯ Ù…Ù† Ø§Ù„ÙˆÙƒÙŠÙ„';
+    if (ev.title === 'WhatsApp Conversation Updated') return 'ØªØ­Ø¯ÙŠØ« Ù…Ø­Ø§Ø¯Ø«Ø© ÙˆØ§ØªØ³Ø§Ø¨';
   }
-  if (ev.type === 'ai')      return 'تحليل الذكاء الاصطناعي';
-  if (ev.type === 'account') return ev.title === 'Account Opened' ? 'فتح الحساب' : 'حالة الحساب';
-  if (ev.type === 'next_action') return 'متابعة مطلوبة';
+  if (ev.type === 'ai')      return 'ØªØ­Ù„ÙŠÙ„ Ø§Ù„Ø°ÙƒØ§Ø¡ Ø§Ù„Ø§ØµØ·Ù†Ø§Ø¹ÙŠ';
+  if (ev.type === 'account') return ev.title === 'Account Opened' ? 'ÙØªØ­ Ø§Ù„Ø­Ø³Ø§Ø¨' : 'Ø­Ø§Ù„Ø© Ø§Ù„Ø­Ø³Ø§Ø¨';
+  if (ev.type === 'next_action') return 'Ù…ØªØ§Ø¨Ø¹Ø© Ù…Ø·Ù„ÙˆØ¨Ø©';
   return ev.title;
 }
 
 function _fmtDate(iso) {
-  if (!iso) return '—';
+  if (!iso) return 'â€”';
   const d = new Date(iso);
   return d.toLocaleDateString(lang==='ar'?'ar-EG':'en-GB', {day:'2-digit',month:'short'})
        + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
@@ -2199,67 +2199,67 @@ function _statusPill(status) {
   };
   const [c,bg] = map[status] || ['#8892AA','#F6F9FF'];
   const label = lang==='ar'
-    ? {new:'جديد',engaged:'منخرط',lost:'خرج'}[status]||status
+    ? {new:'Ø¬Ø¯ÙŠØ¯',engaged:'Ù…Ù†Ø®Ø±Ø·',lost:'Ø®Ø±Ø¬'}[status]||status
     : status;
   return `<span class="pill" style="background:${bg};color:${c};font-size:10px">${label}</span>`;
 }
 
 function _renderEvent(ev) {
-  const icon    = EVENT_ICONS[ev.type] || '•';
+  const icon    = EVENT_ICONS[ev.type] || 'â€¢';
   const color   = ev.color || 'gray';
   const dateStr = _fmtDate(ev.date);
   let details   = '';
 
   if (ev.type === 'call') {
     const outLabel = lang==='ar'
-      ? {completed:'مكتملة',no_answer:'لا رد',busy:'مشغول',failed:'فاشلة',abandoned:'مهجورة',in_progress:'جارية',callback:'معاودة الاتصال',not_interested:'غير مهتم',ongoing:'جارية'}[ev.outcome]||ev.outcome
+      ? {completed:'Ù…ÙƒØªÙ…Ù„Ø©',no_answer:'Ù„Ø§ Ø±Ø¯',busy:'Ù…Ø´ØºÙˆÙ„',failed:'ÙØ§Ø´Ù„Ø©',abandoned:'Ù…Ù‡Ø¬ÙˆØ±Ø©',in_progress:'Ø¬Ø§Ø±ÙŠØ©',callback:'Ù…Ø¹Ø§ÙˆØ¯Ø© Ø§Ù„Ø§ØªØµØ§Ù„',not_interested:'ØºÙŠØ± Ù…Ù‡ØªÙ…',ongoing:'Ø¬Ø§Ø±ÙŠØ©'}[ev.outcome]||ev.outcome
       : ev.outcome;
     details += `<div class="tl-details">`;
-    details += `<b>${lang==='ar'?'الوكيل':'Agent'}:</b> ${ev.agent} &nbsp;|&nbsp; `;
-    details += `<b>${lang==='ar'?'المدة':'Duration'}:</b> ${ev.duration} &nbsp;|&nbsp; `;
-    details += `<b>${lang==='ar'?'النتيجة':'Outcome'}:</b> ${outLabel}`;
+    details += `<b>${lang==='ar'?'Ø§Ù„ÙˆÙƒÙŠÙ„':'Agent'}:</b> ${ev.agent} &nbsp;|&nbsp; `;
+    details += `<b>${lang==='ar'?'Ø§Ù„Ù…Ø¯Ø©':'Duration'}:</b> ${ev.duration} &nbsp;|&nbsp; `;
+    details += `<b>${lang==='ar'?'Ø§Ù„Ù†ØªÙŠØ¬Ø©':'Outcome'}:</b> ${outLabel}`;
     if (ev.sentiment) details += ` &nbsp;|&nbsp; ${SENTIMENT_EMOJI[ev.sentiment]||''} ${lang==='ar'?(SENTIMENT_AR[ev.sentiment]||ev.sentiment):ev.sentiment}`;
     details += `</div>`;
     if (ev.summary_required && ev.summary_status && ev.summary_status !== 'ok') {
       const warnText = ev.summary_status === 'missing_transcript'
-        ? (lang==='ar'?'لا يوجد نص مكالمة، لذلك الملخص غير متاح.':'No transcript is stored, so the call summary is unavailable.')
-        : (lang==='ar'?'ملخص المكالمة قيد الإنشاء.':'Call summary is being generated.');
-      details += `<div class="tl-details tl-unreliable">⚠️ ${warnText}</div>`;
+        ? (lang==='ar'?'Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ù†Øµ Ù…ÙƒØ§Ù„Ù…Ø©ØŒ Ù„Ø°Ù„Ùƒ Ø§Ù„Ù…Ù„Ø®Øµ ØºÙŠØ± Ù…ØªØ§Ø­.':'No transcript is stored, so the call summary is unavailable.')
+        : (lang==='ar'?'Ù…Ù„Ø®Øµ Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø© Ù‚ÙŠØ¯ Ø§Ù„Ø¥Ù†Ø´Ø§Ø¡.':'Call summary is being generated.');
+      details += `<div class="tl-details tl-unreliable">âš ï¸ ${warnText}</div>`;
     }
     if (ev.summary) {
       const uid = 'sum_' + Math.random().toString(36).slice(2,8);
       const needsMore = ev.summary.length > 200;
-      const short = needsMore ? ev.summary.slice(0,200) + '…' : ev.summary;
+      const short = needsMore ? ev.summary.slice(0,200) + 'â€¦' : ev.summary;
       details += `<div class="tl-preview">` +
         `<span id="${uid}_s">${short}` +
-        (needsMore ? ` <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid}_s').style.display='none';document.getElementById('${uid}_f').style.display='inline'">${lang==='ar'?'اقرأ المزيد':'Read more'}</a>` : '') +
+        (needsMore ? ` <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid}_s').style.display='none';document.getElementById('${uid}_f').style.display='inline'">${lang==='ar'?'Ø§Ù‚Ø±Ø£ Ø§Ù„Ù…Ø²ÙŠØ¯':'Read more'}</a>` : '') +
         `</span>` +
-        (needsMore ? `<span id="${uid}_f" style="display:none">${ev.summary} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid}_f').style.display='none';document.getElementById('${uid}_s').style.display='inline'">${lang==='ar'?'أقل':'Read less'}</a></span>` : '') +
+        (needsMore ? `<span id="${uid}_f" style="display:none">${ev.summary} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid}_f').style.display='none';document.getElementById('${uid}_s').style.display='inline'">${lang==='ar'?'Ø£Ù‚Ù„':'Read less'}</a></span>` : '') +
         `</div>`;
     }
   }
 
   if (ev.type === 'whatsapp') {
     const dirLabel = ev.direction === 'activity'
-      ? (lang==='ar'?'نشاط واتساب':'WhatsApp activity')
+      ? (lang==='ar'?'Ù†Ø´Ø§Ø· ÙˆØ§ØªØ³Ø§Ø¨':'WhatsApp activity')
       : ev.direction === 'inbound'
-      ? (lang==='ar'?'من العميل':'From lead')
-      : (lang==='ar'?'من الوكيل':'From agent');
+      ? (lang==='ar'?'Ù…Ù† Ø§Ù„Ø¹Ù…ÙŠÙ„':'From lead')
+      : (lang==='ar'?'Ù…Ù† Ø§Ù„ÙˆÙƒÙŠÙ„':'From agent');
     details += `<div class="tl-details">${dirLabel}`;
-    if (ev.agent && ev.direction !== 'inbound') details += ` — ${ev.agent}`;
-    if (ev.total)  details += ` &nbsp;|&nbsp; ${ev.total} ${lang==='ar'?'رسائل':'messages total'}`;
+    if (ev.agent && ev.direction !== 'inbound') details += ` â€” ${ev.agent}`;
+    if (ev.total)  details += ` &nbsp;|&nbsp; ${ev.total} ${lang==='ar'?'Ø±Ø³Ø§Ø¦Ù„':'messages total'}`;
     details += `</div>`;
     if (ev.preview) {
       const uid2 = 'prv_' + Math.random().toString(36).slice(2,8);
       const needsMore2 = ev.preview.length > 160;
       const short2 = ev.activity_only
-        ? (needsMore2 ? ev.preview.slice(0,160) + '…' : ev.preview)
-        : (needsMore2 ? '"' + ev.preview.slice(0,160) + '…"' : `"${ev.preview}"`);
+        ? (needsMore2 ? ev.preview.slice(0,160) + 'â€¦' : ev.preview)
+        : (needsMore2 ? '"' + ev.preview.slice(0,160) + 'â€¦"' : `"${ev.preview}"`);
       details += `<div class="tl-preview">` +
         `<span id="${uid2}_s">${short2}` +
-        (needsMore2 ? ` <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid2}_s').style.display='none';document.getElementById('${uid2}_f').style.display='inline'">${lang==='ar'?'اقرأ المزيد':'Read more'}</a>` : '') +
+        (needsMore2 ? ` <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid2}_s').style.display='none';document.getElementById('${uid2}_f').style.display='inline'">${lang==='ar'?'Ø§Ù‚Ø±Ø£ Ø§Ù„Ù…Ø²ÙŠØ¯':'Read more'}</a>` : '') +
         `</span>` +
-        (needsMore2 ? `<span id="${uid2}_f" style="display:none">${ev.activity_only ? ev.preview : '"' + ev.preview + '"'} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid2}_f').style.display='none';document.getElementById('${uid2}_s').style.display='inline'">${lang==='ar'?'أقل':'Read less'}</a></span>` : '') +
+        (needsMore2 ? `<span id="${uid2}_f" style="display:none">${ev.activity_only ? ev.preview : '"' + ev.preview + '"'} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid2}_f').style.display='none';document.getElementById('${uid2}_s').style.display='inline'">${lang==='ar'?'Ø£Ù‚Ù„':'Read less'}</a></span>` : '') +
         `</div>`;
     }
   }
@@ -2267,42 +2267,42 @@ function _renderEvent(ev) {
   if (ev.type === 'ai') {
     if (ev.unreliable) {
       const reason = ev.unreliable_reason === 'missing_outbound'
-        ? (lang==='ar'?'التحليل جزئي لأن ردود الوكيل في واتساب غير محفوظة.':'Partial analysis: WhatsApp agent replies are not stored.')
-        : (lang==='ar'?'التحليل غير متاح — المكالمة قصيرة جداً':'Analysis unavailable — call too short');
+        ? (lang==='ar'?'Ø§Ù„ØªØ­Ù„ÙŠÙ„ Ø¬Ø²Ø¦ÙŠ Ù„Ø£Ù† Ø±Ø¯ÙˆØ¯ Ø§Ù„ÙˆÙƒÙŠÙ„ ÙÙŠ ÙˆØ§ØªØ³Ø§Ø¨ ØºÙŠØ± Ù…Ø­ÙÙˆØ¸Ø©.':'Partial analysis: WhatsApp agent replies are not stored.')
+        : (lang==='ar'?'Ø§Ù„ØªØ­Ù„ÙŠÙ„ ØºÙŠØ± Ù…ØªØ§Ø­ â€” Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø© Ù‚ØµÙŠØ±Ø© Ø¬Ø¯Ø§Ù‹':'Analysis unavailable â€” call too short');
       details += `<div class="tl-details tl-unreliable">` +
-        `⚠️ ${reason}` +
+        `âš ï¸ ${reason}` +
         `</div>`;
     } else {
       const sentEmoji = SENTIMENT_EMOJI[ev.sentiment] || '';
       details += `<div class="tl-details">`;
-      details += `<b>${lang==='ar'?'النقاط':'Score'}:</b> <span style="color:${_scoreColor(ev.score)};font-weight:800">${ev.score}</span>/100`;
+      details += `<b>${lang==='ar'?'Ø§Ù„Ù†Ù‚Ø§Ø·':'Score'}:</b> <span style="color:${_scoreColor(ev.score)};font-weight:800">${ev.score}</span>/100`;
       details += ` &nbsp;|&nbsp; ${sentEmoji} ${lang==='ar'?(SENTIMENT_AR[ev.sentiment]||ev.sentiment):ev.sentiment}`;
-      if (ev.outcome) details += ` &nbsp;|&nbsp; <b>${lang==='ar'?'النتيجة':'Outcome'}:</b> ${ev.outcome.replace(/_/g,' ')}`;
+      if (ev.outcome) details += ` &nbsp;|&nbsp; <b>${lang==='ar'?'Ø§Ù„Ù†ØªÙŠØ¬Ø©':'Outcome'}:</b> ${ev.outcome.replace(/_/g,' ')}`;
       details += `</div>`;
       const chips = [];
       (ev.topics||[]).forEach(t => chips.push(`<span class="tl-chip">${_translateTag(t)}</span>`));
-      (ev.risk_flags||[]).forEach(f => chips.push(`<span class="tl-chip red">⚠ ${_translateTag(f)}</span>`));
+      (ev.risk_flags||[]).forEach(f => chips.push(`<span class="tl-chip red">âš  ${_translateTag(f)}</span>`));
       if (chips.length) details += `<div class="tl-chips">${chips.join('')}</div>`;
       if (ev.summary) {
         const uid3 = 'ais_' + Math.random().toString(36).slice(2,8);
         const nm3 = ev.summary.length > 200;
-        const sh3 = nm3 ? ev.summary.slice(0,200) + '…' : ev.summary;
+        const sh3 = nm3 ? ev.summary.slice(0,200) + 'â€¦' : ev.summary;
         details += `<div class="tl-preview" style="margin-top:6px">` +
           `<span id="${uid3}_s">${sh3}` +
-          (nm3?` <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid3}_s').style.display='none';document.getElementById('${uid3}_f').style.display='inline'">${lang==='ar'?'اقرأ المزيد':'Read more'}</a>`:'') +
+          (nm3?` <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid3}_s').style.display='none';document.getElementById('${uid3}_f').style.display='inline'">${lang==='ar'?'Ø§Ù‚Ø±Ø£ Ø§Ù„Ù…Ø²ÙŠØ¯':'Read more'}</a>`:'') +
           `</span>` +
-          (nm3?`<span id="${uid3}_f" style="display:none">${ev.summary} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid3}_f').style.display='none';document.getElementById('${uid3}_s').style.display='inline'">${lang==='ar'?'أقل':'Read less'}</a></span>`:'') +
+          (nm3?`<span id="${uid3}_f" style="display:none">${ev.summary} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid3}_f').style.display='none';document.getElementById('${uid3}_s').style.display='inline'">${lang==='ar'?'Ø£Ù‚Ù„':'Read less'}</a></span>`:'') +
           `</div>`;
       }
       if (!ev.summary && ev.summary_status === 'missing_language') {
-        details += `<div class="tl-details tl-unreliable">⚠️ ${lang==='ar'?'ملخص التحليل باللغة العربية قيد الإنشاء.':'AI summary in English is being generated.'}</div>`;
+        details += `<div class="tl-details tl-unreliable">âš ï¸ ${lang==='ar'?'Ù…Ù„Ø®Øµ Ø§Ù„ØªØ­Ù„ÙŠÙ„ Ø¨Ø§Ù„Ù„ØºØ© Ø§Ù„Ø¹Ø±Ø¨ÙŠØ© Ù‚ÙŠØ¯ Ø§Ù„Ø¥Ù†Ø´Ø§Ø¡.':'AI summary in English is being generated.'}</div>`;
       }
     }
   }
 
   if (ev.type === 'alert') {
     const resolved = ev.resolved
-      ? `<span style="color:var(--green);font-size:10px"> ✓ ${lang==='ar'?'محلول':'Resolved'}</span>` : '';
+      ? `<span style="color:var(--green);font-size:10px"> âœ“ ${lang==='ar'?'Ù…Ø­Ù„ÙˆÙ„':'Resolved'}</span>` : '';
     details += `<div class="tl-details">`;
     details += `<b>${ev.severity}</b> ${resolved}`;
     if (ev.message) details += `<br><span style="color:var(--body)">${ev.message}</span>`;
@@ -2310,13 +2310,13 @@ function _renderEvent(ev) {
   }
 
   if (ev.type === 'next_action') {
-    details += `<div class="tl-details tl-unreliable">⚠️ ${ev.message || (lang==='ar'?'تحتاج متابعة.':'Follow-up needed.')}</div>`;
+    details += `<div class="tl-details tl-unreliable">âš ï¸ ${ev.message || (lang==='ar'?'ØªØ­ØªØ§Ø¬ Ù…ØªØ§Ø¨Ø¹Ø©.':'Follow-up needed.')}</div>`;
   }
 
   if (ev.type === 'account') {
     const accountText = ev.status === 'converted'
-      ? (lang==='ar'?'تم تحويل العميل.':'Lead is converted.')
-      : `${lang==='ar'?'الحالة الحالية':'Current status'}: ${ev.status || 'pending'}`;
+      ? (lang==='ar'?'ØªÙ… ØªØ­ÙˆÙŠÙ„ Ø§Ù„Ø¹Ù…ÙŠÙ„.':'Lead is converted.')
+      : `${lang==='ar'?'Ø§Ù„Ø­Ø§Ù„Ø© Ø§Ù„Ø­Ø§Ù„ÙŠØ©':'Current status'}: ${ev.status || 'pending'}`;
     details += `<div class="tl-details" style="color:var(--text-light);font-style:italic">${accountText}</div>`;
   }
 
@@ -2334,7 +2334,7 @@ function _renderEvent(ev) {
 function _renderJourneyLead(lead, index) {
   const scoreColor = _scoreColor(lead.score);
   const alertBadge = lead.open_alerts > 0
-    ? `<span style="background:#fff0f0;color:var(--red);font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px">${lead.open_alerts} ${lang==='ar'?'تنبيه':'alert'}${lead.open_alerts>1&&lang!=='ar'?'s':''}</span>` : '';
+    ? `<span style="background:#fff0f0;color:var(--red);font-size:10px;font-weight:700;padding:2px 8px;border-radius:12px">${lead.open_alerts} ${lang==='ar'?'ØªÙ†Ø¨ÙŠÙ‡':'alert'}${lead.open_alerts>1&&lang!=='ar'?'s':''}</span>` : '';
   const _chList = lead.channels && lead.channels.length ? lead.channels : [lead.channel];
   const chBadge = _chList.map(ch => `<span style="background:var(--bg);color:var(--text-light);font-size:10px;padding:2px 8px;border-radius:12px;border:1px solid var(--border)">${ch}</span>`).join('');
 
@@ -2345,35 +2345,35 @@ function _renderJourneyLead(lead, index) {
   const storedOutbound = cov.stored_outbound || 0;
   const coverageHtml = `
     <div class="journey-coverage">
-      <span class="jc-pill">${cov.calls || lead.total_calls || 0} ${lang==='ar'?'مكالمات':'calls'} · ${cov.answered_calls || lead.answered_calls || 0} ${lang==='ar'?'مجاب':'answered'}</span>
-      <span class="jc-pill">${cov.summaries || 0}/${requiredSummaries} ${lang==='ar'?'ملخصات مكالمات > 30ث':'summaries for calls >30s'}</span>
-      <span class="jc-pill">${cov.transcripts || 0}/${requiredSummaries} ${lang==='ar'?'نصوص مكالمات':'transcripts'}</span>
-      <span class="jc-pill">${storedInbound} ${lang==='ar'?'داخل':'in'} / ${storedOutbound} ${lang==='ar'?'خارج':'out'} WhatsApp</span>
-      ${cov.whatsapp_outbound_missing ? `<span class="jc-pill warn">⚠️ ${lang==='ar'?'ردود الوكيل في واتساب غير محفوظة':'WhatsApp agent replies unavailable'}</span>` : ''}
+      <span class="jc-pill">${cov.calls || lead.total_calls || 0} ${lang==='ar'?'Ù…ÙƒØ§Ù„Ù…Ø§Øª':'calls'} Â· ${cov.answered_calls || lead.answered_calls || 0} ${lang==='ar'?'Ù…Ø¬Ø§Ø¨':'answered'}</span>
+      <span class="jc-pill">${cov.summaries || 0}/${requiredSummaries} ${lang==='ar'?'Ù…Ù„Ø®ØµØ§Øª Ù…ÙƒØ§Ù„Ù…Ø§Øª > 30Ø«':'summaries for calls >30s'}</span>
+      <span class="jc-pill">${cov.transcripts || 0}/${requiredSummaries} ${lang==='ar'?'Ù†ØµÙˆØµ Ù…ÙƒØ§Ù„Ù…Ø§Øª':'transcripts'}</span>
+      <span class="jc-pill">${storedInbound} ${lang==='ar'?'Ø¯Ø§Ø®Ù„':'in'} / ${storedOutbound} ${lang==='ar'?'Ø®Ø§Ø±Ø¬':'out'} WhatsApp</span>
+      ${cov.whatsapp_outbound_missing ? `<span class="jc-pill warn">âš ï¸ ${lang==='ar'?'Ø±Ø¯ÙˆØ¯ Ø§Ù„ÙˆÙƒÙŠÙ„ ÙÙŠ ÙˆØ§ØªØ³Ø§Ø¨ ØºÙŠØ± Ù…Ø­ÙÙˆØ¸Ø©':'WhatsApp agent replies unavailable'}</span>` : ''}
     </div>`;
 
   const subStats = [
-    `${lead.total_calls} ${lang==='ar'?'مكالمات أولاً':'calls first'}`,
-    `${cov.summaries || 0}/${requiredSummaries} ${lang==='ar'?'ملخصات':'summaries'}`,
-    `${storedInbound} ${lang==='ar'?'داخل':'in'} / ${storedOutbound} ${lang==='ar'?'خارج واتساب':'out WA'}`,
-  ].filter(Boolean).join(' &nbsp;·&nbsp; ');
+    `${lead.total_calls} ${lang==='ar'?'Ù…ÙƒØ§Ù„Ù…Ø§Øª Ø£ÙˆÙ„Ø§Ù‹':'calls first'}`,
+    `${cov.summaries || 0}/${requiredSummaries} ${lang==='ar'?'Ù…Ù„Ø®ØµØ§Øª':'summaries'}`,
+    `${storedInbound} ${lang==='ar'?'Ø¯Ø§Ø®Ù„':'in'} / ${storedOutbound} ${lang==='ar'?'Ø®Ø§Ø±Ø¬ ÙˆØ§ØªØ³Ø§Ø¨':'out WA'}`,
+  ].filter(Boolean).join(' &nbsp;Â·&nbsp; ');
 
-  const agentBadge = lead.assigned_agent && lead.assigned_agent !== '—'
-    ? `<span style="background:#e8f0ff;color:var(--blue);font-size:10px;font-weight:700;padding:3px 10px;border-radius:12px;display:flex;align-items:center;gap:4px;white-space:nowrap">👤 ${lead.assigned_agent}</span>`
+  const agentBadge = lead.assigned_agent && lead.assigned_agent !== 'â€”'
+    ? `<span style="background:#e8f0ff;color:var(--blue);font-size:10px;font-weight:700;padding:3px 10px;border-radius:12px;display:flex;align-items:center;gap:4px;white-space:nowrap">ðŸ‘¤ ${lead.assigned_agent}</span>`
     : '';
 
   const isConverted = lead.status === 'converted';
   const convertSection = isConverted
     ? `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px">
-        <span style="color:var(--green);font-size:16px">✓</span>
-        <span style="font-size:12px;font-weight:700;color:var(--green)">${lang==='ar'?'تم التحويل — حالة العميل: محوّل':'Converted — Lead status: converted'}</span>
+        <span style="color:var(--green);font-size:16px">âœ“</span>
+        <span style="font-size:12px;font-weight:700;color:var(--green)">${lang==='ar'?'ØªÙ… Ø§Ù„ØªØ­ÙˆÙŠÙ„ â€” Ø­Ø§Ù„Ø© Ø§Ù„Ø¹Ù…ÙŠÙ„: Ù…Ø­ÙˆÙ‘Ù„':'Converted â€” Lead status: converted'}</span>
       </div>`
     : `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <button onclick="markConverted(${index})" id="convertBtn_${index}"
           style="background:var(--green);color:#fff;border:none;padding:8px 18px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px">
-          ✓ ${lang==='ar'?'تحديد كمحوّل':'Mark as Converted'}
+          âœ“ ${lang==='ar'?'ØªØ­Ø¯ÙŠØ¯ ÙƒÙ…Ø­ÙˆÙ‘Ù„':'Mark as Converted'}
         </button>
-        <span style="font-size:11px;color:var(--text-light)">${lang==='ar'?'يحدّث حالة العميل في Supabase':'Updates lead status to "converted" in Supabase'}</span>
+        <span style="font-size:11px;color:var(--text-light)">${lang==='ar'?'ÙŠØ­Ø¯Ù‘Ø« Ø­Ø§Ù„Ø© Ø§Ù„Ø¹Ù…ÙŠÙ„ ÙÙŠ Supabase':'Updates lead status to "converted" in Supabase'}</span>
       </div>`;
 
   return `
@@ -2381,7 +2381,7 @@ function _renderJourneyLead(lead, index) {
       <div class="journey-header" onclick="toggleJourney(${index})">
         <div class="journey-score" style="background:${scoreColor}">${lead.score}</div>
         <div class="journey-meta">
-          <div class="phone">${fmtPhone(lead.phone)}${lead.name ? ' — ' + lead.name : ''}</div>
+          <div class="phone">${fmtPhone(lead.phone)}${lead.name ? ' â€” ' + lead.name : ''}</div>
           <div class="sub">${subStats}</div>
         </div>
         <div class="journey-badges">
@@ -2390,11 +2390,11 @@ function _renderJourneyLead(lead, index) {
           ${agentBadge}
           ${alertBadge}
         </div>
-        <div class="journey-chevron">▾</div>
+        <div class="journey-chevron">â–¾</div>
       </div>
       <div class="journey-body">
         ${coverageHtml}
-        <div class="timeline">${timeline || `<div style="color:var(--text-light);font-size:12px;padding:8px 0">${lang==='ar'?'لا توجد أحداث':'No events recorded'}</div>`}</div>
+        <div class="timeline">${timeline || `<div style="color:var(--text-light);font-size:12px;padding:8px 0">${lang==='ar'?'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø£Ø­Ø¯Ø§Ø«':'No events recorded'}</div>`}</div>
         ${convertSection}
       </div>
     </div>`;
@@ -2417,8 +2417,8 @@ function toggleAlerts(btn) {
   rest.style.display = isOpen ? 'none' : 'block';
   const total = btn.dataset.total;
   btn.textContent = isOpen
-    ? (lang==='ar' ? `اعرض كل ${total} تنبيه ←` : `Show all ${total} alerts →`)
-    : (lang==='ar' ? '↑ أقل' : '↑ Show less');
+    ? (lang==='ar' ? `Ø§Ø¹Ø±Ø¶ ÙƒÙ„ ${total} ØªÙ†Ø¨ÙŠÙ‡ â†` : `Show all ${total} alerts â†’`)
+    : (lang==='ar' ? 'â†‘ Ø£Ù‚Ù„' : 'â†‘ Show less');
 }
 
 async function triggerRefresh() {
@@ -2426,7 +2426,7 @@ async function triggerRefresh() {
   if (!btn || btn.disabled) return;
   btn.disabled = true;
   const origHTML = btn.innerHTML;
-  btn.innerHTML = `<span style="display:inline-block;animation:spin .8s linear infinite">⟳</span> <span>${lang==='ar'?'جاري التشغيل…':'Running…'}</span>`;
+  btn.innerHTML = `<span style="display:inline-block;animation:spin .8s linear infinite">âŸ³</span> <span>${lang==='ar'?'Ø¬Ø§Ø±ÙŠ Ø§Ù„ØªØ´ØºÙŠÙ„â€¦':'Runningâ€¦'}</span>`;
   try {
     await fetch(`${API}/api/run-pipeline`, {method: 'POST'});
   } catch(e) { /* pipeline trigger is best-effort */ }
@@ -2441,17 +2441,17 @@ async function markConverted(index) {
   if (!lead) return;
   const ids = lead.lead_ids && lead.lead_ids.length ? lead.lead_ids : [lead.id];
   const btn = document.getElementById(`convertBtn_${index}`);
-  if (btn) { btn.disabled = true; btn.textContent = lang==='ar'?'جاري التحديث…':'Updating…'; }
+  if (btn) { btn.disabled = true; btn.textContent = lang==='ar'?'Ø¬Ø§Ø±ÙŠ Ø§Ù„ØªØ­Ø¯ÙŠØ«â€¦':'Updatingâ€¦'; }
   try {
     await Promise.all(ids.map(id => fetch(`${API}/api/leads/${id}/convert`, {method:'POST'}).then(r => { if (!r.ok) throw new Error(id); })));
     await loadJourneyV2();
   } catch(e) {
-    if (btn) { btn.disabled = false; btn.innerHTML = `✓ ${lang==='ar'?'تحديد كمحوّل':'Mark as Converted'}`; }
+    if (btn) { btn.disabled = false; btn.innerHTML = `âœ“ ${lang==='ar'?'ØªØ­Ø¯ÙŠØ¯ ÙƒÙ…Ø­ÙˆÙ‘Ù„':'Mark as Converted'}`; }
     alert(`Failed: ${e.message}`);
   }
 }
 
-// ── Journey v2 state ──────────────────────────────────────────────────────────
+// â”€â”€ Journey v2 state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const jFilters = {
   phone_search:'', countries:[], min_score:0, max_score:100,
   channel:'', outcomes:[], agents:[], high_risk_only:false,
@@ -2464,7 +2464,7 @@ let _journeyLastGood = null;
 const _openJourneyLeadIds = new Set();
 let _jAppliedFilters = null;
 
-// ── Multi-select dropdown helpers ─────────────────────────────────────────────
+// â”€â”€ Multi-select dropdown helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function toggleJms(wrapId) {
   const wrap = document.getElementById(wrapId);
   const isOpen = wrap.classList.contains('open');
@@ -2495,7 +2495,7 @@ function _jmsUpdateLabel(wrapId, labelId, filterKey) {
   } else {
     label.textContent = sel.length === 1
       ? (document.querySelector(`#${wrapId} input[value="${sel[0]}"]`)?.closest('.jms-opt')?.textContent.trim() || sel[0])
-      : `${sel.length} ${lang==='ar'?'مختار':'selected'}`;
+      : `${sel.length} ${lang==='ar'?'Ù…Ø®ØªØ§Ø±':'selected'}`;
     let badge = document.querySelector(`#${wrapId} .jms-badge`);
     if (!badge) {
       badge = document.createElement('span');
@@ -2507,7 +2507,7 @@ function _jmsUpdateLabel(wrapId, labelId, filterKey) {
 }
 
 function fmtPhone(phone) {
-  if (!phone) return '—';
+  if (!phone) return 'â€”';
   return phone.startsWith('+') ? phone : '+' + phone;
 }
 
@@ -2544,11 +2544,11 @@ async function applyJourneyFilters() {
   jFilters.page = 1;
   const btn = document.querySelector('.jfilter-apply');
   const span = btn?.querySelector('span');
-  if (btn) { btn.disabled = true; if (span) span.textContent = lang==='ar'?'جاري البحث…':'Applying…'; }
+  if (btn) { btn.disabled = true; if (span) span.textContent = lang==='ar'?'Ø¬Ø§Ø±ÙŠ Ø§Ù„Ø¨Ø­Ø«â€¦':'Applyingâ€¦'; }
   await loadJourneyV2();
   if (btn) {
     btn.disabled = false;
-    if (span) { span.dataset.en='Apply Filters'; span.dataset.ar='تطبيق الفلاتر'; }
+    if (span) { span.dataset.en='Apply Filters'; span.dataset.ar='ØªØ·Ø¨ÙŠÙ‚ Ø§Ù„ÙÙ„Ø§ØªØ±'; }
     applyLang();
   }
 }
@@ -2590,7 +2590,7 @@ function updateScoreRange() {
     if (event && event.target === minEl) { minEl.value = hi; lo = hi; }
     else { maxEl.value = lo; hi = lo; }
   }
-  document.getElementById('jScoreLabel').textContent = `${lo}–${hi}`;
+  document.getElementById('jScoreLabel').textContent = `${lo}â€“${hi}`;
   const fill = document.getElementById('jScoreFill');
   if (fill) { fill.style.left = lo + '%'; fill.style.width = (hi - lo) + '%'; }
   jFilters.min_score = lo; jFilters.max_score = hi;
@@ -2609,8 +2609,8 @@ function _syncJourneyPagination(total, pages, page) {
   const lo = Math.min((page-1)*20+1, total), hi = Math.min(page*20, total);
   const countEl = document.getElementById('journeyCount');
   if (countEl) countEl.textContent = total > 0
-    ? (lang==='ar' ? `عرض ${lo}–${hi} من ${fmt(total)} عميل` : `Showing ${lo}–${hi} of ${fmt(total)} leads`)
-    : (lang==='ar' ? 'لا توجد نتائج' : 'No results');
+    ? (lang==='ar' ? `Ø¹Ø±Ø¶ ${lo}â€“${hi} Ù…Ù† ${fmt(total)} Ø¹Ù…ÙŠÙ„` : `Showing ${lo}â€“${hi} of ${fmt(total)} leads`)
+    : (lang==='ar' ? 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ù†ØªØ§Ø¦Ø¬' : 'No results');
   const pag = document.getElementById('journeyPagination');
   if (pag) pag.style.display = pages > 1 ? 'flex' : 'none';
   const pi = document.getElementById('jPageInfo');
@@ -2653,7 +2653,7 @@ async function loadJourneyV2() {
       if (!wrap.querySelector('.journey-loading')) {
         const loading = document.createElement('div');
         loading.className = 'journey-loading';
-        loading.textContent = lang === 'ar' ? 'جارٍ تحديث الرحلة...' : 'Refreshing journey...';
+        loading.textContent = lang === 'ar' ? 'Ø¬Ø§Ø±Ù ØªØ­Ø¯ÙŠØ« Ø§Ù„Ø±Ø­Ù„Ø©...' : 'Refreshing journey...';
         wrap.prepend(loading);
       }
     }
@@ -2688,12 +2688,12 @@ async function loadJourneyV2() {
       applyLang();
     } else {
       _syncJourneyPagination(0, 1, 1);
-      wrap.innerHTML = `<div class="card journey-empty">${lang==='ar'?'لا توجد نتائج تطابق الفلاتر':'No leads match the current filters'}</div>`;
+      wrap.innerHTML = `<div class="card journey-empty">${lang==='ar'?'Ù„Ø§ ØªÙˆØ¬Ø¯ Ù†ØªØ§Ø¦Ø¬ ØªØ·Ø§Ø¨Ù‚ Ø§Ù„ÙÙ„Ø§ØªØ±':'No leads match the current filters'}</div>`;
     }
   } catch(e) {
     console.error('Journey v2 failed:', e);
     if (!_journeyLastGood?.leads?.length) {
-      wrap.innerHTML = `<div class="card journey-empty" style="color:var(--red)">${lang==='ar'?'فشل تحميل رحلة العميل':'Failed to load journey data'}</div>`;
+      wrap.innerHTML = `<div class="card journey-empty" style="color:var(--red)">${lang==='ar'?'ÙØ´Ù„ ØªØ­Ù…ÙŠÙ„ Ø±Ø­Ù„Ø© Ø§Ù„Ø¹Ù…ÙŠÙ„':'Failed to load journey data'}</div>`;
     }
   } finally {
     if (wrap) {
@@ -2725,7 +2725,7 @@ async function exportJourneyCSV() {
   const oldText = span?.textContent;
   try {
     if (btn) btn.disabled = true;
-    if (span) span.textContent = lang==='ar' ? 'جاري التصدير...' : 'Exporting...';
+    if (span) span.textContent = lang==='ar' ? 'Ø¬Ø§Ø±ÙŠ Ø§Ù„ØªØµØ¯ÙŠØ±...' : 'Exporting...';
 
     const exportFilters = _jAppliedFilters || jFilters;
     const PAGE = 500;
@@ -2738,7 +2738,7 @@ async function exportJourneyCSV() {
       all = all.concat(data.leads || []);
       totalPages = data.pages || 1;
       if (span) span.textContent = lang==='ar'
-        ? `جاري التصدير... ${all.length}`
+        ? `Ø¬Ø§Ø±ÙŠ Ø§Ù„ØªØµØ¯ÙŠØ±... ${all.length}`
         : `Exporting... ${all.length}`;
       pg++;
     } while (pg <= totalPages);
@@ -2748,7 +2748,7 @@ async function exportJourneyCSV() {
     }
 
     if (!all.length) {
-      alert(lang==='ar'?'لا توجد بيانات للتصدير':'No data to export');
+      alert(lang==='ar'?'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¨ÙŠØ§Ù†Ø§Øª Ù„Ù„ØªØµØ¯ÙŠØ±':'No data to export');
       return;
     }
 
@@ -2777,20 +2777,20 @@ async function exportJourneyCSV() {
   } catch(e) {
     alert(`Export failed: ${e.message}`);
   } finally {
-    if (span) span.textContent = oldText || (lang==='ar' ? 'تصدير CSV' : 'Export CSV');
+    if (span) span.textContent = oldText || (lang==='ar' ? 'ØªØµØ¯ÙŠØ± CSV' : 'Export CSV');
     if (btn) btn.disabled = false;
   }
 }
 
-// ── Load all ──────────────────────────────────────────────────────────────────
+// â”€â”€ Load all â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // bgRefresh=true: silent background update, doesn't reset journey or show errors
 async function loadAll(bgRefresh = false) {
   try {
     if (!bgRefresh) {
-      setWaLineState('loading', waLine === 'all' ? 'Loading all numbers...' : `Loading ${waLine}...`);
+      setWaLineState('loading', 'Loading...');
     }
     const previous = _rangeCache[_cacheKey(range)]?.data || _cache || _lastRenderedData;
-    // Phase 1 — fast APIs: render KPIs, charts, leads immediately
+    // Phase 1 â€” fast APIs: render KPIs, charts, leads immediately
     const statusP  = fetch(`${API}/api/status`).then(r => r.ok ? r.json() : Promise.resolve({}));
     const ovP      = get('/api/overview');
     const chP      = get('/api/channels');
@@ -2824,7 +2824,7 @@ async function loadAll(bgRefresh = false) {
     renderAll(...partialData);
     if (!bgRefresh) loadJourneyV2();
 
-    // Phase 2 — start heavier agents/quality calls after the first render.
+    // Phase 2 â€” start heavier agents/quality calls after the first render.
     const agentsP  = get('/api/agents');
     const qualityP = get('/api/quality');
     const [agentsRaw, qualityRaw] = await Promise.all([agentsP, qualityP]);
@@ -2845,21 +2845,21 @@ async function loadAll(bgRefresh = false) {
     renderTopics(quality);
     renderChannels(ch, quality);
     document.getElementById('lastUpdText').textContent =
-      (lang==='ar' ? 'تحديث: ' : 'Updated: ') + new Date().toLocaleTimeString();
+      (lang==='ar' ? 'ØªØ­Ø¯ÙŠØ«: ' : 'Updated: ') + new Date().toLocaleTimeString();
     if (!bgRefresh) {
-      setWaLineState('ready', waLine === 'all' ? 'All numbers ready' : `Loaded ${waLine}`);
+      setWaLineState('ready', 'Loaded');
     }
     applyLang();
   } catch(e) {
     if (!bgRefresh) {
       console.error('Load failed:', e);
-      document.getElementById('kpiGrid').innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:32px;color:var(--red)">${lang==='ar'?'فشل التحميل: ':'Load failed: '}${e.message}</div>`;
+      document.getElementById('kpiGrid').innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:32px;color:var(--red)">${lang==='ar'?'ÙØ´Ù„ Ø§Ù„ØªØ­Ù…ÙŠÙ„: ':'Load failed: '}${e.message}</div>`;
       setWaLineState('error', 'Load failed');
     }
   }
 }
 
-// ── Top nav smooth scroll + active tracking ───────────────────────────────────
+// â”€â”€ Top nav smooth scroll + active tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const _NAV_SECTIONS = ['sec-overview','sec-channels','sec-pipeline','sec-insights','sec-geo','sec-agents','sec-alerts','sec-journey'];
 function _stickyOffset() {
   const hdr = document.querySelector('header');
@@ -2889,13 +2889,13 @@ function _updateActiveNav() {
   });
 }
 
-// ── Scroll to top button ───────────────────────────────────────────────────────
+// â”€â”€ Scroll to top button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.addEventListener('scroll', () => {
   document.getElementById('scrollTop').classList.toggle('visible', window.scrollY > 400);
   _updateActiveNav();
 }, { passive: true });
 
-// ── Real-time SSE connection ───────────────────────────────────────────────────
+// â”€â”€ Real-time SSE connection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 let _sseRetryTimer = null;
 let _fallbackTimer = null;
 
@@ -2904,8 +2904,8 @@ function setLiveStatus(connected) {
   if (!dot) return;
   dot.className = 'live-dot ' + (connected ? 'on' : 'off');
   dot.title = connected
-    ? (lang==='ar' ? 'متصل — تحديث فوري' : 'Connected — live updates')
-    : (lang==='ar' ? 'غير متصل — استطلاع كل دقيقتين' : 'Disconnected — polling every 2 min');
+    ? (lang==='ar' ? 'Ù…ØªØµÙ„ â€” ØªØ­Ø¯ÙŠØ« ÙÙˆØ±ÙŠ' : 'Connected â€” live updates')
+    : (lang==='ar' ? 'ØºÙŠØ± Ù…ØªØµÙ„ â€” Ø§Ø³ØªØ·Ù„Ø§Ø¹ ÙƒÙ„ Ø¯Ù‚ÙŠÙ‚ØªÙŠÙ†' : 'Disconnected â€” polling every 2 min');
 }
 
 function connectSSE() {
@@ -2914,7 +2914,7 @@ function connectSSE() {
 
   es.addEventListener('connected', () => {
     setLiveStatus(true);
-    // Cancel fallback polling — SSE handles updates
+    // Cancel fallback polling â€” SSE handles updates
     clearInterval(_fallbackTimer);
     _fallbackTimer = null;
   });
@@ -2935,7 +2935,7 @@ function connectSSE() {
   };
 }
 
-// ── Auth gate ─────────────────────────────────────────────────────────────────
+// â”€â”€ Auth gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const _AUTH_KEY = 'fiper_auth_v1';
 function _checkAuth() {
   return sessionStorage.getItem(_AUTH_KEY) === 'ok';
@@ -2968,7 +2968,7 @@ function _initDashboard() {
   _updateActiveNav();
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────────
+// â”€â”€ Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (_checkAuth()) {
   document.getElementById('loginOverlay').style.display = 'none';
   _initDashboard();
@@ -2976,3 +2976,5 @@ if (_checkAuth()) {
 </script>
 </body>
 </html>
+
+
