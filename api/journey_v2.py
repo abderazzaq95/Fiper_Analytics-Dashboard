@@ -239,7 +239,7 @@ def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_sc
             call_counts[lid] += 1
 
     msg_lead_rows = (
-        supabase.table("leads").select("id,channel,whatsapp_business_number")
+        supabase.table("leads").select("id,channel")
         .gte("last_message_at", since)
         .execute().data or []
     )
@@ -256,7 +256,7 @@ def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_sc
     for batch in _chunks(all_active_ids, 500):
         raw_leads += (
             supabase.table("leads")
-            .select("id,phone,name,score,status,assigned_agent,channel,last_message_at,whatsapp_business_number")
+            .select("id,phone,name,score,status,assigned_agent,channel,last_message_at")
             .in_("id", batch)
             .execute().data or []
         )
@@ -405,7 +405,7 @@ def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_sc
     if cross_ids:
         page_messages = (
             supabase.table("messages")
-            .select("lead_id,direction,body,sent_at,agent_name,whatsapp_business_number")
+            .select("lead_id,direction,body,sent_at,agent_name")
             .in_("lead_id", cross_ids)
             .order("sent_at")
             .execute().data or []
@@ -659,7 +659,7 @@ def _export_rows_light(range, wa_line, phone_search, country, min_score, max_sco
             answered_counts[lid] += 1
 
     msg_lead_rows = (
-        supabase.table("leads").select("id,channel,whatsapp_business_number")
+        supabase.table("leads").select("id,channel")
         .gte("last_message_at", since)
         .execute().data or []
     )
@@ -674,7 +674,7 @@ def _export_rows_light(range, wa_line, phone_search, country, min_score, max_sco
     for batch in _chunks(all_active_ids, 500):
         raw_leads += (
             supabase.table("leads")
-            .select("id,phone,name,score,status,assigned_agent,channel,last_message_at,whatsapp_business_number")
+            .select("id,phone,name,score,status,assigned_agent,channel,last_message_at")
             .in_("id", batch)
             .execute().data or []
         )

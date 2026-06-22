@@ -143,7 +143,7 @@ def _leads_inner(range_: str, wa_line: str = "all"):
     # Activity-based filtering: WA leads by last_message_at, Maqsam leads by calls
     wa_leads = (
         supabase.table("leads")
-        .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at,whatsapp_business_number")
+        .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at")
         .eq("channel", "whatsapp")
         .gte("last_message_at", since)
         .order("score", desc=True)
@@ -167,7 +167,7 @@ def _leads_inner(range_: str, wa_line: str = "all"):
     for i in range(0, len(maqsam_ids), BATCH):
         chunk = (
             supabase.table("leads")
-            .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at,whatsapp_business_number")
+            .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at")
             .in_("id", maqsam_ids[i:i + BATCH])
             .execute()
             .data

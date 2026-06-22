@@ -99,7 +99,11 @@ def matches_business_line(row: dict | None, selected_line: str | None) -> bool:
     if str(row.get("channel") or "").lower() == "maqsam":
         return True
     line = row_whatsapp_line(row)
-    return bool(line and line in lines)
+    if not line:
+        # The live DB still lacks persisted business-line metadata on some
+        # WhatsApp rows. Fail open so dashboard counters keep rendering.
+        return True
+    return bool(line in lines)
 
 # Module-level agent cache: {user_id: name}
 _agent_cache: dict[str, str] = {}

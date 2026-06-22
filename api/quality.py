@@ -93,7 +93,7 @@ def _quality_inner(range: str, wa_line: str = "all"):
     if all_alert_lead_ids:
         lead_rows = (
             supabase.table("leads")
-            .select("id,phone,wa_contact_id,name,assigned_agent,channel,whatsapp_business_number")
+            .select("id,phone,wa_contact_id,name,assigned_agent,channel")
             .in_("id", all_alert_lead_ids)
             .execute()
             .data
@@ -176,7 +176,7 @@ def _quality_inner(range: str, wa_line: str = "all"):
 
     messages = (
         supabase.table("messages")
-        .select("lead_id,whatsapp_business_number")
+        .select("lead_id")
         .gte("sent_at", since)
         .execute()
         .data
@@ -234,7 +234,7 @@ def _quality_inner(range: str, wa_line: str = "all"):
         try:
             lead_rows = (
                 supabase.table("leads")
-                .select("id,phone,wa_contact_id,name,assigned_agent,channel,whatsapp_business_number")
+                .select("id,phone,wa_contact_id,name,assigned_agent,channel")
                 .in_("id", analysis_lead_ids)
                 .execute()
                 .data
@@ -248,7 +248,7 @@ def _quality_inner(range: str, wa_line: str = "all"):
         try:
             msg_rows = (
                 supabase.table("messages")
-                .select("lead_id,direction,body,agent_name,sent_at,whatsapp_business_number")
+                .select("lead_id,direction,body,agent_name,sent_at")
                 .in_("lead_id", analysis_lead_ids)
                 .order("sent_at", desc=True)
                 .limit(1000)

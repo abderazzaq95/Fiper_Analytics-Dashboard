@@ -96,7 +96,7 @@ def _agents_lightweight(range: str, wa_line: str = "all"):
     )
     messages = _paginate(
         lambda: supabase.table("messages")
-        .select("agent_name,direction,sent_at,lead_id,whatsapp_business_number")
+        .select("agent_name,direction,sent_at,lead_id")
         .gte("sent_at", since)
     )
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
@@ -113,7 +113,7 @@ def _agents_lightweight(range: str, wa_line: str = "all"):
         for idx in range(0, len(alert_lead_ids), 100):
             lead_rows.extend(
                 supabase.table("leads")
-                .select("id,channel,whatsapp_business_number")
+                .select("id,channel")
                 .in_("id", alert_lead_ids[idx:idx + 100])
                 .execute().data or []
             )
@@ -171,7 +171,7 @@ def _agents_lightweight(range: str, wa_line: str = "all"):
 def _agents_inner(range: str, wa_line: str = "all"):
     since = _since(range)
 
-    messages = _paginate(lambda: supabase.table("messages").select("agent_name,direction,sent_at,lead_id,whatsapp_business_number").gte("sent_at", since))
+    messages = _paginate(lambda: supabase.table("messages").select("agent_name,direction,sent_at,lead_id").gte("sent_at", since))
     calls    = _paginate(lambda: supabase.table("calls").select("agent_name,lead_id,duration_seconds,called_at").gte("called_at", since))
     alerts   = (
         supabase.table("alerts")
@@ -192,7 +192,7 @@ def _agents_inner(range: str, wa_line: str = "all"):
     while idx < len(active_ids):
         leads.extend(
             supabase.table("leads")
-            .select("id,phone,name,assigned_agent,status,score,channel,whatsapp_business_number")
+            .select("id,phone,name,assigned_agent,status,score,channel")
             .in_("id", active_ids[idx:idx + BATCH_SIZE])
             .execute().data or []
         )
