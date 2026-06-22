@@ -112,7 +112,7 @@ def _channels_inner(range: str, wa_line: str = "all"):
 
     stored_messages_rows = _paginate(
         lambda: supabase.table("messages")
-        .select("id,direction,lead_id")
+        .select("id,direction,lead_id,whatsapp_business_number")
         .gte("sent_at", since)
     )
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
@@ -121,7 +121,7 @@ def _channels_inner(range: str, wa_line: str = "all"):
 
     wa_activity = _paginate(
         lambda: supabase.table("leads")
-        .select("id,phone,status,channel")
+        .select("id,phone,status,channel,whatsapp_business_number")
         .eq("channel", "whatsapp")
         .gte("last_message_at", since)
     )
@@ -227,7 +227,7 @@ def _channels_traffic_inner(wa_line: str = "all"):
         cutoff = cutoff_dt.isoformat()
         wa_rows = _paginate(
             lambda cutoff=cutoff: supabase.table("leads")
-            .select("id,phone,status,channel")
+            .select("id,phone,status,channel,whatsapp_business_number")
             .eq("channel", "whatsapp")
             .gte("last_message_at", cutoff)
         )
@@ -237,7 +237,7 @@ def _channels_traffic_inner(wa_line: str = "all"):
         mq = _unique_call_leads_count(cutoff)
         msg_rows = _paginate(
             lambda cutoff=cutoff: supabase.table("messages")
-            .select("id,direction,lead_id")
+            .select("id,direction,lead_id,whatsapp_business_number")
             .gte("sent_at", cutoff)
         )
         if wa_line and wa_line.lower() not in ("all", "*", "any"):

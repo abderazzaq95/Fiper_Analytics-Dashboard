@@ -60,7 +60,7 @@ def _overview_count_fallback(range: str, wa_line: str = "all") -> dict:
     try:
         msg_rows = _paginate(
             lambda: supabase.table("messages")
-            .select("id,direction,lead_id")
+            .select("id,direction,lead_id,whatsapp_business_number")
             .gte("sent_at", since)
         )
         if wa_line and wa_line.lower() not in ("all", "*", "any"):
@@ -73,7 +73,7 @@ def _overview_count_fallback(range: str, wa_line: str = "all") -> dict:
     try:
         wa_rows = _paginate(
             lambda: supabase.table("leads")
-            .select("id,phone,channel,last_message_at")
+            .select("id,phone,channel,last_message_at,whatsapp_business_number")
             .eq("channel", "whatsapp")
             .gte("last_message_at", since)
         )
@@ -170,7 +170,7 @@ def _overview_inner(range: str, wa_line: str = "all"):
     # live WhatsApp activity; stored message rows remain available as detail.
     wa_activity = _paginate(
         lambda: supabase.table("leads")
-        .select("id,phone,last_message_at,channel")
+        .select("id,phone,last_message_at,channel,whatsapp_business_number")
         .eq("channel", "whatsapp")
         .gte("last_message_at", since)
     )
@@ -244,7 +244,7 @@ def _overview_inner(range: str, wa_line: str = "all"):
             batch_ids = id_list[idx:idx + BATCH_SIZE]
             chunk = (
                 supabase.table("leads")
-                .select("id,phone,status,score,channel")
+                .select("id,phone,status,score,channel,whatsapp_business_number")
                 .in_("id", batch_ids)
                 .execute()
                 .data or []
@@ -284,7 +284,7 @@ def _overview_inner(range: str, wa_line: str = "all"):
         while idx < len(msg_lead_list):
             rows = (
                 supabase.table("leads")
-                .select("id,phone,channel")
+                .select("id,phone,channel,whatsapp_business_number")
                 .in_("id", msg_lead_list[idx:idx + BATCH_SIZE])
                 .execute().data or []
             )
