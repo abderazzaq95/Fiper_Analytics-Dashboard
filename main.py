@@ -2080,7 +2080,7 @@ async def _handle_mc_contact_created(body: dict, now_iso: str) -> None:
     log.info(f"[webhook/mc] contact_created | phone={phone!r} name={name!r} agent={agent_name!r}")
 
 
-async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
+async def _handle_mc_message_new(body: dict, now_iso: str, url_line_number: str | None = None) -> None:
     """ManyContacts native event: a new conversation message.
 
     Documented shape:
@@ -2166,7 +2166,7 @@ async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
         or message.get("caption") or root.get("body") or root.get("text")
         or f"[{msg_type or 'message'}]"
     )
-    line_number = _extract_whatsapp_business_number(body)
+    line_number = url_line_number or _extract_whatsapp_business_number(body)
 
     if not direction:
         log.warning(
@@ -2263,7 +2263,7 @@ async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
             log.error(f"no_reply check error: {e}")
 
 
-async def _handle_mc_outbound(body: dict, now_iso: str) -> None:
+async def _handle_mc_outbound(body: dict, now_iso: str, url_line_number: str | None = None) -> None:
     """Process ManyContacts native outbound (agent-reply) webhook payload."""
     phone, agent_name, body_text, sent_at, msg_id = _extract_mc_outbound(body)
 
@@ -2275,7 +2275,7 @@ async def _handle_mc_outbound(body: dict, now_iso: str) -> None:
     if not phone:
         log.warning(f"[webhook/mc] outbound: no phone found — keys={list(body.keys())}")
         return
-    line_number = _extract_whatsapp_business_number(body)
+    line_number = url_line_number or _extract_whatsapp_business_number(body)
     # Upsert lead (may already exist from inbound messages)
     lead_result = supabase.table("leads").upsert({
         "wa_contact_id": phone,
@@ -2349,6 +2349,17 @@ async def webhook_manycontacts(request: Request):
     ct = request.headers.get("content-type", "")
     log.info(f"[webhook/mc] POST {request.url.path} | size={len(raw)} | ct={ct!r}")
 
+    # Read optional ?wa_line= query param — set per-inbox in ManyContacts webhook URL.
+    # This is the primary mechanism for attributing messages to a business line since
+    # ManyContacts does not include the business number in the webhook payload itself.
+    _url_line_raw = request.query_params.get("wa_line") or request.query_params.get("line")
+    _url_line = whatsapp.normalize_business_line(_url_line_raw) if _url_line_raw else None
+    if _url_line and _url_line not in whatsapp.BUSINESS_NUMBERS:
+        log.warning(f"[webhook/mc] unknown wa_line in URL: {_url_line_raw!r} — ignored")
+        _url_line = None
+    if _url_line:
+        log.info(f"[webhook/mc] wa_line={_url_line!r} attributed from URL param")
+
     try:
         body = json.loads(raw)
     except Exception:
@@ -2382,13 +2393,13 @@ async def webhook_manycontacts(request: Request):
             await _handle_mc_contact_created(body, now_iso)
         elif body.get("event") == "message_new":
             # ManyContacts native: full message event, including outbound if enabled.
-            await _handle_mc_message_new(body, now_iso)
+            await _handle_mc_message_new(body, now_iso, _url_line)
         elif body.get("event") == "message_sent":
             # ManyContacts native: outbound agent reply with body/user/timestamp.
-            await _handle_mc_outbound(body, now_iso)
+            await _handle_mc_outbound(body, now_iso, _url_line)
         elif _is_outbound_mc(body):
             # ManyContacts native outbound (agent reply) — if ever enabled
-            await _handle_mc_outbound(body, now_iso)
+            await _handle_mc_outbound(body, now_iso, _url_line)
         else:
             log.info(
                 f"[webhook/mc] unrecognised format — event={body.get('event')!r} "
