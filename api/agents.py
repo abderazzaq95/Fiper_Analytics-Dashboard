@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
+from pipeline.whatsapp import matches_business_line
 
 load_dotenv()
 router = APIRouter()
@@ -62,11 +63,14 @@ def _norm(name: str | None) -> str | None:
 
 
 @router.get("/api/agents")
-def agents(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
+def agents(
+    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    wa_line: str = Query("all"),
+):
     try:
-        data = _agents_inner(range)
+        data = _agents_inner(range, wa_line)
         if not data.get("agents"):
-            fallback = _agents_lightweight(range)
+            fallback = _agents_lightweight(range, wa_line)
             if fallback.get("agents"):
                 return fallback
         return data
@@ -74,7 +78,7 @@ def agents(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
         import logging
         logging.getLogger("fiper").error(f"/api/agents error ({range}): {e}", exc_info=True)
         try:
-            return _agents_lightweight(range)
+            return _agents_lightweight(range, wa_line)
         except Exception as fallback_error:
             logging.getLogger("fiper").error(
                 f"/api/agents lightweight fallback error ({range}): {fallback_error}",
@@ -83,7 +87,7 @@ def agents(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
         return {"range": range, "agents": []}
 
 
-def _agents_lightweight(range: str):
+def _agents_lightweight(range: str, wa_line: str = "all"):
     since = _since(range)
     calls = _paginate(
         lambda: supabase.table("calls")
@@ -92,15 +96,29 @@ def _agents_lightweight(range: str):
     )
     messages = _paginate(
         lambda: supabase.table("messages")
-        .select("agent_name,direction,sent_at,lead_id")
+        .select("agent_name,direction,sent_at,lead_id,whatsapp_business_number")
         .gte("sent_at", since)
     )
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        messages = [m for m in messages if matches_business_line(m, wa_line)]
     alerts = (
         supabase.table("alerts")
         .select("agent_name,lead_id,severity,type,message,resolved,created_at")
         .eq("resolved", False)
         .execute().data or []
     )
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        alert_lead_ids = list({a.get("lead_id") for a in alerts if a.get("lead_id")})
+        lead_rows = []
+        for idx in range(0, len(alert_lead_ids), 100):
+            lead_rows.extend(
+                supabase.table("leads")
+                .select("id,channel,whatsapp_business_number")
+                .in_("id", alert_lead_ids[idx:idx + 100])
+                .execute().data or []
+            )
+        lead_map = {r["id"]: r for r in lead_rows}
+        alerts = [a for a in alerts if matches_business_line(lead_map.get(a.get("lead_id") or ""), wa_line)]
 
     agents = sorted({
         *(_norm(c.get("agent_name")) for c in calls if _norm(c.get("agent_name"))),
@@ -150,10 +168,10 @@ def _agents_lightweight(range: str):
     return {"range": range, "agents": rows, "fallback": "lightweight"}
 
 
-def _agents_inner(range: str):
+def _agents_inner(range: str, wa_line: str = "all"):
     since = _since(range)
 
-    messages = _paginate(lambda: supabase.table("messages").select("agent_name,direction,sent_at,lead_id").gte("sent_at", since))
+    messages = _paginate(lambda: supabase.table("messages").select("agent_name,direction,sent_at,lead_id,whatsapp_business_number").gte("sent_at", since))
     calls    = _paginate(lambda: supabase.table("calls").select("agent_name,lead_id,duration_seconds,called_at").gte("called_at", since))
     alerts   = (
         supabase.table("alerts")
@@ -174,11 +192,16 @@ def _agents_inner(range: str):
     while idx < len(active_ids):
         leads.extend(
             supabase.table("leads")
-            .select("id,phone,name,assigned_agent,status,score")
+            .select("id,phone,name,assigned_agent,status,score,channel,whatsapp_business_number")
             .in_("id", active_ids[idx:idx + BATCH_SIZE])
             .execute().data or []
         )
         idx += BATCH_SIZE
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        messages = [m for m in messages if matches_business_line(m, wa_line)]
+        leads = [l for l in leads if matches_business_line(l, wa_line)]
+        alert_lead_map = {l["id"]: l for l in leads if l.get("id")}
+        alerts = [a for a in alerts if matches_business_line(alert_lead_map.get(a.get("lead_id") or ""), wa_line)]
     analyses = []
     idx = 0
     while idx < len(active_ids):

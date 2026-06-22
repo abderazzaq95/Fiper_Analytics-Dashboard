@@ -3,6 +3,7 @@ from supabase import create_client
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
+from pipeline.whatsapp import matches_business_line
 
 load_dotenv()
 router = APIRouter()
@@ -26,9 +27,12 @@ def _since(range_: str) -> str:
 
 
 @router.get("/api/leads")
-def leads(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
+def leads(
+    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    wa_line: str = Query("all"),
+):
     try:
-        return _leads_inner(range)
+        return _leads_inner(range, wa_line)
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/leads error ({range}): {e}", exc_info=True)
@@ -114,9 +118,9 @@ def _score_distribution():
     return score_buckets
 
 
-def _hot_leads():
+def _hot_leads(wa_line: str = "all"):
     try:
-        return (
+        rows = (
             supabase.table("leads")
             .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at")
             .gte("score", 80)
@@ -126,23 +130,28 @@ def _hot_leads():
             .execute()
             .data
         ) or []
+        if wa_line and wa_line.lower() not in ("all", "*", "any"):
+            rows = [r for r in rows if matches_business_line(r, wa_line)]
+        return rows
     except Exception:
         return []
 
 
-def _leads_inner(range_: str):
+def _leads_inner(range_: str, wa_line: str = "all"):
     since = _since(range_)
 
     # Activity-based filtering: WA leads by last_message_at, Maqsam leads by calls
     wa_leads = (
         supabase.table("leads")
-        .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at")
+        .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at,whatsapp_business_number")
         .eq("channel", "whatsapp")
         .gte("last_message_at", since)
         .order("score", desc=True)
         .execute()
         .data
     ) or []
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        wa_leads = [l for l in wa_leads if matches_business_line(l, wa_line)]
 
     # Maqsam: find leads that had a call in the period
     call_rows = (
@@ -158,7 +167,7 @@ def _leads_inner(range_: str):
     for i in range(0, len(maqsam_ids), BATCH):
         chunk = (
             supabase.table("leads")
-            .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at")
+            .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at,whatsapp_business_number")
             .in_("id", maqsam_ids[i:i + BATCH])
             .execute()
             .data
@@ -200,5 +209,5 @@ def _leads_inner(range_: str):
         "funnel": status_counts,
         "score_distribution": _bucket_scores(all_leads),
         "leads": all_leads,
-        "hot_leads": _hot_leads(),
+        "hot_leads": _hot_leads(wa_line),
     }

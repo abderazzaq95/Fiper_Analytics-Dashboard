@@ -45,6 +45,62 @@ def is_internal_whatsapp_number(phone: str | None) -> bool:
     """Return True when a phone belongs to Fiper's own WhatsApp lines."""
     return _normalize_phone(phone) in BUSINESS_NUMBERS
 
+
+def normalize_business_line(value: str | None) -> str | None:
+    """Normalize a selected ManyContacts line to a digits-only phone number."""
+    normalized = _normalize_phone(value)
+    return normalized or None
+
+
+def selected_business_lines(raw: str | None) -> set[str] | None:
+    """Parse a wa_line query param into a normalized set.
+
+    Returns None when the caller wants the dashboard-wide aggregate view.
+    """
+    if raw is None:
+        return None
+    value = str(raw).strip()
+    if not value or value.lower() in {"all", "*", "any"}:
+        return None
+    lines = {
+        normalize_business_line(part)
+        for part in value.split(",")
+        if normalize_business_line(part)
+    }
+    return lines or None
+
+
+def row_whatsapp_line(row: dict | None) -> str | None:
+    """Best-effort lookup for the WhatsApp business line stored on a row."""
+    if not row:
+        return None
+    for key in ("whatsapp_business_number", "business_number", "line_number", "wa_line"):
+        value = row.get(key)
+        normalized = normalize_business_line(value)
+        if normalized:
+            return normalized
+    wa_contact_id = str(row.get("wa_contact_id") or "").strip()
+    if wa_contact_id.startswith("whatsapp_health_"):
+        return normalize_business_line(wa_contact_id.replace("whatsapp_health_", "", 1))
+    return None
+
+
+def matches_business_line(row: dict | None, selected_line: str | None) -> bool:
+    """Return True when a row matches the selected ManyContacts line.
+
+    Maqsam rows are always included. WhatsApp rows are filtered only when a
+    specific ManyContacts line is selected.
+    """
+    lines = selected_business_lines(selected_line)
+    if not lines:
+        return True
+    if not row:
+        return False
+    if str(row.get("channel") or "").lower() == "maqsam":
+        return True
+    line = row_whatsapp_line(row)
+    return bool(line and line in lines)
+
 # Module-level agent cache: {user_id: name}
 _agent_cache: dict[str, str] = {}
 

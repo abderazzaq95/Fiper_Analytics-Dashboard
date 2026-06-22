@@ -8,6 +8,7 @@ import csv
 import io
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
+from pipeline.whatsapp import matches_business_line
 
 load_dotenv()
 router = APIRouter()
@@ -199,6 +200,7 @@ def leads_journey_v2(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=5000),
     range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    wa_line: str = Query("all"),
     phone_search: str = Query(""),
     country: str = Query(""),
     min_score: int = Query(0, ge=0, le=100),
@@ -212,7 +214,7 @@ def leads_journey_v2(
 ):
     try:
         return _inner(page, limit, range, phone_search, country,
-                      min_score, max_score, channel, outcome,
+                      wa_line, min_score, max_score, channel, outcome,
                       agent, high_risk_only, sort_by, lang)
     except Exception as e:
         import logging
@@ -220,7 +222,7 @@ def leads_journey_v2(
         return {"leads": [], "total": 0, "page": page, "pages": 0, "meta": {"agents": []}}
 
 
-def _inner(page, limit, range, phone_search, country, min_score, max_score,
+def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_score,
            channel, outcome, agent, high_risk_only, sort_by, lang="en"):
     since = _since(range)
 
@@ -237,10 +239,12 @@ def _inner(page, limit, range, phone_search, country, min_score, max_score,
             call_counts[lid] += 1
 
     msg_lead_rows = (
-        supabase.table("leads").select("id")
+        supabase.table("leads").select("id,channel,whatsapp_business_number")
         .gte("last_message_at", since)
         .execute().data or []
     )
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        msg_lead_rows = [r for r in msg_lead_rows if matches_business_line(r, wa_line)]
     msg_lead_ids = {r["id"] for r in msg_lead_rows}
     all_active_ids = list(call_lead_ids | msg_lead_ids)
 
@@ -252,13 +256,15 @@ def _inner(page, limit, range, phone_search, country, min_score, max_score,
     for batch in _chunks(all_active_ids, 500):
         raw_leads += (
             supabase.table("leads")
-            .select("id,phone,name,score,status,assigned_agent,channel,last_message_at")
+            .select("id,phone,name,score,status,assigned_agent,channel,last_message_at,whatsapp_business_number")
             .in_("id", batch)
             .execute().data or []
         )
 
     # ── 3. Merge leads sharing the same phone into one card ───────────────────
     all_leads = _merge_by_phone(raw_leads)
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        all_leads = [lead for lead in all_leads if matches_business_line(lead, wa_line)]
 
     # Build reverse map: every raw lead_id → its merged primary lead_id
     raw_to_primary: dict[str, str] = {}
@@ -399,11 +405,13 @@ def _inner(page, limit, range, phone_search, country, min_score, max_score,
     if cross_ids:
         page_messages = (
             supabase.table("messages")
-            .select("lead_id,direction,body,sent_at,agent_name")
+            .select("lead_id,direction,body,sent_at,agent_name,whatsapp_business_number")
             .in_("lead_id", cross_ids)
             .order("sent_at")
             .execute().data or []
         )
+        if wa_line and wa_line.lower() not in ("all", "*", "any"):
+            page_messages = [m for m in page_messages if matches_business_line(m, wa_line)]
 
     page_alerts = (
         supabase.table("alerts")
@@ -629,7 +637,7 @@ def _inner(page, limit, range, phone_search, country, min_score, max_score,
     }
 
 
-def _export_rows_light(range, phone_search, country, min_score, max_score,
+def _export_rows_light(range, wa_line, phone_search, country, min_score, max_score,
                        channel, outcome, agent, high_risk_only, sort_by):
     since = _since(range)
 
@@ -651,10 +659,12 @@ def _export_rows_light(range, phone_search, country, min_score, max_score,
             answered_counts[lid] += 1
 
     msg_lead_rows = (
-        supabase.table("leads").select("id")
+        supabase.table("leads").select("id,channel,whatsapp_business_number")
         .gte("last_message_at", since)
         .execute().data or []
     )
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        msg_lead_rows = [r for r in msg_lead_rows if matches_business_line(r, wa_line)]
     msg_lead_ids = {r["id"] for r in msg_lead_rows if r.get("id")}
     all_active_ids = list(call_lead_ids | msg_lead_ids)
     if not all_active_ids:
@@ -664,11 +674,13 @@ def _export_rows_light(range, phone_search, country, min_score, max_score,
     for batch in _chunks(all_active_ids, 500):
         raw_leads += (
             supabase.table("leads")
-            .select("id,phone,name,score,status,assigned_agent,channel,last_message_at")
+            .select("id,phone,name,score,status,assigned_agent,channel,last_message_at,whatsapp_business_number")
             .in_("id", batch)
             .execute().data or []
         )
     all_leads = _merge_by_phone(raw_leads)
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        all_leads = [lead for lead in all_leads if matches_business_line(lead, wa_line)]
 
     raw_to_primary: dict[str, str] = {}
     for merged in all_leads:
@@ -781,6 +793,7 @@ def _export_rows_light(range, phone_search, country, min_score, max_score,
 @router.get("/api/leads/journey/v2/export")
 def leads_journey_v2_export(
     range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    wa_line: str = Query("all"),
     phone_search: str = Query(""),
     country: str = Query(""),
     min_score: int = Query(0, ge=0, le=100),
@@ -792,7 +805,7 @@ def leads_journey_v2_export(
     sort_by: str = Query("score"),
 ):
     rows = _export_rows_light(
-        range, phone_search, country, min_score, max_score,
+        range, wa_line, phone_search, country, min_score, max_score,
         channel, outcome, agent, high_risk_only, sort_by,
     )
     if not rows:

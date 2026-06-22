@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS leads (
   phone            TEXT,
   name             TEXT,
   channel          TEXT,           -- 'whatsapp' | 'maqsam'
+  whatsapp_business_number TEXT,    -- ManyContacts line phone (digits only)
   status           TEXT DEFAULT 'new',  -- 'new'|'engaged'|'interested'|'converted'|'lost'
   score            INTEGER,        -- AI-generated 0-100
   assigned_agent   TEXT,
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS messages (
   direction      TEXT,            -- 'inbound' | 'outbound'
   body           TEXT,
   agent_name     TEXT,
+  whatsapp_business_number TEXT,   -- ManyContacts line phone (digits only)
   status         TEXT,            -- 'sent'|'delivered'|'read'
   sent_at        TIMESTAMPTZ
 );
@@ -98,6 +100,7 @@ CREATE INDEX IF NOT EXISTS idx_leads_updated       ON leads(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_lead       ON messages(lead_id);
 CREATE INDEX IF NOT EXISTS idx_messages_sent       ON messages(sent_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_direction  ON messages(direction);
+CREATE INDEX IF NOT EXISTS idx_messages_wa_line    ON messages(whatsapp_business_number);
 CREATE INDEX IF NOT EXISTS idx_calls_lead          ON calls(lead_id);
 CREATE INDEX IF NOT EXISTS idx_calls_agent         ON calls(agent_name);
 CREATE INDEX IF NOT EXISTS idx_calls_called        ON calls(called_at DESC);
@@ -106,3 +109,4 @@ CREATE INDEX IF NOT EXISTS idx_ai_analyzed         ON ai_analysis(analyzed_at DE
 CREATE INDEX IF NOT EXISTS idx_alerts_resolved     ON alerts(resolved);
 CREATE INDEX IF NOT EXISTS idx_alerts_severity     ON alerts(severity);
 CREATE INDEX IF NOT EXISTS idx_alerts_lead         ON alerts(lead_id);
+CREATE INDEX IF NOT EXISTS idx_leads_wa_line       ON leads(whatsapp_business_number);

@@ -5,6 +5,7 @@ import requests
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from collections import Counter
+from pipeline.whatsapp import matches_business_line
 
 load_dotenv()
 router = APIRouter()
@@ -63,16 +64,19 @@ def _lead_agent_name(lead: dict | None, latest_msg: dict | None = None) -> str |
 
 
 @router.get("/api/quality")
-def quality(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
+def quality(
+    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    wa_line: str = Query("all"),
+):
     try:
-        return _quality_inner(range)
+        return _quality_inner(range, wa_line)
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/quality error ({range}): {e}", exc_info=True)
         return {"range": range, "alerts": {"total":0,"open":0,"by_severity":{"HIGH":0,"MED":0,"LOW":0},"list":[]}, "sentiment":{"positive":0,"neutral":0,"negative":0}, "top_topics":{}, "top_risk_flags":{}, "risk_flag_details":{}, "faq_topics":[], "avg_treatment_score":0, "call_outcomes":{}, "complaints_count":0, "avg_messages_per_lead":0}
 
 
-def _quality_inner(range: str):
+def _quality_inner(range: str, wa_line: str = "all"):
     since = _since(range)
 
     alerts = (
@@ -89,12 +93,14 @@ def _quality_inner(range: str):
     if all_alert_lead_ids:
         lead_rows = (
             supabase.table("leads")
-            .select("id,phone,wa_contact_id,name,assigned_agent")
+            .select("id,phone,wa_contact_id,name,assigned_agent,channel,whatsapp_business_number")
             .in_("id", all_alert_lead_ids)
             .execute()
             .data
         ) or []
         lead_map = {r["id"]: r for r in lead_rows}
+        if wa_line and wa_line.lower() not in ("all", "*", "any"):
+            alerts = [a for a in alerts if matches_business_line(lead_map.get(a.get("lead_id") or ""), wa_line)]
         alert_msg_map = {}
         try:
             alert_msg_rows = (
@@ -170,11 +176,13 @@ def _quality_inner(range: str):
 
     messages = (
         supabase.table("messages")
-        .select("lead_id")
+        .select("lead_id,whatsapp_business_number")
         .gte("sent_at", since)
         .execute()
         .data
     ) or []
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        messages = [m for m in messages if matches_business_line(m, wa_line)]
 
     sentiments = [a["sentiment"] for a in analyses if a.get("sentiment")]
     excluded_topics = {"greetings", "no_answer"}
@@ -226,7 +234,7 @@ def _quality_inner(range: str):
         try:
             lead_rows = (
                 supabase.table("leads")
-                .select("id,phone,wa_contact_id,name,assigned_agent")
+                .select("id,phone,wa_contact_id,name,assigned_agent,channel,whatsapp_business_number")
                 .in_("id", analysis_lead_ids)
                 .execute()
                 .data
@@ -240,7 +248,7 @@ def _quality_inner(range: str):
         try:
             msg_rows = (
                 supabase.table("messages")
-                .select("lead_id,direction,body,agent_name,sent_at")
+                .select("lead_id,direction,body,agent_name,sent_at,whatsapp_business_number")
                 .in_("lead_id", analysis_lead_ids)
                 .order("sent_at", desc=True)
                 .limit(1000)
@@ -253,6 +261,22 @@ def _quality_inner(range: str):
                     latest_message_map[lead_id] = msg
         except Exception:
             latest_message_map = {}
+
+    if wa_line and wa_line.lower() not in ("all", "*", "any") and analysis_lead_map:
+        analyses = [
+            a for a in analyses
+            if matches_business_line(analysis_lead_map.get(a.get("lead_id") or ""), wa_line)
+        ]
+        if topic_example_rows:
+            topic_example_rows = [
+                a for a in topic_example_rows
+                if matches_business_line(analysis_lead_map.get(a.get("lead_id") or ""), wa_line)
+            ]
+        if latest_message_map:
+            latest_message_map = {
+                lid: msg for lid, msg in latest_message_map.items()
+                if matches_business_line(analysis_lead_map.get(lid or ""), wa_line)
+            }
 
     risk_flag_details: dict[str, list[dict]] = {}
     for analysis in sorted(analyses, key=lambda a: a.get("analyzed_at") or "", reverse=True):

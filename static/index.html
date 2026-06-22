@@ -61,6 +61,18 @@ header{
 .btn-icon:hover{background:var(--blue-light);border-color:var(--blue);color:var(--blue)}
 .btn-lang{background:var(--blue);color:#fff;border:none;padding:7px 16px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit}
 .btn-lang:hover{opacity:.9}
+.wa-line-select{
+  background:var(--bg);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:7px 12px;
+  color:var(--navy);
+  font-size:12px;
+  font-weight:700;
+  font-family:inherit;
+  min-width:180px;
+}
+.wa-line-select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(7,116,255,.08)}
 
 /* ── Main layout ── */
 main{padding:24px 28px;max-width:1600px;margin:0 auto}
@@ -547,6 +559,11 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 
   <div class="header-right">
     <span class="last-upd" id="lastUpd"><span class="live-dot" id="liveDot"></span><span id="lastUpdText">—</span></span>
+    <select class="wa-line-select" id="waLineSelect" onchange="setWaLine(this.value)" aria-label="WhatsApp line">
+      <option value="all">All WhatsApp lines</option>
+      <option value="96897245526">+968 9724 5526</option>
+      <option value="905318880855">+90 531 888 0855</option>
+    </select>
     <button class="btn-icon" id="refreshBtn" onclick="triggerRefresh()">↻ <span data-en="Refresh" data-ar="تحديث">Refresh</span></button>
     <button class="btn-lang" onclick="toggleLang()" id="langBtn">العربية</button>
   </div>
@@ -848,6 +865,7 @@ let range = 'week';
 let lang  = localStorage.getItem('fiper_lang') || 'en';
 let charts = {};
 let allLeads = [];
+let waLine = localStorage.getItem('fiper_wa_line') || 'all';
 let _cache = null;      // last fetched data for current range
 let _lastGoodAgents  = null;
 let _lastGoodQuality = null;
@@ -860,18 +878,19 @@ let _lastRenderedData = null;
 let _riskFlagDetails = {};
 
 // ── Persistent cache (survives page refresh) ──────────────────────────────────
-const _CACHE_VER = 'v7';
+const _CACHE_VER = 'v8';
 const _CACHE_TTL = 12 * 60 * 60 * 1000; // 12h
 
-function _storageKey(r) { return `fiper_${_CACHE_VER}_${r}`; }
+function _storageKey(r, line = waLine) { return `fiper_${_CACHE_VER}_${r}_${line || 'all'}`; }
+function _cacheKey(r, line = waLine) { return `${r}__${line || 'all'}`; }
 
 function _saveCache(r, data) {
-  try { localStorage.setItem(_storageKey(r), JSON.stringify({ ts: Date.now(), data })); } catch(e) {}
+  try { localStorage.setItem(_storageKey(r, waLine), JSON.stringify({ ts: Date.now(), data })); } catch(e) {}
 }
 
 function _loadCache(r) {
   try {
-    const raw = localStorage.getItem(_storageKey(r));
+    const raw = localStorage.getItem(_storageKey(r, waLine));
     if (!raw) return null;
     const { ts, data } = JSON.parse(raw);
     if (Date.now() - ts > _CACHE_TTL) return null;
@@ -893,7 +912,7 @@ function _applyStoredCache(r) {
   const safeStored = [ov, ch, leads, agents, safeQuality, traffic];
   _cache = safeStored;
   _lastRenderedData = safeStored;
-  _rangeCache[r] = { status: {}, data: safeStored };
+  _rangeCache[_cacheKey(r)] = { status: {}, data: safeStored };
   return true;
 }
 
@@ -928,7 +947,7 @@ function setRange(r) {
   range = r;
   document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
   event.target.classList.add('active');
-  const cached = _rangeCache[r];
+  const cached = _rangeCache[_cacheKey(r)];
   if (cached) {
     // Render instantly from cache, then silently refresh in the background
     _pipelineStatus = cached.status;
@@ -965,7 +984,8 @@ const ago   = ts => {
 };
 async function get(path) {
   const sep = path.includes('?') ? '&' : '?';
-  const r = await fetch(`${API}${path}${sep}range=${range}&_=${Date.now()}`, {cache:'no-store'});
+  const wa = waLine ? `&wa_line=${encodeURIComponent(waLine)}` : '';
+  const r = await fetch(`${API}${path}${sep}range=${range}${wa}&_=${Date.now()}`, {cache:'no-store'});
   if (!r.ok) throw new Error(r.status);
   return r.json();
 }
@@ -1898,6 +1918,15 @@ async function openAgentAlerts(agent) {
   }
 }
 
+function setWaLine(value) {
+  waLine = value || 'all';
+  localStorage.setItem('fiper_wa_line', waLine);
+  const sel = document.getElementById('waLineSelect');
+  if (sel && sel.value !== waLine) sel.value = waLine;
+  loadAll();
+  loadJourneyV2();
+}
+
 function openRiskFlagDetails(flag) {
   const modal = document.getElementById('agentAlertsModal');
   const title = document.getElementById('agentAlertsTitle');
@@ -2647,6 +2676,7 @@ async function loadJourneyV2() {
 
 function _journeyParams(page=1, limit=20, filters=jFilters) {
   const p = new URLSearchParams({ page, limit, sort_by:filters.sort_by, range });
+  if (waLine && waLine !== 'all') p.set('wa_line', waLine);
   if (filters.phone_search)     p.set('phone_search', filters.phone_search);
   if (filters.countries.length) p.set('country', filters.countries.join(','));
   if (filters.min_score > 0)    p.set('min_score', filters.min_score);
@@ -2726,13 +2756,13 @@ async function exportJourneyCSV() {
 // bgRefresh=true: silent background update, doesn't reset journey or show errors
 async function loadAll(bgRefresh = false) {
   try {
-    const previous = _rangeCache[range]?.data || _cache || _lastRenderedData;
+    const previous = _rangeCache[_cacheKey(range)]?.data || _cache || _lastRenderedData;
     // Phase 1 — fast APIs: render KPIs, charts, leads immediately
     const statusP  = fetch(`${API}/api/status`).then(r => r.ok ? r.json() : Promise.resolve({}));
     const ovP      = get('/api/overview');
     const chP      = get('/api/channels');
     const leadsP   = get('/api/leads');
-    const trafficP = fetch(`${API}/api/channels/traffic?_=${Date.now()}`, {cache:'no-store'}).then(r => r.ok ? r.json() : Promise.resolve({}));
+    const trafficP = fetch(`${API}/api/channels/traffic?wa_line=${encodeURIComponent(waLine)}&_=${Date.now()}`, {cache:'no-store'}).then(r => r.ok ? r.json() : Promise.resolve({}));
     const [status, ovRaw, chRaw, leadsRaw, trafficRaw] = await Promise.all([statusP, ovP, chP, leadsP, trafficP]);
     _pipelineStatus = status;
     // Field-level merge: keep cached non-zero values when fresh data has zeros
@@ -2774,7 +2804,7 @@ async function loadAll(bgRefresh = false) {
     const fullData = [ov, ch, leads, agents, quality, traffic];
     _cache = fullData;
     _lastRenderedData = fullData;
-    _rangeCache[range] = { status, data: fullData };
+    _rangeCache[_cacheKey(range)] = { status, data: fullData };
     _saveCache(range, fullData);
     renderAgents(agents);
     renderAlerts(quality);
@@ -2893,6 +2923,8 @@ document.getElementById('loginUser').addEventListener('keydown', e => {
 
 function _initDashboard() {
   applyLang();
+  const waSel = document.getElementById('waLineSelect');
+  if (waSel) waSel.value = waLine;
   if (_applyStoredCache(range)) renderAll(..._cache);
   loadAll();
   connectSSE();

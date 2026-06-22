@@ -221,6 +221,7 @@ async def ingest_manycontacts(hours_back: int = 2) -> dict:
         agent_name = whatsapp.resolve_agent_name(last_user_id)
         updated_at = contact.get("updatedAt")
         status = "engaged" if open_status == 1 else "lost"
+        line_number = _extract_whatsapp_business_number(contact)
 
         lead_res = supabase.table("leads").upsert({
             "wa_contact_id": mc_id,
@@ -231,6 +232,7 @@ async def ingest_manycontacts(hours_back: int = 2) -> dict:
             "assigned_agent": agent_name,
             "last_message_at": updated_at,
             "updated_at": now_iso,
+            **({"whatsapp_business_number": line_number} if line_number else {}),
         }, on_conflict="wa_contact_id").execute()
         lead_id = lead_res.data[0]["id"] if lead_res.data else None
 
@@ -332,6 +334,7 @@ async def ingest_manycontacts_activity(days_back: int = 1) -> dict:
         last_user_id = contact.get("last_user_id")
         agent_name = whatsapp.resolve_agent_name(last_user_id) if last_user_id else None
         open_status = contact.get("open", 1)
+        line_number = _extract_whatsapp_business_number(contact)
         rows.append({
             "wa_contact_id": mc_id or phone,
             "phone": phone,
@@ -340,6 +343,7 @@ async def ingest_manycontacts_activity(days_back: int = 1) -> dict:
             "status": "engaged" if open_status == 1 else "lost",
             "last_message_at": updated_at,
             "updated_at": now_iso,
+            **({"whatsapp_business_number": line_number} if line_number else {}),
             **({"assigned_agent": agent_name} if agent_name else {}),
         })
 
@@ -1662,12 +1666,37 @@ def _record_whatsapp_line_heartbeat(body: dict, now_iso: str) -> None:
             "name": f"WhatsApp Line {line_number}",
             "phone": None,
             "channel": "system",
+            "whatsapp_business_number": line_number,
             "status": "active",
             "last_message_at": now_iso,
             "updated_at": now_iso,
         }, on_conflict="wa_contact_id").execute()
     except Exception as e:
         log.debug(f"[webhook/mc] could not record heartbeat for {line_number}: {e}")
+
+
+def _assign_whatsapp_business_line(lead_id: str | None, phone: str | None, line_number: str | None) -> None:
+    """Attach a ManyContacts business line to the current lead and its rows."""
+    if not line_number:
+        return
+    try:
+        update = {"whatsapp_business_number": line_number}
+        if lead_id:
+            supabase.table("leads").update(update).eq("id", lead_id).execute()
+        if phone:
+            phone_rows = (
+                supabase.table("leads")
+                .select("id")
+                .eq("channel", "whatsapp")
+                .eq("phone", phone)
+                .execute().data or []
+            )
+            phone_ids = [row["id"] for row in phone_rows if row.get("id")]
+            if phone_ids:
+                supabase.table("leads").update(update).in_("id", phone_ids).execute()
+                supabase.table("messages").update(update).in_("lead_id", phone_ids).execute()
+    except Exception as e:
+        log.debug(f"[webhook/mc] could not assign line {line_number} to {phone or lead_id}: {e}")
 
 
 def _debug_whatsapp_webhook_inspect(body: dict) -> dict:
@@ -1931,6 +1960,7 @@ async def _handle_meta_format(body: dict, now_iso: str) -> None:
 
             contacts_meta = value.get("contacts") or []
             contact_profile = contacts_meta[0] if contacts_meta else {}
+            line_number = _extract_whatsapp_business_number(body)
 
             for msg in messages:
                 msg_id = msg.get("id")
@@ -1959,10 +1989,12 @@ async def _handle_meta_format(body: dict, now_iso: str) -> None:
                     "phone": phone,
                     "name": name or None,
                     "channel": "whatsapp",
+                    **({"whatsapp_business_number": line_number} if line_number else {}),
                     "last_message_at": sent_at,
                     "updated_at": now_iso,
                 }, on_conflict="wa_contact_id").execute()
                 lead_id = lead_result.data[0]["id"] if lead_result.data else None
+                _assign_whatsapp_business_line(lead_id, phone, line_number)
 
                 if msg_id and lead_id:
                     if _message_duplicate_exists(lead_id, phone, "inbound", body_text, sent_at):
@@ -1977,6 +2009,7 @@ async def _handle_meta_format(body: dict, now_iso: str) -> None:
                         "lead_id": lead_id,
                         "direction": "inbound",
                         "body": body_text,
+                        **({"whatsapp_business_number": line_number} if line_number else {}),
                         "sent_at": sent_at,
                     }, on_conflict="wa_message_id").execute()
 
@@ -2000,6 +2033,7 @@ async def _handle_mc_contact_created(body: dict, now_iso: str) -> None:
     agent_name = whatsapp.resolve_agent_name(last_user_id) if last_user_id else None
     open_status = contact.get("open", 1)
     status = "engaged" if open_status == 1 else "lost"
+    line_number = _extract_whatsapp_business_number(body)
 
     if not phone:
         log.warning(f"[webhook/mc] contact_created: no phone — contact={contact}")
@@ -2010,9 +2044,11 @@ async def _handle_mc_contact_created(body: dict, now_iso: str) -> None:
         "name": name or None,
         "channel": "whatsapp",
         "status": status,
+        **({"whatsapp_business_number": line_number} if line_number else {}),
         **({"assigned_agent": agent_name} if agent_name else {}),
         "updated_at": now_iso,
     }, on_conflict="wa_contact_id").execute()
+    _assign_whatsapp_business_line(mc_id or phone, phone, line_number)
 
     log.info(f"[webhook/mc] contact_created | phone={phone!r} name={name!r} agent={agent_name!r}")
 
@@ -2103,6 +2139,7 @@ async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
         or message.get("caption") or root.get("body") or root.get("text")
         or f"[{msg_type or 'message'}]"
     )
+    line_number = _extract_whatsapp_business_number(body)
 
     if not direction:
         log.warning(
@@ -2133,6 +2170,7 @@ async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
         "channel": "whatsapp",
         "last_message_at": sent_at,
         "updated_at": now_iso,
+        **({"whatsapp_business_number": line_number} if line_number else {}),
         **({"assigned_agent": agent_name} if agent_name else {}),
     }
 
@@ -2152,6 +2190,8 @@ async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
         }, on_conflict="wa_contact_id").execute()
         lead_id = lead_result.data[0]["id"] if lead_result.data else None
 
+    _assign_whatsapp_business_line(lead_id, phone, line_number)
+
     if not lead_id:
         return
 
@@ -2164,6 +2204,7 @@ async def _handle_mc_message_new(body: dict, now_iso: str) -> None:
         "direction": direction,
         "body": str(body_text)[:2000],
         "sent_at": sent_at,
+        **({"whatsapp_business_number": line_number} if line_number else {}),
     }
     if direction == "outbound" and agent_name:
         row["agent_name"] = agent_name
@@ -2207,6 +2248,7 @@ async def _handle_mc_outbound(body: dict, now_iso: str) -> None:
     if not phone:
         log.warning(f"[webhook/mc] outbound: no phone found — keys={list(body.keys())}")
         return
+    line_number = _extract_whatsapp_business_number(body)
     # Upsert lead (may already exist from inbound messages)
     lead_result = supabase.table("leads").upsert({
         "wa_contact_id": phone,
@@ -2214,9 +2256,11 @@ async def _handle_mc_outbound(body: dict, now_iso: str) -> None:
         "channel": "whatsapp",
         "last_message_at": sent_at,
         "updated_at": now_iso,
+        **({"whatsapp_business_number": line_number} if line_number else {}),
         **({"assigned_agent": agent_name} if agent_name else {}),
     }, on_conflict="wa_contact_id").execute()
     lead_id = lead_result.data[0]["id"] if lead_result.data else None
+    _assign_whatsapp_business_line(lead_id, phone, line_number)
 
     if not (msg_id and lead_id):
         return
@@ -2237,6 +2281,7 @@ async def _handle_mc_outbound(body: dict, now_iso: str) -> None:
             "direction": "outbound",
             "body": body_text,
             "sent_at": sent_at,
+            **({"whatsapp_business_number": line_number} if line_number else {}),
             **({"agent_name": agent_name} if agent_name else {}),
         }, on_conflict="wa_message_id").execute()
 
@@ -2741,6 +2786,11 @@ async def n8n_messages(request: Request):
         phone      = str(item.get("phone") or item.get("number") or "").strip()
         name       = item.get("name")
         agent      = item.get("agent") or item.get("assigned_agent")
+        line_number = (
+            item.get("whatsapp_business_number")
+            or item.get("business_number")
+            or item.get("line_number")
+        )
         messages   = item.get("messages") or []
 
         if not phone and not contact_id:
@@ -2759,6 +2809,8 @@ async def n8n_messages(request: Request):
             lead_row["name"] = name
         if agent:
             lead_row["assigned_agent"] = agent
+        if line_number:
+            lead_row["whatsapp_business_number"] = line_number
 
         conflict_col = "wa_contact_id" if contact_id else "phone"
         lead_res = supabase.table("leads").upsert(
@@ -2768,6 +2820,7 @@ async def n8n_messages(request: Request):
         if not lead_id:
             continue
         contacts_seen += 1
+        _assign_whatsapp_business_line(lead_id, phone, line_number)
 
         # Upsert messages
         msg_rows = []
@@ -2794,6 +2847,8 @@ async def n8n_messages(request: Request):
                 "body":          str(body_text)[:2000],
                 "sent_at":       msg_ts,
             }
+            if line_number:
+                row["whatsapp_business_number"] = line_number
             if msg_agent:
                 row["agent_name"] = msg_agent
             msg_rows.append(row)

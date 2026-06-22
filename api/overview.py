@@ -3,6 +3,7 @@ from supabase import create_client
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
+from pipeline.whatsapp import matches_business_line
 load_dotenv()
 router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
@@ -54,35 +55,37 @@ def _safe_count(build_query) -> int:
         return 0
 
 
-def _overview_count_fallback(range: str) -> dict:
+def _overview_count_fallback(range: str, wa_line: str = "all") -> dict:
     since = _since(range)
-    total_messages = _safe_count(
-        lambda: supabase.table("messages").select("id", count="exact").gte("sent_at", since).limit(1)
-    )
-    inbound = _safe_count(
-        lambda: supabase.table("messages").select("id", count="exact").gte("sent_at", since).eq("direction", "inbound").limit(1)
-    )
-    outbound = _safe_count(
-        lambda: supabase.table("messages").select("id", count="exact").gte("sent_at", since).eq("direction", "outbound").limit(1)
-    )
-    active_whatsapp = _safe_count(
-        lambda: supabase.table("leads").select("id", count="exact").eq("channel", "whatsapp").gte("last_message_at", since).limit(1)
-    )
-    if active_whatsapp == 0:
-        try:
-            wa_rows = _paginate(
-                lambda: supabase.table("leads")
-                .select("id,phone")
-                .eq("channel", "whatsapp")
-                .gte("last_message_at", since)
-            )
-            active_whatsapp = len({
-                r.get("phone") or r.get("id")
-                for r in wa_rows
-                if r.get("phone") or r.get("id")
-            })
-        except Exception:
-            active_whatsapp = 0
+    try:
+        msg_rows = _paginate(
+            lambda: supabase.table("messages")
+            .select("id,direction,lead_id,whatsapp_business_number")
+            .gte("sent_at", since)
+        )
+        if wa_line and wa_line.lower() not in ("all", "*", "any"):
+            msg_rows = [m for m in msg_rows if matches_business_line(m, wa_line)]
+    except Exception:
+        msg_rows = []
+    total_messages = len(msg_rows)
+    inbound = sum(1 for m in msg_rows if m.get("direction") == "inbound")
+    outbound = sum(1 for m in msg_rows if m.get("direction") == "outbound")
+    try:
+        wa_rows = _paginate(
+            lambda: supabase.table("leads")
+            .select("id,phone,channel,last_message_at,whatsapp_business_number")
+            .eq("channel", "whatsapp")
+            .gte("last_message_at", since)
+        )
+        if wa_line and wa_line.lower() not in ("all", "*", "any"):
+            wa_rows = [r for r in wa_rows if matches_business_line(r, wa_line)]
+        active_whatsapp = len({
+            r.get("phone") or r.get("id")
+            for r in wa_rows
+            if r.get("phone") or r.get("id")
+        })
+    except Exception:
+        active_whatsapp = 0
     total_calls = _safe_count(
         lambda: supabase.table("calls").select("id", count="exact").gte("called_at", since).limit(1)
     )
@@ -127,45 +130,52 @@ def _overview_count_fallback(range: str) -> dict:
 
 
 @router.get("/api/overview")
-def overview(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
+def overview(
+    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    wa_line: str = Query("all"),
+):
     try:
-        data = _overview_inner(range)
+        data = _overview_inner(range, wa_line)
         if (
             not data.get("calls", {}).get("total")
             and not data.get("messages", {}).get("total")
             and not data.get("leads", {}).get("total")
         ):
-            fallback = _overview_count_fallback(range)
+            fallback = _overview_count_fallback(range, wa_line)
             if fallback["calls"]["total"] or fallback["messages"]["total"] or fallback["messages"]["active_conversations"]:
                 return fallback
         return data
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/overview error ({range}): {e}", exc_info=True)
-        fallback = _overview_count_fallback(range)
+        fallback = _overview_count_fallback(range, wa_line)
         if fallback["calls"]["total"] or fallback["messages"]["total"] or fallback["messages"]["active_conversations"]:
             return fallback
         return {"range": range, "leads":{"total":0,"converted":0,"conversion_rate":0,"avg_score":0}, "messages":{"inbound":0,"outbound":0,"total":0}, "calls":{"total":0,"avg_duration_seconds":0}, "alerts":{"open":0,"high":0}, "hourly_distribution":_EMPTY_HOURLY}
 
 
-def _overview_inner(range: str):
+def _overview_inner(range: str, wa_line: str = "all"):
     since = _since(range)
 
     # Messages
     messages = (
-        supabase.table("messages").select("id,direction,lead_id,sent_at")
+        supabase.table("messages").select("id,direction,lead_id,sent_at,whatsapp_business_number")
         .gte("sent_at", since).execute().data or []
     )
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        messages = [m for m in messages if matches_business_line(m, wa_line)]
 
     # WhatsApp activity: ManyContacts exposes updated conversations even when
     # it does not expose message bodies. This is the honest dashboard number for
     # live WhatsApp activity; stored message rows remain available as detail.
     wa_activity = _paginate(
         lambda: supabase.table("leads")
-        .select("id,phone,last_message_at")
+        .select("id,phone,last_message_at,channel,whatsapp_business_number")
         .eq("channel", "whatsapp")
         .gte("last_message_at", since)
     )
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        wa_activity = [l for l in wa_activity if matches_business_line(l, wa_line)]
     active_whatsapp_conversations = len({
         l.get("phone") or l.get("id")
         for l in wa_activity
@@ -234,19 +244,25 @@ def _overview_inner(range: str):
             batch_ids = id_list[idx:idx + BATCH_SIZE]
             chunk = (
                 supabase.table("leads")
-                .select("id,phone,status,score")
+                .select("id,phone,status,score,channel,whatsapp_business_number")
                 .in_("id", batch_ids)
                 .execute()
                 .data or []
             )
             leads.extend(chunk)
             idx += BATCH_SIZE
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        # Keep Maqsam leads; filter only WhatsApp rows by the selected line.
+        leads = [l for l in leads if matches_business_line(l, wa_line)]
 
     # Alerts: small dataset
     alerts = (
-        supabase.table("alerts").select("id,severity,resolved,created_at")
+        supabase.table("alerts").select("id,lead_id,severity,resolved,created_at")
         .gte("created_at", since).execute().data or []
     )
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        lead_map = {l.get("id"): l for l in leads if l.get("id")}
+        alerts = [a for a in alerts if matches_business_line(lead_map.get(a.get("lead_id")), wa_line)]
 
     # Count DISTINCT phone numbers — same person may have a Maqsam lead and a
     # WhatsApp lead; we want unique people, not unique DB rows.

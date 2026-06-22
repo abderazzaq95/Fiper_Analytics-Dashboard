@@ -3,6 +3,7 @@ from supabase import create_client
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
+from pipeline.whatsapp import matches_business_line
 load_dotenv()
 router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
@@ -60,25 +61,28 @@ def _unique_call_leads_count(since: str) -> int:
 
 
 @router.get("/api/channels")
-def channels(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
+def channels(
+    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    wa_line: str = Query("all"),
+):
     try:
-        return _channels_inner(range)
+        return _channels_inner(range, wa_line)
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/channels error ({range}): {e}", exc_info=True)
-        fallback = _channels_from_overview(range)
+        fallback = _channels_from_overview(range, wa_line)
         if fallback:
             return fallback
         return {"range": range, "whatsapp":{"leads":0,"converted":0,"conversion_rate":0,"messages":0,"avg_response_time_min":0}, "maqsam":{"leads":0,"converted":0,"conversion_rate":0,"calls":0,"avg_call_duration_seconds":0}}
 
 
-def _channels_from_overview(range: str):
+def _channels_from_overview(range: str, wa_line: str = "all"):
     try:
         from api.overview import _overview_inner, _overview_count_fallback
         try:
-            overview = _overview_inner(range)
+            overview = _overview_inner(range, wa_line)
         except Exception:
-            overview = _overview_count_fallback(range)
+            overview = _overview_count_fallback(range, wa_line)
         return {
             "range": range,
             "whatsapp": {
@@ -103,19 +107,26 @@ def _channels_from_overview(range: str):
         return None
 
 
-def _channels_inner(range: str):
+def _channels_inner(range: str, wa_line: str = "all"):
     since = _since(range)
 
-    stored_messages_count = _exact_count(
-        lambda: supabase.table("messages").select("id", count="exact").gte("sent_at", since)
+    stored_messages_rows = _paginate(
+        lambda: supabase.table("messages")
+        .select("id,direction,lead_id,whatsapp_business_number")
+        .gte("sent_at", since)
     )
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        stored_messages_rows = [m for m in stored_messages_rows if matches_business_line(m, wa_line)]
+    stored_messages_count = len(stored_messages_rows)
 
     wa_activity = _paginate(
         lambda: supabase.table("leads")
-        .select("id,phone,status")
+        .select("id,phone,status,channel,whatsapp_business_number")
         .eq("channel", "whatsapp")
         .gte("last_message_at", since)
     )
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        wa_activity = [l for l in wa_activity if matches_business_line(l, wa_line)]
     active_whatsapp_conversations = len({
         l.get("phone") or l.get("id")
         for l in wa_activity
@@ -195,17 +206,17 @@ _EMPTY_TRAFFIC = {
 
 
 @router.get("/api/channels/traffic")
-def channels_traffic():
+def channels_traffic(wa_line: str = Query("all")):
     """Multi-period traffic breakdown: today / this week / this month."""
     try:
-        return _channels_traffic_inner()
+        return _channels_traffic_inner(wa_line)
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/channels/traffic error: {e}", exc_info=True)
         return _EMPTY_TRAFFIC
 
 
-def _channels_traffic_inner():
+def _channels_traffic_inner(wa_line: str = "all"):
     now = datetime.now(timezone.utc)
     start_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     start_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -216,16 +227,31 @@ def _channels_traffic_inner():
         cutoff = cutoff_dt.isoformat()
         wa = _exact_count(
             lambda cutoff=cutoff: supabase.table("leads")
-            .select("id", count="exact")
+            .select("id,phone,status,channel,whatsapp_business_number")
             .eq("channel", "whatsapp")
             .gte("last_message_at", cutoff)
         )
+        if wa_line and wa_line.lower() not in ("all", "*", "any"):
+            wa_rows = _paginate(
+                lambda cutoff=cutoff: supabase.table("leads")
+                .select("id,phone,status,channel,whatsapp_business_number")
+                .eq("channel", "whatsapp")
+                .gte("last_message_at", cutoff)
+            )
+            wa = len([r for r in wa_rows if matches_business_line(r, wa_line)])
         mq = _unique_call_leads_count(cutoff)
         msgs = _exact_count(
             lambda cutoff=cutoff: supabase.table("messages")
-            .select("id", count="exact")
+            .select("id,direction,lead_id,whatsapp_business_number")
             .gte("sent_at", cutoff)
         )
+        if wa_line and wa_line.lower() not in ("all", "*", "any"):
+            msg_rows = _paginate(
+                lambda cutoff=cutoff: supabase.table("messages")
+                .select("id,direction,lead_id,whatsapp_business_number")
+                .gte("sent_at", cutoff)
+            )
+            msgs = len([m for m in msg_rows if matches_business_line(m, wa_line)])
         cls = _exact_count(
             lambda cutoff=cutoff: supabase.table("calls")
             .select("id", count="exact")
