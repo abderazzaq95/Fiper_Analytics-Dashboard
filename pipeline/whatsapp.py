@@ -139,9 +139,7 @@ def matches_business_line(row: dict | None, selected_line: str | None) -> bool:
         return True
     line = row_whatsapp_line(row)
     if not line:
-        # The live DB still lacks persisted business-line metadata on some
-        # WhatsApp rows. Fail open so dashboard counters keep rendering.
-        return True
+        return False  # Unattributed rows excluded from per-line views; visible in "All"
     return bool(line in lines)
 
 # Module-level agent cache: {user_id: name}

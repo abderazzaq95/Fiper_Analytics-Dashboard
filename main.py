@@ -1707,6 +1707,9 @@ def _assign_whatsapp_business_line(lead_id: str | None, phone: str | None, line_
         update = {"whatsapp_business_number": line_number}
         if lead_id:
             supabase.table("leads").update(update).eq("id", lead_id).execute()
+            # Retroactively tag historical messages for this lead on first re-contact.
+            # Only patches rows that are still null — never overwrites an already-attributed message.
+            supabase.table("messages").update(update).eq("lead_id", lead_id).is_("whatsapp_business_number", "null").execute()
         if phone:
             phone_rows = (
                 supabase.table("leads")
