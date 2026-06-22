@@ -141,26 +141,42 @@ def _leads_inner(range_: str, wa_line: str = "all"):
     since = _since(range_)
 
     # Activity-based filtering: WA leads by last_message_at, Maqsam leads by calls
-    wa_leads = (
-        supabase.table("leads")
-        .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at,whatsapp_business_number")
-        .eq("channel", "whatsapp")
-        .gte("last_message_at", since)
-        .order("score", desc=True)
-        .execute()
-        .data
-    ) or []
+    wa_leads: list[dict] = []
+    offset = 0
+    while True:
+        batch = (
+            supabase.table("leads")
+            .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at,whatsapp_business_number")
+            .eq("channel", "whatsapp")
+            .gte("last_message_at", since)
+            .order("score", desc=True)
+            .range(offset, offset + PAGE - 1)
+            .execute()
+            .data
+        ) or []
+        wa_leads.extend(batch)
+        if len(batch) < PAGE:
+            break
+        offset += PAGE
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         wa_leads = [l for l in wa_leads if matches_business_line(l, wa_line)]
 
-    # Maqsam: find leads that had a call in the period
-    call_rows = (
-        supabase.table("calls")
-        .select("lead_id")
-        .gte("called_at", since)
-        .execute()
-        .data
-    ) or []
+    # Maqsam: find leads that had a call in the period — paginate to avoid 1000-row cap
+    call_rows: list[dict] = []
+    offset = 0
+    while True:
+        batch = (
+            supabase.table("calls")
+            .select("lead_id")
+            .gte("called_at", since)
+            .range(offset, offset + PAGE - 1)
+            .execute()
+            .data
+        ) or []
+        call_rows.extend(batch)
+        if len(batch) < PAGE:
+            break
+        offset += PAGE
     maqsam_ids = list({c["lead_id"] for c in call_rows if c.get("lead_id")})
 
     maqsam_leads = []
