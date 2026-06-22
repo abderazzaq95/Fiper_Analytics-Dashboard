@@ -40,6 +40,8 @@ BUSINESS_NUMBERS = {
     if _normalize_phone(n)
 }
 
+_WA_LINE_COLUMNS_AVAILABLE: bool | None = None
+
 
 def is_internal_whatsapp_number(phone: str | None) -> bool:
     """Return True when a phone belongs to Fiper's own WhatsApp lines."""
@@ -50,6 +52,43 @@ def normalize_business_line(value: str | None) -> str | None:
     """Normalize a selected ManyContacts line to a digits-only phone number."""
     normalized = _normalize_phone(value)
     return normalized or None
+
+
+def can_use_whatsapp_line_columns() -> bool:
+    """Detect whether the live Supabase schema already has line columns."""
+    global _WA_LINE_COLUMNS_AVAILABLE
+    if _WA_LINE_COLUMNS_AVAILABLE is not None:
+        return _WA_LINE_COLUMNS_AVAILABLE
+    sb_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    sb_key = os.getenv("SUPABASE_SERVICE_KEY", "")
+    if not sb_url or not sb_key:
+        _WA_LINE_COLUMNS_AVAILABLE = False
+        return False
+    headers = {
+        "apikey": sb_key,
+        "Authorization": f"Bearer {sb_key}",
+        "Content-Type": "application/json",
+    }
+    try:
+        resp = httpx.get(
+            f"{sb_url}/rest/v1/leads",
+            headers=headers,
+            params={"select": "whatsapp_business_number", "limit": "1"},
+            timeout=10,
+        )
+        _WA_LINE_COLUMNS_AVAILABLE = resp.status_code == 200
+    except Exception:
+        _WA_LINE_COLUMNS_AVAILABLE = False
+    return _WA_LINE_COLUMNS_AVAILABLE
+
+
+def add_whatsapp_line_select(base_fields: str) -> str:
+    """Append the WhatsApp line column only when the schema supports it."""
+    if not can_use_whatsapp_line_columns():
+        return base_fields
+    if "whatsapp_business_number" in base_fields:
+        return base_fields
+    return f"{base_fields},whatsapp_business_number"
 
 
 def selected_business_lines(raw: str | None) -> set[str] | None:

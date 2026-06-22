@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
-from pipeline.whatsapp import matches_business_line
+from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
 
 load_dotenv()
 router = APIRouter()
@@ -171,7 +171,7 @@ def _agents_lightweight(range: str, wa_line: str = "all"):
 def _agents_inner(range: str, wa_line: str = "all"):
     since = _since(range)
 
-    messages = _paginate(lambda: supabase.table("messages").select("agent_name,direction,sent_at,lead_id").gte("sent_at", since))
+    messages = _paginate(lambda: supabase.table("messages").select(add_whatsapp_line_select("agent_name,direction,sent_at,lead_id")).gte("sent_at", since))
     calls    = _paginate(lambda: supabase.table("calls").select("agent_name,lead_id,duration_seconds,called_at").gte("called_at", since))
     alerts   = (
         supabase.table("alerts")

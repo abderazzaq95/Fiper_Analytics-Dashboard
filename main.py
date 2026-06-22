@@ -1617,7 +1617,44 @@ def _normalize_phone_digits(value: str | None) -> str:
 
 
 def _extract_whatsapp_business_number(body: dict) -> str | None:
-    """Line tracking is disabled until the live DB has the matching column."""
+    """Best-effort extraction of the business WhatsApp line from a webhook payload."""
+    if not whatsapp.can_use_whatsapp_line_columns():
+        return None
+    root = _first_dict(body.get("data"), body.get("payload"), body)
+    delta = _first_dict(root.get("delta"), root.get("eventData"), root.get("data"))
+    value = _first_dict(root.get("value"), delta.get("value"))
+    contact = _first_dict(root.get("contact"), delta.get("contact"), root.get("chat"), delta.get("chat"))
+    metadata = _first_dict(
+        root.get("metadata"),
+        delta.get("metadata"),
+        value.get("metadata"),
+        contact.get("metadata"),
+    )
+
+    candidates = []
+    for obj in (body, root, delta, value, metadata, contact):
+        if not isinstance(obj, dict):
+            continue
+        for key in (
+            "display_phone_number",
+            "phone_number",
+            "business_number",
+            "business_phone_number",
+            "phone_number_id",
+            "number",
+            "line_number",
+            "recipient_number",
+            "to",
+            "recipient",
+        ):
+            candidate = obj.get(key)
+            if candidate:
+                candidates.append(candidate)
+
+    for candidate in candidates:
+        normalized = _normalize_phone_digits(candidate)
+        if normalized and normalized in whatsapp.BUSINESS_NUMBERS:
+            return normalized
     return None
 
 

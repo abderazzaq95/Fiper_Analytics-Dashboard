@@ -3,7 +3,7 @@ from supabase import create_client
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
-from pipeline.whatsapp import matches_business_line
+from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
 
 load_dotenv()
 router = APIRouter()

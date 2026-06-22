@@ -8,7 +8,7 @@ import csv
 import io
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
-from pipeline.whatsapp import matches_business_line
+from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
 
 load_dotenv()
 router = APIRouter()
@@ -239,7 +239,7 @@ def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_sc
             call_counts[lid] += 1
 
     msg_lead_rows = (
-        supabase.table("leads").select("id,channel")
+        supabase.table("leads").select(add_whatsapp_line_select("id,channel"))
         .gte("last_message_at", since)
         .execute().data or []
     )
@@ -659,7 +659,7 @@ def _export_rows_light(range, wa_line, phone_search, country, min_score, max_sco
             answered_counts[lid] += 1
 
     msg_lead_rows = (
-        supabase.table("leads").select("id,channel")
+        supabase.table("leads").select(add_whatsapp_line_select("id,channel"))
         .gte("last_message_at", since)
         .execute().data or []
     )

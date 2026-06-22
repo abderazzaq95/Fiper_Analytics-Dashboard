@@ -3,7 +3,7 @@ from supabase import create_client
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
-from pipeline.whatsapp import matches_business_line
+from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
 load_dotenv()
 router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
@@ -159,7 +159,7 @@ def _overview_inner(range: str, wa_line: str = "all"):
 
     # Messages
     messages = (
-        supabase.table("messages").select("id,direction,lead_id,sent_at")
+        supabase.table("messages").select(add_whatsapp_line_select("id,direction,lead_id,sent_at"))
         .gte("sent_at", since).execute().data or []
     )
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
