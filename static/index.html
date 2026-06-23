@@ -915,6 +915,7 @@ let _lastGoodLeads   = null;
 let _lastGoodTraffic = null;
 let _rangeCache = {};   // range → {status, data} — instant switching
 let _lastRenderedData = null;
+let _hasRenderedOnce = false;
 let _riskFlagDetails = {};
 
 // ── Persistent cache (survives page refresh) ──────────────────────────────────
@@ -1249,6 +1250,8 @@ function _timeUntil(isoStr) {
   const h = Math.floor(m / 60), rm = m % 60;
   return lang==='ar'?`${h}س ${rm}د`:`${h}h ${rm}m`;
 }
+// Returns ' fade-in' only on first render; empty string on re-renders (no blank flash)
+function _fiCls() { return _hasRenderedOnce ? '' : ' fade-in'; }
 function _syncBadge() {
   if (!_pipelineStatus) return '';
   const last = _relTime(_pipelineStatus.last_pipeline_run);
@@ -1265,38 +1268,38 @@ function renderKPI(ov, ch) {
   const waManyContactsLabel = lang==='ar' ? 'من ManyContacts' : 'from ManyContacts';
 
   document.getElementById('kpiGrid').innerHTML = `
-    <div class="kpi-card fade-in">
+    <div class="kpi-card${_fiCls()}">
       <div class="kpi-label" data-en="Unique Leads" data-ar="عملاء ÙØ±ÙŠØ¯ÙˆÙ†">${lang==='ar'?'عملاء ÙØ±ÙŠØ¯ÙˆÙ†':'Unique Leads'}</div>
       <div class="kpi-value">${fmt(ov.leads.total)}</div>
       <div class="kpi-sub">${fmt(ov.leads.converted)} ${lang==='ar'?'محول':'converted'} · ${lang==='ar'?'Ø¨Ø§Ù„Ù‡Ø§ØªÙ':'by phone'}</div>
       <span class="kpi-badge badge-blue">${pct(ov.leads.conversion_rate)} CVR</span>
     </div>
-    <div class="kpi-card fade-in" style="animation-delay:.05s">
+    <div class="kpi-card${_fiCls()}" style="animation-delay:.05s">
       <div class="kpi-label" data-en="Total Calls" data-ar="إجمالي المكالمات">${lang==='ar'?'إجمالي المكالمات':'Total Calls'}</div>
       <div class="kpi-value">${fmt(ov.calls.total)}</div>
       <div class="kpi-sub">${lang==='ar'?'متوسط المدة':'Avg'}: ${dur(ov.calls.avg_duration_seconds)}</div>
       ${_syncBadge()}
       <span class="kpi-badge badge-blue">${lang==='ar'?'مقصام':'Maqsam'}</span>
     </div>
-    <div class="kpi-card ${ar_color} fade-in" style="animation-delay:.1s" id="kpiAnswerRate">
+    <div class="kpi-card ${ar_color}${_fiCls()}" style="animation-delay:.1s" id="kpiAnswerRate">
       <div class="kpi-label" data-en="Pickup Rate" data-ar="معدل الرد">${lang==='ar'?'معدل الرد':'Pickup Rate'}</div>
       <div class="kpi-value" id="answerRateVal">—</div>
       <div class="kpi-sub">${lang==='ar'?'مثل Maqsam':'Maqsam formula'}</div>
     </div>
-    <div class="kpi-card fade-in" style="animation-delay:.15s">
+    <div class="kpi-card${_fiCls()}" style="animation-delay:.15s">
       <div class="kpi-label" data-en="WhatsApp Activity" data-ar="نشاط واتساب">${lang==='ar'?'نشاط واتساب':'WhatsApp Activity'}</div>
       <div class="kpi-value">${fmt(ov.messages.total)}</div>
       <div class="kpi-sub">${lang==='ar'?'محادثات نشطة':'active chats'}</div>
       <div class="kpi-sub">${fmt(ov.messages.inbound)} ${lang==='ar'?'وارد':'in'} / ${fmt(ov.messages.outbound)} ${lang==='ar'?'صادر':'out'}</div>
       <span class="kpi-badge badge-green">WhatsApp</span>
     </div>
-    <div class="kpi-card ${ov.alerts.open>0?'red':''} fade-in" style="animation-delay:.2s">
+    <div class="kpi-card ${ov.alerts.open>0?'red':''}${_fiCls()}" style="animation-delay:.2s">
       <div class="kpi-label" data-en="Open Alerts" data-ar="التنبيهات Ø§Ù„Ù…ÙØªÙˆØ­Ø©">${lang==='ar'?'التنبيهات Ø§Ù„Ù…ÙØªÙˆØ­Ø©':'Open Alerts'}</div>
       <div class="kpi-value" style="color:${ov.alerts.open>0?'var(--red)':'var(--navy)'}">${fmt(ov.alerts.open)}</div>
       <div class="kpi-sub">${fmt(ov.alerts.high)} ${lang==='ar'?'عالية الخطورة':'high severity'}</div>
       <span class="kpi-badge ${ov.alerts.open>0?'badge-red':'badge-green'}">${ov.alerts.open>0?(lang==='ar'?'يحتاج إجراء':'Action needed'):(lang==='ar'?'بخير':'All clear')}</span>
     </div>
-    <div class="kpi-card fade-in" style="animation-delay:.25s">
+    <div class="kpi-card${_fiCls()}" style="animation-delay:.25s">
       <div class="kpi-label" data-en="Avg Lead Score" data-ar="متوسط نقاط العميل">${lang==='ar'?'متوسط نقاط العميل':'Avg Lead Score'}</div>
       <div class="kpi-value">${fmt(ov.leads.avg_score,1)}</div>
       <div class="kpi-sub">${lang==='ar'?'من 100':'out of 100'}</div>
@@ -2137,6 +2140,7 @@ function renderAll(ov, ch, leads, agents, quality, traffic) {
   if (agents)  { renderAgents(agents); }
   else { renderAgentsLoading(); }
   document.getElementById('lastUpdText').textContent = (lang==='ar'?'تحديث: ':'Updated: ') + new Date().toLocaleTimeString();
+  _hasRenderedOnce = true;
   applyLang();
 }
 
@@ -2940,7 +2944,7 @@ function connectSSE() {
   });
 
   es.addEventListener('data_updated', () => {
-    loadAll();
+    loadAll(true);  // background: keep content visible while updating
   });
 
   es.onerror = () => {
@@ -2948,7 +2952,7 @@ function connectSSE() {
     setLiveStatus(false);
     // Start fallback polling while SSE is down
     if (!_fallbackTimer) {
-      _fallbackTimer = setInterval(loadAll, 2 * 60 * 1000);
+      _fallbackTimer = setInterval(() => loadAll(true), 2 * 60 * 1000);
     }
     // Reconnect SSE after 5 seconds
     _sseRetryTimer = setTimeout(connectSSE, 5000);
