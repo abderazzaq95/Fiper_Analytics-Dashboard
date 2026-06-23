@@ -261,8 +261,20 @@ def _overview_inner(range: str, wa_line: str = "all"):
         .gte("created_at", since).execute().data or []
     )
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
-        lead_map = {l.get("id"): l for l in leads if l.get("id")}
-        alerts = [a for a in alerts if matches_business_line(lead_map.get(a.get("lead_id")), wa_line)]
+        # Build lead_map from the alert lead IDs directly, not from active_lead_ids,
+        # so alerts for leads that weren't active today are still attributed correctly.
+        alert_lead_ids = list({a["lead_id"] for a in alerts if a.get("lead_id")})
+        alert_lead_rows: list[dict] = []
+        for i in range(0, len(alert_lead_ids), BATCH_SIZE):
+            alert_lead_rows.extend(
+                supabase.table("leads")
+                .select("id,channel,whatsapp_business_number")
+                .in_("id", alert_lead_ids[i:i + BATCH_SIZE])
+                .execute()
+                .data or []
+            )
+        alert_lead_map = {r["id"]: r for r in alert_lead_rows}
+        alerts = [a for a in alerts if matches_business_line(alert_lead_map.get(a.get("lead_id")), wa_line)]
 
     # Count DISTINCT phone numbers — same person may have a Maqsam lead and a
     # WhatsApp lead; we want unique people, not unique DB rows.
