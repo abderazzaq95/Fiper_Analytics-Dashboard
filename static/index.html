@@ -2145,7 +2145,7 @@ function normalizeOverview(ov, ch, leads, prev = null) {
 
 function renderAll(ov, ch, leads, agents, quality, traffic) {
   ch = normalizeChannels(ov, ch);
-  ov = normalizeOverview(ov, ch, leads, prevOv);
+  ov = normalizeOverview(ov, ch, leads, _lastGoodOv);
   allLeads = leads.leads || [];
   renderHotLeads(leads);
   renderKPI(ov, ch);
