@@ -164,7 +164,7 @@ def resolve_agent_name(user_id: str | None) -> str | None:
     return _agent_cache.get(user_id, user_id)
 
 
-async def fetch_contacts(date_from: str | None = None, date_to: str | None = None) -> list[dict]:
+async def fetch_contacts(date_from: str | None = None, date_to: str | None = None, api_key: str | None = None) -> list[dict]:
     """
     Fetch contacts updated within the given date range.
     date_from / date_to: 'YYYY-MM-DD' strings.
@@ -200,9 +200,10 @@ async def fetch_contacts(date_from: str | None = None, date_to: str | None = Non
             req_params = dict(params)
             if page is not None:
                 req_params["page"] = page
+            req_headers = {"apikey": api_key} if api_key else HEADERS
             resp = await client.get(
                 f"{BASE_URL}/contacts",
-                headers=HEADERS,
+                headers=req_headers,
                 params=req_params,
             )
             resp.raise_for_status()

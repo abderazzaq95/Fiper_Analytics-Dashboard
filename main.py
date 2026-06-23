@@ -183,6 +183,9 @@ async def ingest_manycontacts(hours_back: int = 2) -> dict:
     )
     days_back = max(1, (hours_back + 23) // 24)
     stats = await ingest_manycontacts_activity(days_back=days_back)
+    mc_key_turkey = os.getenv("MC_API_KEY_TURKEY")
+    if mc_key_turkey:
+        await ingest_manycontacts_activity(days_back=days_back, api_key=mc_key_turkey, line_number="905318880855")
     stats.update({
         "messages_total": 0,
         "messages_outbound": 0,
@@ -296,15 +299,20 @@ async def ingest_manycontacts(hours_back: int = 2) -> dict:
     return {"contacts": len(contacts), "messages_total": msg_total, "messages_outbound": msg_outbound}
 
 
-async def ingest_manycontacts_activity(days_back: int = 1) -> dict:
+async def ingest_manycontacts_activity(days_back: int = 1, api_key: str | None = None, line_number: str | None = None) -> dict:
     """Sync ManyContacts conversation activity without message bodies.
 
     ManyContacts does not expose conversation message history via API, but the
     contacts endpoint does expose recently updated conversations and last_user_id.
     This keeps dashboard WhatsApp activity current while message body capture
     still depends on webhooks.
+
+    api_key: override the default MC_API_KEY (use for multi-account sync).
+    line_number: force whatsapp_business_number on all synced contacts (use when
+                 api_key identifies a specific business line).
     """
-    log.info("ManyContacts activity sync started")
+    account_label = line_number or "default"
+    log.info(f"ManyContacts activity sync started (account={account_label})")
     now = datetime.now(timezone.utc)
     date_from = (now - timedelta(days=days_back)).strftime("%Y-%m-%d")
     date_to = now.strftime("%Y-%m-%d")
@@ -316,9 +324,9 @@ async def ingest_manycontacts_activity(days_back: int = 1) -> dict:
         log.warning(f"ManyContacts users sync failed: {e}")
 
     try:
-        contacts = await whatsapp.fetch_contacts(date_from=date_from, date_to=date_to)
+        contacts = await whatsapp.fetch_contacts(date_from=date_from, date_to=date_to, api_key=api_key)
     except Exception as e:
-        log.error(f"ManyContacts activity fetch failed: {e}")
+        log.error(f"ManyContacts activity fetch failed (account={account_label}): {e}")
         return {"contacts_seen": 0, "contacts_upserted": 0, "error": str(e)}
 
     rows = []
@@ -334,7 +342,8 @@ async def ingest_manycontacts_activity(days_back: int = 1) -> dict:
         last_user_id = contact.get("last_user_id")
         agent_name = whatsapp.resolve_agent_name(last_user_id) if last_user_id else None
         open_status = contact.get("open", 1)
-        line_number = _extract_whatsapp_business_number(contact)
+        # Use forced line_number (account-level sync) or fall back to payload extraction
+        contact_line = line_number or _extract_whatsapp_business_number(contact)
         rows.append({
             "wa_contact_id": mc_id or phone,
             "phone": phone,
@@ -343,7 +352,7 @@ async def ingest_manycontacts_activity(days_back: int = 1) -> dict:
             "status": "engaged" if open_status == 1 else "lost",
             "last_message_at": updated_at,
             "updated_at": now_iso,
-            **({"whatsapp_business_number": line_number} if line_number else {}),
+            **({"whatsapp_business_number": contact_line} if contact_line else {}),
             **({"assigned_agent": agent_name} if agent_name else {}),
         })
 
@@ -1091,6 +1100,10 @@ async def run_maqsam_realtime_sync():
 async def run_whatsapp_activity_sync():
     """Lightweight high-frequency job for WhatsApp conversation activity."""
     stats = await ingest_manycontacts_activity(days_back=1)
+    # Sync Turkey account if key is configured
+    mc_key_turkey = os.getenv("MC_API_KEY_TURKEY")
+    if mc_key_turkey:
+        await ingest_manycontacts_activity(days_back=1, api_key=mc_key_turkey, line_number="905318880855")
     await _broadcast("data_updated", {"source": "whatsapp_activity", **stats})
 
 
