@@ -1091,6 +1091,11 @@ function mergeOv(fresh, prev) {
   if (!fresh || !prev) return fresh || prev;
   return {
     ...fresh,
+    alerts: {
+      ...fresh.alerts,
+      open: fresh.alerts?.open || prev.alerts?.open || 0,
+      high: fresh.alerts?.high || prev.alerts?.high || 0,
+    },
     messages: {
       ...fresh.messages,
       inbound:      fresh.messages?.inbound      || prev.messages?.inbound      || 0,
