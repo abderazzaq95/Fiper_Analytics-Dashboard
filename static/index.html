@@ -791,7 +791,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
           <label class="jms-opt"><input type="checkbox" value="MA" onchange="jmsChange('countries','MA',this.checked,'jmsCountry','jmsCountryLabel')"> 🇲🇦 Morocco</label>
           <label class="jms-opt"><input type="checkbox" value="EG" onchange="jmsChange('countries','EG',this.checked,'jmsCountry','jmsCountryLabel')"> 🇪🇬 Egypt</label>
           <label class="jms-opt"><input type="checkbox" value="TR" onchange="jmsChange('countries','TR',this.checked,'jmsCountry','jmsCountryLabel')"> 🇹🇷 Turkey</label>
-          <label class="jms-opt"><input type="checkbox" value="OTHER" onchange="jmsChange('countries','OTHER',this.checked,'jmsCountry','jmsCountryLabel')"> ðŸŒ Other</label>
+          <label class="jms-opt"><input type="checkbox" value="OTHER" onchange="jmsChange('countries','OTHER',this.checked,'jmsCountry','jmsCountryLabel')"> 🌍 Other</label>
         </div>
       </div>
     </div>
@@ -1180,7 +1180,7 @@ function detectCountry(phone) {
   for (const g of sorted) {
     if (p.startsWith(g.prefix)) return g;
   }
-  return {en:'Other', ar:'أخرى', flag:'ðŸŒ'};
+  return {en:'Other', ar:'أخرى', flag:'🌍'};
 }
 function renderGeo(leads) {
   const counts = {};
@@ -1194,7 +1194,7 @@ function renderGeo(leads) {
   const sorted = Object.values(counts).sort((a,b)=>b.count-a.count);
   const total  = sorted.reduce((s,c)=>s+c.count, 0);
   if (!sorted.length) {
-    document.getElementById('geoList').innerHTML = `<div class="empty-state"><div class="empty-icon">ðŸŒ</div><div class="empty-text" data-en="No location data" data-ar="لا توجد بيانات Ø¬ØºØ±Ø§ÙÙŠØ©">No location data</div></div>`;
+    document.getElementById('geoList').innerHTML = `<div class="empty-state"><div class="empty-icon">🌍</div><div class="empty-text" data-en="No location data" data-ar="لا توجد بيانات Ø¬ØºØ±Ø§ÙÙŠØ©">No location data</div></div>`;
     return;
   }
   const max = sorted[0].count;
