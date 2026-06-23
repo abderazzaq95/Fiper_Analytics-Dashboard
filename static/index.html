@@ -2088,7 +2088,7 @@ function normalizeChannels(ov, ch) {
   return fixed;
 }
 
-function normalizeOverview(ov, ch, leads) {
+function normalizeOverview(ov, ch, leads, prev = null) {
   const fixed = ov || {};
   fixed.leads = fixed.leads || {};
   fixed.messages = fixed.messages || {};
@@ -2096,12 +2096,26 @@ function normalizeOverview(ov, ch, leads) {
   fixed.alerts = fixed.alerts || {};
   const wa = ch?.whatsapp || {};
   const mq = ch?.maqsam || {};
+  if ((fixed.leads.total || 0) === 0 && (prev?.leads?.total || 0) > 0) {
+    fixed.leads.total = prev.leads.total;
+  }
   if ((fixed.leads.total || 0) === 0 && ((mq.leads || 0) > 0 || (wa.leads || 0) > 0)) {
     fixed.leads.total = Math.max(mq.leads || 0, wa.leads || 0);
+  }
+  if ((fixed.calls.total || 0) === 0 && (prev?.calls?.total || 0) > 0) {
+    fixed.calls.total = prev.calls.total;
+    fixed.calls.avg_duration_seconds = fixed.calls.avg_duration_seconds || prev.calls.avg_duration_seconds || 0;
   }
   if ((fixed.calls.total || 0) === 0 && (mq.calls || 0) > 0) {
     fixed.calls.total = mq.calls;
     fixed.calls.avg_duration_seconds = fixed.calls.avg_duration_seconds || mq.avg_call_duration_seconds || 0;
+  }
+  if ((fixed.messages.total || 0) === 0 && (prev?.messages?.total || 0) > 0) {
+    fixed.messages.total = prev.messages.total;
+    fixed.messages.active_conversations = fixed.messages.active_conversations || prev.messages.active_conversations || prev.messages.total;
+    fixed.messages.inbound = fixed.messages.inbound || prev.messages.inbound || 0;
+    fixed.messages.outbound = fixed.messages.outbound || prev.messages.outbound || 0;
+    fixed.messages.stored_total = fixed.messages.stored_total || prev.messages.stored_total || 0;
   }
   if ((fixed.messages.total || 0) === 0 && (wa.messages || 0) > 0) {
     fixed.messages.total = wa.messages;
@@ -2114,21 +2128,24 @@ function normalizeOverview(ov, ch, leads) {
     fixed.messages.total = fixed.messages.active_conversations || wa.messages || (fixed.messages.inbound + fixed.messages.outbound);
     fixed.messages.active_conversations = fixed.messages.active_conversations || fixed.messages.total;
   }
+  if ((fixed.leads.avg_score || 0) === 0 && (prev?.leads?.avg_score || 0) > 0) {
+    fixed.leads.avg_score = prev.leads.avg_score;
+  }
   if ((fixed.leads.avg_score || 0) === 0 && leads?.leads?.length) {
     const scored = leads.leads.map(l => l.score).filter(s => s != null);
     if (scored.length) fixed.leads.avg_score = scored.reduce((a, b) => a + Number(b), 0) / scored.length;
   }
   fixed.leads.converted = fixed.leads.converted || 0;
   fixed.leads.conversion_rate = fixed.leads.conversion_rate || 0;
-  fixed.alerts.open = fixed.alerts.open || 0;
-  fixed.alerts.high = fixed.alerts.high || 0;
+  fixed.alerts.open = fixed.alerts.open || prev?.alerts?.open || 0;
+  fixed.alerts.high = fixed.alerts.high || prev?.alerts?.high || 0;
   fixed.hourly_distribution = fixed.hourly_distribution || Array.from({length:24}, (_, hour) => ({hour, calls:0}));
   return fixed;
 }
 
 function renderAll(ov, ch, leads, agents, quality, traffic) {
   ch = normalizeChannels(ov, ch);
-  ov = normalizeOverview(ov, ch, leads);
+  ov = normalizeOverview(ov, ch, leads, prevOv);
   allLeads = leads.leads || [];
   renderHotLeads(leads);
   renderKPI(ov, ch);
