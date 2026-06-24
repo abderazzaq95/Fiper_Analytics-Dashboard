@@ -889,9 +889,9 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
       </select>
     </div>
     <div class="jfilter-sep"></div>
-    <button class="jfilter-toggle" id="jHighRisk" onclick="toggleHighRisk()">âš ï¸ <span data-en="High Risk Only" data-ar="عالي الخطورة ÙÙ‚Ø·">High Risk Only</span></button>
+    <button class="jfilter-toggle" id="jHighRisk" onclick="toggleHighRisk()">⚠️ <span data-en="High Risk Only" data-ar="عالي الخطورة ÙÙ‚Ø·">High Risk Only</span></button>
     <div class="jfilter-actions">
-      <button class="btn-primary jfilter-apply" onclick="applyJourneyFilters()">ðŸ” <span data-en="Apply Filters" data-ar="تطبيق Ø§Ù„ÙÙ„Ø§ØªØ±">Apply Filters</span></button>
+      <button class="btn-primary jfilter-apply" onclick="applyJourneyFilters()">🔍 <span data-en="Apply Filters" data-ar="تطبيق Ø§Ù„ÙÙ„Ø§ØªØ±">Apply Filters</span></button>
       <a href="#" class="jfilter-reset" onclick="resetJourneyFilters(event)" data-en="Reset" data-ar="إعادة تعيين">Reset</a>
       <button class="btn-icon" id="journeyExportBtn" onclick="exportJourneyCSV(event)" title="Export CSV">📥 <span data-en="Export CSV" data-ar="تصدير CSV">Export CSV</span></button>
     </div>
@@ -1586,7 +1586,7 @@ function renderQualityRisk(quality, ov) {
         <div style="font-size:22px;font-weight:800;color:${overallColor};margin-bottom:12px">${overall}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <span class="kpi-badge badge-green">😊 ${fmt(pos)} ${lang==='ar'?'إيجابي':'positive'}</span>
-          <span class="kpi-badge badge-gray">ðŸ˜ ${fmt(neu)} ${lang==='ar'?'محايد':'neutral'}</span>
+          <span class="kpi-badge badge-gray">😐 ${fmt(neu)} ${lang==='ar'?'محايد':'neutral'}</span>
           <span class="kpi-badge badge-red">😞 ${fmt(neg)} ${lang==='ar'?'سلبي':'negative'}</span>
         </div>
       </div>
@@ -2029,7 +2029,7 @@ async function openAgentAlerts(agent) {
     }
   } catch(e) {
     console.error('[alerts] fetch error:', e);
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">âš ï¸</div><div class="empty-text">${lang==='ar'?'ÙØ´Ù„ تحميل التنبيهات':'Failed to load alerts'}</div><div class="empty-sub">${esc(String(e))}</div></div>`;
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">${lang==='ar'?'ÙØ´Ù„ تحميل التنبيهات':'Failed to load alerts'}</div><div class="empty-sub">${esc(String(e))}</div></div>`;
     return;
   }
 
@@ -2059,7 +2059,7 @@ async function openAgentAlerts(agent) {
     }).join('');
   } catch(e) {
     console.error('[alerts] render error:', e);
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">âš ï¸</div><div class="empty-text">Render error: ${esc(String(e))}</div></div>`;
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">Render error: ${esc(String(e))}</div></div>`;
   }
 }
 
@@ -2106,7 +2106,7 @@ function openRiskFlagDetails(flag) {
         <span class="pill pill-red">${esc(label)}</span>
         <span class="agent-alert-title">${esc(phone)}${leadName}</span>
       </div>
-      <div class="alert-meta">ðŸ‘¤ ${esc(agent)} · ${esc(source)} · ${esc(when)}${score}${sentiment}</div>
+      <div class="alert-meta">👤 ${esc(agent)} · ${esc(source)} · ${esc(when)}${score}${sentiment}</div>
       ${item.summary ? `<div class="risk-detail-line"><b>${lang==='ar'?'تحليل AI':'AI analysis'}:</b> ${esc(item.summary)}</div>` : ''}
       ${item.message ? `<div class="risk-detail-line"><b>${esc(messageLabel)}${msgWhen ? ' · ' + esc(msgWhen) : ''}:</b> ${esc(item.message)}</div>` : ''}
     </div>`;
@@ -2140,7 +2140,7 @@ function renderAlerts(quality) {
           ${leadPhone?`<span style="font-weight:700;color:var(--navy)">📱 ${esc(leadPhone)}</span>`:''}
           ${leadName?`<span>${esc(leadName)}</span>`:''}
           ${a.agent_name?`<span>👤 ${esc(a.agent_name)}</span>`:''}
-          ${a.created_at?`<span>ðŸ• ${ago(a.created_at)}</span>`:''}
+          ${a.created_at?`<span>🕐 ${ago(a.created_at)}</span>`:''}
         </div>
       </div>
     </div>`;
@@ -2257,9 +2257,9 @@ function renderAll(ov, ch, leads, agents, quality, traffic) {
 // ── Lead Journey Tracker ──────────────────────────────────────────────────────
 const EVENT_ICONS = {
   call:      '📞', whatsapp: '💬', ai: '🤖',
-  alert:     'âš ï¸', account: 'ðŸ¦', next_action: '↪',
+  alert:     '⚠️', account: '🏦', next_action: '↪',
 };
-const SENTIMENT_EMOJI = { positive:'😊', neutral:'ðŸ˜', negative:'😔' };
+const SENTIMENT_EMOJI = { positive:'😊', neutral:'😐', negative:'😔' };
 const SENTIMENT_AR    = { positive:'إيجابي', neutral:'محايد', negative:'سلبي' };
 const AR_ORDINALS     = ['','الأولى','الثانية','الثالثة','الرابعة','الخامسة','السادسة','السابعة','الثامنة','التاسعة','العاشرة'];
 
@@ -2358,7 +2358,7 @@ function _renderEvent(ev) {
       const warnText = ev.summary_status === 'missing_transcript'
         ? (lang==='ar'?'لا يوجد نص مكالمة، لذلك الملخص غير متاح.':'No transcript is stored, so the call summary is unavailable.')
         : (lang==='ar'?'ملخص المكالمة قيد الإنشاء.':'Call summary is being generated.');
-      details += `<div class="tl-details tl-unreliable">âš ï¸ ${warnText}</div>`;
+      details += `<div class="tl-details tl-unreliable">⚠️ ${warnText}</div>`;
     }
     if (ev.summary) {
       const uid = 'sum_' + Math.random().toString(36).slice(2,8);
@@ -2404,7 +2404,7 @@ function _renderEvent(ev) {
         ? (lang==='ar'?'التحليل جزئي لأن ردود الوكيل ÙÙŠ واتساب غير Ù…Ø­ÙÙˆØ¸Ø©.':'Partial analysis: WhatsApp agent replies are not stored.')
         : (lang==='ar'?'التحليل غير متاح — المكالمة قصيرة جداً':'Analysis unavailable — call too short');
       details += `<div class="tl-details tl-unreliable">` +
-        `âš ï¸ ${reason}` +
+        `⚠️ ${reason}` +
         `</div>`;
     } else {
       const sentEmoji = SENTIMENT_EMOJI[ev.sentiment] || '';
@@ -2429,7 +2429,7 @@ function _renderEvent(ev) {
           `</div>`;
       }
       if (!ev.summary && ev.summary_status === 'missing_language') {
-        details += `<div class="tl-details tl-unreliable">âš ï¸ ${lang==='ar'?'ملخص التحليل باللغة العربية قيد الإنشاء.':'AI summary in English is being generated.'}</div>`;
+        details += `<div class="tl-details tl-unreliable">⚠️ ${lang==='ar'?'ملخص التحليل باللغة العربية قيد الإنشاء.':'AI summary in English is being generated.'}</div>`;
       }
     }
   }
@@ -2444,7 +2444,7 @@ function _renderEvent(ev) {
   }
 
   if (ev.type === 'next_action') {
-    details += `<div class="tl-details tl-unreliable">âš ï¸ ${ev.message || (lang==='ar'?'تحتاج متابعة.':'Follow-up needed.')}</div>`;
+    details += `<div class="tl-details tl-unreliable">⚠️ ${ev.message || (lang==='ar'?'تحتاج متابعة.':'Follow-up needed.')}</div>`;
   }
 
   if (ev.type === 'account') {
@@ -2483,7 +2483,7 @@ function _renderJourneyLead(lead, index) {
       <span class="jc-pill">${cov.summaries || 0}/${requiredSummaries} ${lang==='ar'?'ملخصات مكالمات > 30ث':'summaries for calls >30s'}</span>
       <span class="jc-pill">${cov.transcripts || 0}/${requiredSummaries} ${lang==='ar'?'نصوص مكالمات':'transcripts'}</span>
       <span class="jc-pill">${storedInbound} ${lang==='ar'?'داخل':'in'} / ${storedOutbound} ${lang==='ar'?'خارج':'out'} WhatsApp</span>
-      ${cov.whatsapp_outbound_missing ? `<span class="jc-pill warn">âš ï¸ ${lang==='ar'?'ردود الوكيل ÙÙŠ واتساب غير Ù…Ø­ÙÙˆØ¸Ø©':'WhatsApp agent replies unavailable'}</span>` : ''}
+      ${cov.whatsapp_outbound_missing ? `<span class="jc-pill warn">⚠️ ${lang==='ar'?'ردود الوكيل ÙÙŠ واتساب غير Ù…Ø­ÙÙˆØ¸Ø©':'WhatsApp agent replies unavailable'}</span>` : ''}
     </div>`;
 
   const subStats = [
