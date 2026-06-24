@@ -141,10 +141,15 @@ def _agents_lightweight(range: str, wa_line: str = "all"):
             for item in [*agent_calls, *agent_msgs, *agent_alerts]
             if item.get("lead_id")
         }
+        outbound_lw   = [m for m in agent_msgs if m.get("direction") == "outbound"]
+        wa_chats_lw   = len({m["lead_id"] for m in outbound_lw if m.get("lead_id")})
+        messages_sent_lw = len(outbound_lw)
         rows.append({
             "agent": agent,
             "leads": len(lead_ids),
             "calls_handled": len(completed_calls),
+            "wa_chats": wa_chats_lw,
+            "messages_sent": messages_sent_lw,
             "avg_call_duration_seconds": round(
                 sum(c.get("duration_seconds") or 0 for c in completed_calls) / len(completed_calls)
             ) if completed_calls else 0,
@@ -365,10 +370,16 @@ def _agents_inner(range: str, wa_line: str = "all"):
             key=lambda x: x["date"],
         )
 
+        outbound_msgs = [m for m in am if m.get("direction") == "outbound"]
+        wa_chats      = len({m["lead_id"] for m in outbound_msgs if m.get("lead_id")})
+        messages_sent = len(outbound_msgs)
+
         result.append({
             "agent":                    agent,
             "leads":                    total_leads,
             "calls_handled":            calls_answered,
+            "wa_chats":                 wa_chats,
+            "messages_sent":            messages_sent,
             "avg_call_duration_seconds": avg_call_dur,
             "avg_response_time_min":    round(sum(response_times) / len(response_times), 1) if response_times else 0,
             "avg_treatment_score":      round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else 0,
@@ -376,7 +387,6 @@ def _agents_inner(range: str, wa_line: str = "all"):
             "open_alerts":              len(agent_alerts.get(agent, [])),
             "alert_details":            agent_alerts.get(agent, []),
             "quality_trend":            quality_trend,
-            # Conversion data intentionally omitted — requires CRM integration
         })
 
     result.sort(key=lambda x: x["calls_handled"], reverse=True)
@@ -394,10 +404,13 @@ def _agents_inner(range: str, wa_line: str = "all"):
                 if row.get("lead_id")
             }
             completed_calls = [c for c in ac if (c.get("duration_seconds") or 0) > 0]
+            ob_fb = [m for m in am if m.get("direction") == "outbound"]
             result.append({
                 "agent": agent,
                 "leads": len(lead_ids),
                 "calls_handled": len(completed_calls),
+                "wa_chats": len({m["lead_id"] for m in ob_fb if m.get("lead_id")}),
+                "messages_sent": len(ob_fb),
                 "avg_call_duration_seconds": round(
                     sum(c.get("duration_seconds") or 0 for c in completed_calls) / len(completed_calls)
                 ) if completed_calls else 0,

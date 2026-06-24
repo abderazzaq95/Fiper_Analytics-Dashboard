@@ -1813,7 +1813,9 @@ function renderAgents(data) {
   const cols = [
     {key:'agent',                   en:'Agent',          ar:'الوكيل',             sort:false},
     {key:'leads',                   en:'Leads',          ar:'العملاء',            sort:true},
-    {key:'calls_handled',           en:'Calls',          ar:'المكالمات',          sort:true},
+    {key:'calls_handled',           en:'📞 Calls',       ar:'📞 مكالمات',         sort:true},
+    {key:'wa_chats',                en:'💬 WA Chats',    ar:'💬 محادثات',         sort:true},
+    {key:'messages_sent',           en:'Msgs Sent',      ar:'رسائل مرسلة',        sort:true},
     {key:'avg_call_duration_seconds',en:'Avg Duration',  ar:'متوسط المدة',        sort:true},
     {key:'avg_treatment_score',     en:'Treatment',      ar:'جودة المعاملة',      sort:true},
     {key:'sentiment',               en:'Sentiment',      ar:'المشاعر',            sort:false},
@@ -1847,10 +1849,19 @@ function renderAgents(data) {
 
     const spark = sparkline(a.quality_trend || []);
 
+    const waChatsBadge = (a.wa_chats||0) > 0
+      ? `<span class="pill pill-blue" style="font-size:11px">${fmt(a.wa_chats)}</span>`
+      : `<span style="color:var(--text-light)">—</span>`;
+    const callsBadge = (a.calls_handled||0) > 0
+      ? `<strong>${fmt(a.calls_handled)}</strong>`
+      : `<span style="color:var(--text-light)">—</span>`;
+
     return `<tr>
       <td><div class="sparkline-cell"><span class="agent-name-cell">${a.agent||'—'}</span>${spark}</div></td>
       <td>${fmt(a.leads)}</td>
-      <td><strong>${fmt(a.calls_handled||0)}</strong></td>
+      <td>${callsBadge}</td>
+      <td>${waChatsBadge}</td>
+      <td>${fmt(a.messages_sent||0)}</td>
       <td>${durDisplay}</td>
       <td>${tPill}</td>
       <td>${sentPill}</td>
