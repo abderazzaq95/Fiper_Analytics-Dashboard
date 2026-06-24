@@ -62,6 +62,33 @@ def _norm(name: str | None) -> str | None:
     return name.strip().title()
 
 
+def _message_agent_name(
+    row: dict,
+    *,
+    lead_agent_map: dict[str, str] | None = None,
+    lead_to_agent_fallback: dict[str, str] | None = None,
+) -> str | None:
+    """Resolve the best agent label for a WhatsApp message row.
+
+    Prefer the explicit message agent name. If that is missing, fall back to the
+    lead's assigned agent, then the historical lead?agent fallback built from
+    outbound WhatsApp rows and Maqsam calls.
+    """
+    explicit = _norm(row.get("agent_name"))
+    if explicit:
+        return explicit
+    lead_id = row.get("lead_id")
+    if lead_id and lead_agent_map:
+        lead_agent = lead_agent_map.get(lead_id)
+        if lead_agent:
+            return lead_agent
+    if lead_id and lead_to_agent_fallback:
+        fallback = lead_to_agent_fallback.get(lead_id)
+        if fallback:
+            return fallback
+    return None
+
+
 @router.get("/api/agents")
 def agents(
     range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
@@ -120,16 +147,64 @@ def _agents_lightweight(range: str, wa_line: str = "all"):
         lead_map = {r["id"]: r for r in lead_rows}
         alerts = [a for a in alerts if matches_business_line(lead_map.get(a.get("lead_id") or ""), wa_line)]
 
+    active_lead_ids = {
+        row.get("lead_id")
+        for row in [*calls, *messages, *alerts]
+        if row.get("lead_id")
+    }
+    lead_rows = []
+    active_ids = list(active_lead_ids)
+    idx = 0
+    while idx < len(active_ids):
+        lead_rows.extend(
+            supabase.table("leads")
+            .select("id,assigned_agent,channel,whatsapp_business_number")
+            .in_("id", active_ids[idx:idx + 100])
+            .execute().data or []
+        )
+        idx += 100
+    lead_agent_map = {r["id"]: _norm(r.get("assigned_agent")) for r in lead_rows if r.get("id")}
+    lead_to_agent_fallback: dict[str, str] = {}
+    for m in messages:
+        lid = m.get("lead_id")
+        ag = _message_agent_name(m, lead_agent_map=lead_agent_map)
+        if lid and m.get("direction") == "outbound" and ag:
+            lead_to_agent_fallback.setdefault(lid, ag)
+    for c in calls:
+        lid = c.get("lead_id")
+        ag = _norm(c.get("agent_name"))
+        if lid and ag:
+            lead_to_agent_fallback.setdefault(lid, ag)
+
     agents = sorted({
         *(_norm(c.get("agent_name")) for c in calls if _norm(c.get("agent_name"))),
-        *(_norm(m.get("agent_name")) for m in messages if _norm(m.get("agent_name"))),
+        *(
+            _message_agent_name(
+                m,
+                lead_agent_map=lead_agent_map,
+                lead_to_agent_fallback=lead_to_agent_fallback,
+            )
+            for m in messages
+            if _message_agent_name(
+                m,
+                lead_agent_map=lead_agent_map,
+                lead_to_agent_fallback=lead_to_agent_fallback,
+            )
+        ),
         *(_norm(a.get("agent_name")) for a in alerts if _norm(a.get("agent_name"))),
     })
 
     rows = []
     for agent in agents:
         agent_calls = [c for c in calls if _norm(c.get("agent_name")) == agent]
-        agent_msgs = [m for m in messages if _norm(m.get("agent_name")) == agent]
+        agent_msgs = [
+            m for m in messages
+            if _message_agent_name(
+                m,
+                lead_agent_map=lead_agent_map,
+                lead_to_agent_fallback=lead_to_agent_fallback,
+            ) == agent
+        ]
         agent_alerts = [
             a for a in alerts
             if _norm(a.get("agent_name")) == agent
@@ -228,9 +303,30 @@ def _agents_inner(range: str, wa_line: str = "all"):
             agent_leads[ag].append(l)
 
     # WhatsApp messages grouped by agent
+    lead_by_id = {l["id"]: l for l in leads if l.get("id")}
+    lead_agent_map = {l["id"]: _norm(l.get("assigned_agent")) for l in leads if l.get("id")}
+
+    # Build a historical fallback map from outbound messages and calls so rows
+    # without an explicit agent_name still count for the right agent.
+    lead_to_agent_fallback: dict[str, str] = {}
+    for m in messages:
+        lid = m.get("lead_id")
+        ag = _message_agent_name(m, lead_agent_map=lead_agent_map)
+        if lid and m.get("direction") == "outbound" and ag:
+            lead_to_agent_fallback.setdefault(lid, ag)
+    for c in calls:
+        lid = c.get("lead_id")
+        ag = _norm(c.get("agent_name"))
+        if lid and ag:
+            lead_to_agent_fallback.setdefault(lid, ag)
+
     agent_msgs: dict[str, list] = defaultdict(list)
     for m in messages:
-        ag = _norm(m.get("agent_name"))
+        ag = _message_agent_name(
+            m,
+            lead_agent_map=lead_agent_map,
+            lead_to_agent_fallback=lead_to_agent_fallback,
+        )
         if ag:
             agent_msgs[ag].append(m)
 
