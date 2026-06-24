@@ -174,6 +174,14 @@ tr:hover td{background:#fafbff}
 .alert-badge.no-alerts{background:#f1f3f9;color:var(--text-light)}
 .alert-badge.clickable{border:none;cursor:pointer;font-family:inherit}
 .alert-badge.clickable:hover{box-shadow:0 0 0 3px rgba(255,0,3,.08)}
+.podium-card{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:14px 16px;transition:transform .15s,background .15s}
+.podium-card:hover{background:rgba(255,255,255,.13);transform:translateY(-2px)}
+.podium-card.rank-1{border-color:rgba(245,158,11,.55)}
+.podium-card.rank-2{border-color:rgba(148,163,184,.45)}
+.podium-card.rank-3{border-color:rgba(180,120,60,.45)}
+.pa-avatar{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;flex-shrink:0}
+.pa-sent-bar{height:4px;border-radius:2px;overflow:hidden;display:flex;margin-top:6px}
+@media(max-width:680px){#podiumRow{grid-template-columns:1fr!important}}
 .modal-backdrop{position:fixed;inset:0;background:rgba(45,60,88,.38);display:none;align-items:center;justify-content:center;z-index:500;padding:20px}
 .modal-backdrop.open{display:flex}
 .modal-panel{width:min(720px,100%);max-height:82vh;overflow:hidden;background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:0 18px 60px rgba(45,60,88,.22);display:flex;flex-direction:column}
@@ -744,9 +752,19 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   <!-- Agents -->
   <div id="sec-agents" class="section-label"><span data-en="Agent Performance" data-ar="أداء الوكلاء">Agent Performance</span></div>
   <div class="card" style="padding:0;overflow:hidden">
-    <div style="padding:18px 22px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-      <div class="card-head" style="margin:0" data-en="Agent Leaderboard" data-ar="لوحة الوكلاء">Agent Leaderboard</div>
-      <span id="agentCount" style="font-size:11px;color:var(--text-light)"></span>
+    <div id="agentArena" style="background:var(--navy);padding:22px 22px 20px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <span style="color:rgba(255,255,255,.8);font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase">🏆 Top Performers</span>
+        <span id="agentCount" style="font-size:11px;color:rgba(255,255,255,.4)"></span>
+      </div>
+      <div id="podiumRow" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+        <div class="podium-card"><div class="skeleton" style="height:12px;width:60%;border-radius:4px;margin-bottom:10px;background:rgba(255,255,255,.1)"></div><div class="skeleton" style="height:8px;width:80%;border-radius:4px;background:rgba(255,255,255,.07)"></div></div>
+        <div class="podium-card"><div class="skeleton" style="height:12px;width:55%;border-radius:4px;margin-bottom:10px;background:rgba(255,255,255,.1)"></div><div class="skeleton" style="height:8px;width:75%;border-radius:4px;background:rgba(255,255,255,.07)"></div></div>
+        <div class="podium-card"><div class="skeleton" style="height:12px;width:65%;border-radius:4px;margin-bottom:10px;background:rgba(255,255,255,.1)"></div><div class="skeleton" style="height:8px;width:70%;border-radius:4px;background:rgba(255,255,255,.07)"></div></div>
+      </div>
+    </div>
+    <div style="padding:14px 22px 10px;border-bottom:1px solid var(--border)">
+      <div class="card-head" style="margin:0" data-en="All Agents" data-ar="جميع الوكلاء">All Agents</div>
     </div>
     <div class="table-wrap"><div id="agentTable"><div style="padding:4px 0">
       <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1.2fr 1fr 0.7fr;gap:12px;padding:10px 22px;border-bottom:1px solid var(--border)"><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div></div>
@@ -1797,84 +1815,143 @@ function sparkline(trend) {
 let agentSortKey = 'calls_handled', agentSortAsc = false;
 let _agentAlertDetails = {};
 function renderAgents(data) {
-  const agents = (data.agents||[]).slice();
+  const agents = (data.agents || []).slice();
   _agentAlertDetails = {};
-  document.getElementById('agentCount').textContent = `(${agents.length} ${lang==='ar'?'وكيل':'agents'})`;
+  const isAr = lang === 'ar';
+  document.getElementById('agentCount').textContent = `(${agents.length} ${isAr ? 'وكيل' : 'agents'})`;
 
   if (!agents.length) {
-    document.getElementById('agentTable').innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-text">${lang==='ar'?'لا توجد بيانات':'No agent data'}</div></div>`;
+    document.getElementById('podiumRow').innerHTML = `<div style="color:rgba(255,255,255,.4);font-size:12px;grid-column:1/-1">${isAr ? 'لا توجد بيانات' : 'No activity data yet'}</div>`;
+    document.getElementById('agentTable').innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div><div class="empty-text">${isAr ? 'لا توجد بيانات' : 'No agent data'}</div></div>`;
     return;
   }
-  agents.sort((a,b)=>{
-    let va=a[agentSortKey]||0, vb=b[agentSortKey]||0;
-    return agentSortAsc ? (va>vb?1:-1) : (va<vb?1:-1);
+
+  // ── Part 1: Podium — top 3 by total activity ──────────────────────────
+  const RANK_ACCENT  = ['#F59E0B', '#94A3B8', '#D97706'];
+  const RANK_MEDALS  = ['🥇', '🥈', '🥉'];
+  const RANK_CLASS   = ['rank-1', 'rank-2', 'rank-3'];
+  const RANK_LABEL_EN = ['1st', '2nd', '3rd'];
+  const RANK_LABEL_AR = ['الأول', 'الثاني', 'الثالث'];
+  const AVATAR_COLORS = ['#0774FF','#7C3AED','#059669','#DB2777','#0891B2','#D97706','#65A30D','#DC2626'];
+  const CIRC = 150.8; // 2π × 24
+
+  const podiumAgents = agents
+    .filter(a => (a.calls_handled || 0) + (a.wa_chats || 0) > 0)
+    .sort((a, b) => ((b.calls_handled || 0) + (b.wa_chats || 0)) - ((a.calls_handled || 0) + (a.wa_chats || 0)))
+    .slice(0, 3);
+
+  const podiumHTML = podiumAgents.length ? podiumAgents.map((a, i) => {
+    const name = a.agent || '?';
+    const initials = name.split(' ').slice(0, 2).map(p => p[0] || '').join('').toUpperCase() || '?';
+    const accent = RANK_ACCENT[i];
+    const avatarBg = AVATAR_COLORS[i % AVATAR_COLORS.length];
+    const ts = a.avg_treatment_score || 0;
+    const ringClr = ts >= 70 ? '#26CF4B' : ts >= 50 ? '#FF8F3C' : ts > 0 ? '#FF5555' : 'rgba(255,255,255,.2)';
+    const offset = ts > 0 ? (CIRC * (1 - ts / 100)).toFixed(1) : CIRC;
+    const s = a.sentiment || {};
+    const sTotal = (s.positive || 0) + (s.neutral || 0) + (s.negative || 0);
+    const sentBar = sTotal > 0 ? `<div class="pa-sent-bar">
+      <div style="width:${(s.positive||0)/sTotal*100}%;background:#26CF4B;height:4px"></div>
+      <div style="width:${(s.neutral||0)/sTotal*100}%;background:#3B82F6;height:4px"></div>
+      <div style="width:${(s.negative||0)/sTotal*100}%;background:#FF5555;height:4px"></div>
+    </div>` : '';
+    const alertBadge = (a.open_alerts || 0) > 0
+      ? `<div style="margin-top:6px"><span style="color:#FF8A8A;font-size:10px;font-weight:700">⚠ ${a.open_alerts} ${isAr ? 'تنبيه' : 'alert' + (a.open_alerts > 1 ? 's' : '')}</span></div>`
+      : '';
+    return `<div class="podium-card ${RANK_CLASS[i]}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span class="pa-avatar" style="background:${avatarBg}">${initials}</span>
+            <div style="min-width:0">
+              <div style="font-size:12px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px">${name}</div>
+              <div style="font-size:10px;color:${accent};font-weight:700;margin-top:1px">${RANK_MEDALS[i]} ${isAr ? RANK_LABEL_AR[i] : RANK_LABEL_EN[i]}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <span style="background:rgba(255,255,255,.1);border-radius:20px;padding:2px 9px;font-size:10px;color:rgba(255,255,255,.85);font-weight:600">📞 ${fmt(a.calls_handled || 0)}</span>
+            <span style="background:rgba(255,255,255,.1);border-radius:20px;padding:2px 9px;font-size:10px;color:rgba(255,255,255,.85);font-weight:600">💬 ${fmt(a.wa_chats || 0)}</span>
+          </div>
+          ${sentBar}${alertBadge}
+        </div>
+        <div style="position:relative;width:56px;height:56px;flex-shrink:0">
+          <svg width="56" height="56" viewBox="0 0 56 56" style="transform:rotate(-90deg)">
+            <circle cx="28" cy="28" r="24" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="4"/>
+            <circle cx="28" cy="28" r="24" fill="none" stroke="${ringClr}" stroke-width="4"
+              stroke-dasharray="${CIRC}" stroke-dashoffset="${offset}"
+              stroke-linecap="round" style="transition:stroke-dashoffset .7s ease"/>
+          </svg>
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:${ringClr}">${ts > 0 ? ts : '—'}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('')
+  : `<div style="color:rgba(255,255,255,.4);font-size:12px;padding:4px 0;grid-column:1/-1">${isAr ? 'لا توجد بيانات' : 'No activity data yet'}</div>`;
+
+  document.getElementById('podiumRow').innerHTML = podiumHTML;
+
+  // ── Part 2: Full roster table ─────────────────────────────────────────
+  agents.sort((a, b) => {
+    let va = a[agentSortKey] || 0, vb = b[agentSortKey] || 0;
+    return agentSortAsc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
   });
 
   const cols = [
-    {key:'agent',                   en:'Agent',          ar:'الوكيل',             sort:false},
-    {key:'leads',                   en:'Leads',          ar:'العملاء',            sort:true},
-    {key:'calls_handled',           en:'📞 Calls',       ar:'📞 مكالمات',         sort:true},
-    {key:'wa_chats',                en:'💬 WA Chats',    ar:'💬 محادثات',         sort:true},
-    {key:'messages_sent',           en:'Msgs Sent',      ar:'رسائل مرسلة',        sort:true},
-    {key:'avg_call_duration_seconds',en:'Avg Duration',  ar:'متوسط المدة',        sort:true},
-    {key:'avg_treatment_score',     en:'Treatment',      ar:'جودة المعاملة',      sort:true},
-    {key:'sentiment',               en:'Sentiment',      ar:'المشاعر',            sort:false},
-    {key:'open_alerts',             en:'Alerts',         ar:'التنبيهات',          sort:true},
+    {key:'agent',                    en:'Agent',         ar:'الوكيل',           sort:false},
+    {key:'leads',                    en:'Leads',         ar:'العملاء',          sort:true},
+    {key:'calls_handled',            en:'📞 Calls',      ar:'📞 مكالمات',       sort:true},
+    {key:'wa_chats',                 en:'💬 WA Chats',   ar:'💬 محادثات',       sort:true},
+    {key:'messages_sent',            en:'Msgs Sent',     ar:'رسائل مرسلة',      sort:true},
+    {key:'avg_call_duration_seconds',en:'Avg Duration',  ar:'متوسط المدة',      sort:true},
+    {key:'avg_treatment_score',      en:'Treatment',     ar:'جودة المعاملة',    sort:true},
+    {key:'sentiment',                en:'Sentiment',     ar:'المشاعر',          sort:false},
+    {key:'open_alerts',              en:'Alerts',        ar:'التنبيهات',        sort:true},
   ];
 
-  const thead = cols.map(c=>`<th ${c.sort?`onclick="sortAgents('${c.key}')" `:''}class="${c.sort?'':'no-sort'}${agentSortKey===c.key?' sorted':''}">${lang==='ar'?c.ar:c.en}${agentSortKey===c.key?(agentSortAsc?' ↑':' ↓'):''}</th>`).join('');
+  const thead = cols.map(c =>
+    `<th ${c.sort ? `onclick="sortAgents('${c.key}')" ` : ''}class="${c.sort ? '' : 'no-sort'}${agentSortKey === c.key ? ' sorted' : ''}">${isAr ? c.ar : c.en}${agentSortKey === c.key ? (agentSortAsc ? ' ↑' : ' ↓') : ''}</th>`
+  ).join('');
 
-  const rows = agents.map(a=>{
+  const rows = agents.map(a => {
     _agentAlertDetails[a.agent || ''] = a.alert_details || [];
-    const s = a.sentiment||{};
-    const tot = (s.positive||0)+(s.neutral||0)+(s.negative||0);
-    const sentPill = tot===0 ? `<span class="pill pill-gray">${lang==='ar'?'لا بيانات':'No data'}</span>`
-      : (s.positive||0)>(s.negative||0) ? `<span class="pill pill-green">${lang==='ar'?'إيجابي':'Positive'} ${s.positive||0}</span>`
-      : (s.negative||0)>(s.positive||0) ? `<span class="pill pill-red">${lang==='ar'?'سلبي':'Negative'} ${s.negative||0}</span>`
-      : `<span class="pill pill-blue">${lang==='ar'?'محايد':'Neutral'} ${s.neutral||0}</span>`;
+    const s = a.sentiment || {};
+    const tot = (s.positive || 0) + (s.neutral || 0) + (s.negative || 0);
+    const sentPill = tot === 0
+      ? `<span class="pill pill-gray">${isAr ? 'لا بيانات' : 'No data'}</span>`
+      : (s.positive || 0) > (s.negative || 0)
+        ? `<span class="pill pill-green">${isAr ? 'إيجابي' : 'Positive'} ${s.positive || 0}</span>`
+        : (s.negative || 0) > (s.positive || 0)
+          ? `<span class="pill pill-red">${isAr ? 'سلبي' : 'Negative'} ${s.negative || 0}</span>`
+          : `<span class="pill pill-blue">${isAr ? 'محايد' : 'Neutral'} ${s.neutral || 0}</span>`;
 
-    const ts = a.avg_treatment_score||0;
-    const tPill = ts===0 ? `<span class="pill pill-gray">—</span>`
-      : ts>=70 ? `<span class="pill pill-green">${fmt(ts)}</span>`
-      : ts>=50 ? `<span class="pill pill-warn">${fmt(ts)}</span>`
+    const ts = a.avg_treatment_score || 0;
+    const tPill = ts === 0 ? `<span class="pill pill-gray">—</span>`
+      : ts >= 70 ? `<span class="pill pill-green">${fmt(ts)}</span>`
+      : ts >= 50 ? `<span class="pill pill-warn">${fmt(ts)}</span>`
       : `<span class="pill pill-red">${fmt(ts)}</span>`;
 
     const agentArg = JSON.stringify(a.agent || '');
-    const alBadge = (a.open_alerts||0)>0
+    const alBadge = (a.open_alerts || 0) > 0
       ? `<button class="alert-badge has-alerts clickable" type="button" onclick='openAgentAlerts(${agentArg})'>${a.open_alerts}</button>`
       : `<span class="alert-badge no-alerts">0</span>`;
 
-    const avgDur = a.avg_call_duration_seconds||0;
-    const durDisplay = avgDur>0 ? dur(avgDur) : '—';
-
+    const avgDur = a.avg_call_duration_seconds || 0;
     const spark = sparkline(a.quality_trend || []);
 
-    const waChatsBadge = (a.wa_chats||0) > 0
-      ? `<span class="pill pill-blue" style="font-size:11px">${fmt(a.wa_chats)}</span>`
-      : `<span style="color:var(--text-light)">—</span>`;
-    const callsBadge = (a.calls_handled||0) > 0
-      ? `<strong>${fmt(a.calls_handled)}</strong>`
-      : `<span style="color:var(--text-light)">—</span>`;
-
     return `<tr>
-      <td><div class="sparkline-cell"><span class="agent-name-cell">${a.agent||'—'}</span>${spark}</div></td>
+      <td><div class="sparkline-cell"><span class="agent-name-cell">${a.agent || '—'}</span>${spark}</div></td>
       <td>${fmt(a.leads)}</td>
-      <td>${callsBadge}</td>
-      <td>${waChatsBadge}</td>
-      <td>${fmt(a.messages_sent||0)}</td>
-      <td>${durDisplay}</td>
+      <td>${(a.calls_handled || 0) > 0 ? `<strong>${fmt(a.calls_handled)}</strong>` : `<span style="color:var(--text-light)">—</span>`}</td>
+      <td>${(a.wa_chats || 0) > 0 ? `<span class="pill pill-blue" style="font-size:11px">${fmt(a.wa_chats)}</span>` : `<span style="color:var(--text-light)">—</span>`}</td>
+      <td>${fmt(a.messages_sent || 0)}</td>
+      <td>${avgDur > 0 ? dur(avgDur) : '—'}</td>
       <td>${tPill}</td>
       <td>${sentPill}</td>
       <td>${alBadge}</td>
     </tr>`;
   }).join('');
 
-  const crmNote = `<div style="font-size:11px;color:var(--text-light);padding:6px 4px 10px;display:flex;align-items:center;gap:6px">
-    <span style="color:var(--warn)">⚠</span>
-    <span>${lang==='ar'?'تتطلب بيانات التحويل تكاملاً مع نظام CRM — قريباً':'Conversion tracking requires CRM integration — coming soon'}</span>
-  </div>`;
-
-  document.getElementById('agentTable').innerHTML = crmNote + `<table><thead><tr>${thead}</tr></thead><tbody>${rows}</tbody></table>`;
+  document.getElementById('agentTable').innerHTML = `<table><thead><tr>${thead}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 function sortAgents(key) {
   if (agentSortKey===key) agentSortAsc = !agentSortAsc;
