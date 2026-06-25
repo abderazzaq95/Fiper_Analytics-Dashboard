@@ -2239,7 +2239,8 @@ async function openAgentProfile(agentName) {
 
   modal.classList.add('open');
 
-  // Always fetch with "week" so there's meaningful data regardless of dashboard range
+  // Fetch detail with "week" range — only used to populate the Calls/WA/AI/Alerts tabs.
+  // KPIs and Overview always come from the agents cache (no flash, always has data).
   const detailRange = 'week';
   try {
     const url = `${API}/api/agents/detail?agent=${encodeURIComponent(agentName)}&range=${encodeURIComponent(detailRange)}&wa_line=all`;
@@ -2248,12 +2249,7 @@ async function openAgentProfile(agentName) {
     const data = await r.json();
     if (_apCurrentAgent !== agentName) return;
 
-    const stats = data.stats || {};
-    // Update header tier from fresh data if treatment score is available
-    if (stats.avg_treatment_score > 0) _apRenderHeader(agentName, stats);
-    // Update KPIs and overview from detail stats (week data)
-    _apRenderKpis(stats);
-    _apRenderOverview(stats, data);
+    // Only populate the detail tabs — never overwrite the KPI strip or overview
     _apRenderCalls(data.calls || []);
     _apRenderWa(data.wa_leads || []);
     _apRenderAi(data.analyses || []);
@@ -2262,7 +2258,6 @@ async function openAgentProfile(agentName) {
       alertBtn.textContent = `⚠️ Alerts (${data.alerts.length})`;
   } catch(e) {
     console.error('[profile] fetch error:', e);
-    // Keep cached overview, just mark detail tabs as failed
     ['apTabCalls','apTabWa','apTabAi','apTabAlerts'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = `<div class="ap-empty" style="color:var(--red)">Failed to load detail data.</div>`;
