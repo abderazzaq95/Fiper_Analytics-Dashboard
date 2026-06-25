@@ -62,6 +62,13 @@ def _norm(name: str | None) -> str | None:
     return name.strip().title()
 
 
+def _looks_like_uuid(value: str | None) -> bool:
+    if not value:
+        return False
+    import re
+    return bool(re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", str(value).strip()))
+
+
 def _message_agent_name(
     row: dict,
     *,
@@ -74,8 +81,9 @@ def _message_agent_name(
     lead's assigned agent, then the historical lead?agent fallback built from
     outbound WhatsApp rows and Maqsam calls.
     """
-    explicit = _norm(row.get("agent_name"))
-    if explicit:
+    raw_agent = row.get("agent_name")
+    explicit = _norm(raw_agent)
+    if explicit and not _looks_like_uuid(raw_agent):
         return explicit
     lead_id = row.get("lead_id")
     if lead_id and lead_agent_map:

@@ -222,7 +222,7 @@ async def ingest_manycontacts(hours_back: int = 2) -> dict:
         name = contact.get("name")
         open_status = contact.get("open", 1)
         last_user_id = contact.get("last_user_id")
-        agent_name = whatsapp.resolve_agent_name(last_user_id)
+        agent_name = _clean_agent_label(whatsapp.resolve_agent_name(last_user_id))
         updated_at = contact.get("updatedAt")
         status = "engaged" if open_status == 1 else "lost"
         line_number = _extract_whatsapp_business_number(contact)
@@ -272,7 +272,7 @@ async def ingest_manycontacts(hours_back: int = 2) -> dict:
             # For outbound: agent comes from message's user_id, fall back to contact's assigned agent
             msg_agent = None
             if direction == "outbound":
-                msg_agent = whatsapp.resolve_agent_name(msg.get("user_id")) or agent_name
+                msg_agent = _clean_agent_label(whatsapp.resolve_agent_name(msg.get("user_id"))) or agent_name
                 msg_outbound += 1
 
             row = {
@@ -341,7 +341,7 @@ async def ingest_manycontacts_activity(days_back: int = 1, api_key: str | None =
             or contact.get("updated") or now_iso
         )
         last_user_id = contact.get("last_user_id")
-        agent_name = whatsapp.resolve_agent_name(last_user_id) if last_user_id else None
+        agent_name = _clean_agent_label(whatsapp.resolve_agent_name(last_user_id)) if last_user_id else None
         open_status = contact.get("open", 1)
         # Use forced line_number (account-level sync) or fall back to payload extraction
         contact_line = line_number or _extract_whatsapp_business_number(contact)
@@ -1626,6 +1626,19 @@ def _pick_customer_phone(*candidates) -> str | None:
     return None
 
 
+def _looks_like_uuid(value: str | None) -> bool:
+    return bool(re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", str(value or "").strip()))
+
+
+def _clean_agent_label(value: str | None) -> str | None:
+    if not value:
+        return None
+    label = str(value).strip()
+    if not label or _looks_like_uuid(label):
+        return None
+    return label
+
+
 def _normalize_phone_digits(value: str | None) -> str:
     return "".join(ch for ch in str(value or "") if ch.isdigit())
 
@@ -1917,8 +1930,9 @@ def _extract_mc_outbound(body: dict) -> tuple[str | None, str | None, str, str, 
     else:
         agent_name = str(agent_obj) if agent_obj else None
     agent_id = delta.get("user_id") or delta.get("userId") or root.get("user_id") or root.get("userId")
+    agent_name = _clean_agent_label(agent_name)
     if not agent_name and agent_id:
-        agent_name = whatsapp.resolve_agent_name(agent_id)
+        agent_name = _clean_agent_label(whatsapp.resolve_agent_name(agent_id))
 
     # ── Contact phone ────────────────────────────────────────────────────────
     contact_obj = _first_dict(root.get("contact"), delta.get("contact"), root.get("chat"), delta.get("chat"))
