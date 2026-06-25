@@ -53,10 +53,9 @@ _GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 _GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{_GEMINI_MODEL}:generateContent"
 
 _AI_SYSTEM_PROMPT = """You are a quality assurance analyst for Fiper, a trading broker in Arabic-speaking markets.
-Analyze the call transcript(s) between Fiper agents and leads.
-Maqsam has already determined the sentiment — do NOT re-evaluate it; it is passed to you separately.
+Analyze the conversation(s) between Fiper agents and leads.
 
-IMPORTANT — ROLES: The AGENT is the Fiper employee making the outbound call. The CUSTOMER or LEAD is the person being called by Fiper. Always evaluate agent quality from the Fiper employee's perspective.
+IMPORTANT — ROLES: The AGENT is the Fiper employee. The CUSTOMER or LEAD is the person they speak with. Always evaluate agent quality from the Fiper employee's perspective.
 IMPORTANT — COMPANY NAME: The company is called FIPER (فايبر in Arabic). It is a trading broker.
 Always write "Fiper" in the summary. Never write "Viber", "Fighter", "Faiber", or "financial brokerage company". Never say "financial brokerage" — always say "Fiper".
 Write the summary in the same language as the conversation: Arabic if the conversation is in Arabic, English if in English.
@@ -64,6 +63,7 @@ Write the summary in the same language as the conversation: Arabic if the conver
 Respond ONLY in valid JSON. No explanation, no markdown, no extra text.
 
 {
+  "sentiment": "positive" | "neutral" | "negative",
   "score": 0-100,
   "topics": [],
   "outcome": "converted"|"callback"|"not_interested"|"no_answer"|"ongoing",
@@ -75,6 +75,7 @@ Respond ONLY in valid JSON. No explanation, no markdown, no extra text.
   "summary_ar": "Max 2 concise sentences in Arabic. Use the company name Fiper."
 }
 
+sentiment: overall customer sentiment from the lead's side (positive=interested/happy, neutral=undecided, negative=unhappy/not interested)
 topics: pricing|product_fit|competitor|technical|follow_up|not_decision_maker|trading_education|account_info|greetings|profit_expectations
 risk_flags: unanswered|profit_expectations|beginner_risk|stale_callback|negative_sentiment|slow_response
 treatment_score: 90-100 excellent, 70-89 good, 50-69 average, 30-49 poor, 0-29 very poor"""

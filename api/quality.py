@@ -184,7 +184,21 @@ def _quality_inner(range: str, wa_line: str = "all"):
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         messages = [m for m in messages if matches_business_line(m, wa_line)]
 
-    sentiments = [a["sentiment"] for a in analyses if a.get("sentiment")]
+    # Use explicit sentiment when available; derive from treatment_score otherwise.
+    # WA analyses historically have NULL sentiment because the AI prompt didn't ask for it.
+    sentiments = []
+    for _a in analyses:
+        _s = (_a.get("sentiment") or "").strip().lower()
+        if _s in ("positive", "neutral", "negative"):
+            sentiments.append(_s)
+        elif _a.get("treatment_score") is not None:
+            _ts = _a["treatment_score"]
+            if _ts >= 70:
+                sentiments.append("positive")
+            elif _ts >= 40:
+                sentiments.append("neutral")
+            else:
+                sentiments.append("negative")
     excluded_topics = {"greetings", "no_answer"}
     all_topics = [
         t
