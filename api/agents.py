@@ -755,11 +755,17 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         sorted_msgs = sorted(msgs, key=lambda x: x.get("sent_at") or "")
         last_in = None
         for m in sorted_msgs:
-            if m["direction"] == "inbound":
-                last_in = datetime.fromisoformat(m["sent_at"].replace("Z", "+00:00"))
-            elif m["direction"] == "outbound" and last_in:
-                out_t = datetime.fromisoformat(m["sent_at"].replace("Z", "+00:00"))
-                gap = (out_t - last_in).total_seconds() / 60
+            ts_raw = m.get("sent_at")
+            if not ts_raw:
+                continue
+            try:
+                ts_dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                continue
+            if m.get("direction") == "inbound":
+                last_in = ts_dt
+            elif m.get("direction") == "outbound" and last_in:
+                gap = (ts_dt - last_in).total_seconds() / 60
                 if gap >= 0:
                     response_times.append(gap)
                 last_in = None
