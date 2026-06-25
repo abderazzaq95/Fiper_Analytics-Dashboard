@@ -2222,149 +2222,187 @@ async function openAgentProfile(agentName) {
   const modal = document.getElementById('agentProfileModal');
   if (!modal) return;
 
-  // Reset to overview tab
   apSwitchTab('overview', document.getElementById('apTabBtn-overview'));
 
-  // Fill header from cached data immediately
-  const cachedAgent = (_cache?.[3]?.agents || []).find(a => a.agent === agentName);
-  _apRenderHeader(agentName, cachedAgent);
-  _apRenderKpis(cachedAgent);
-  _apRenderOverview(cachedAgent, null);
-
-  // Show loading in detail tabs
-  const loadMsg = `<div class="ap-empty">Loading...</div>`;
+  // Render header immediately from name alone; show loading state for data
+  _apRenderHeader(agentName, null);
+  document.getElementById('apKpis').innerHTML =
+    Array(6).fill(`<div class="ap-kpi"><div class="skeleton" style="height:22px;width:36px;margin:0 auto 6px"></div><div class="skeleton" style="height:10px;width:48px;margin:0 auto"></div></div>`).join('');
+  document.getElementById('apTabOverview').innerHTML = `<div class="ap-empty">Loading…</div>`;
   ['apTabCalls','apTabWa','apTabAi','apTabAlerts'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.innerHTML = loadMsg;
+    if (el) el.innerHTML = `<div class="ap-empty">Loading…</div>`;
   });
+  // Reset alerts tab label
+  const alertBtn = document.getElementById('apTabBtn-alerts');
+  if (alertBtn) alertBtn.textContent = '⚠️ Alerts';
 
   modal.classList.add('open');
 
-  // Fetch detail data
   try {
     const url = `${API}/api/agents/detail?agent=${encodeURIComponent(agentName)}&range=${encodeURIComponent(range)}&wa_line=${encodeURIComponent(waLine)}`;
     const r = await fetch(url);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
-    if (_apCurrentAgent !== agentName) return; // modal was closed/switched
-    _apRenderOverview(cachedAgent, data);
+    if (_apCurrentAgent !== agentName) return;
+
+    const stats = data.stats || {};
+    _apRenderHeader(agentName, stats);
+    _apRenderKpis(stats);
+    _apRenderOverview(stats, data);
     _apRenderCalls(data.calls || []);
     _apRenderWa(data.wa_leads || []);
     _apRenderAi(data.analyses || []);
     _apRenderProfileAlerts(data.alerts || []);
-    // Update alerts tab label with count
-    const alertBtn = document.getElementById('apTabBtn-alerts');
-    if (alertBtn) alertBtn.textContent = `⚠️ Alerts${data.alerts?.length ? ` (${data.alerts.length})` : ''}`;
+    if (alertBtn && (data.alerts||[]).length)
+      alertBtn.textContent = `⚠️ Alerts (${data.alerts.length})`;
   } catch(e) {
     console.error('[profile] fetch error:', e);
+    document.getElementById('apTabOverview').innerHTML =
+      `<div class="ap-empty" style="color:var(--red)">Failed to load: ${esc(String(e))}</div>`;
     ['apTabCalls','apTabWa','apTabAi','apTabAlerts'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.innerHTML = `<div class="ap-empty" style="color:var(--red)">Failed to load: ${esc(String(e))}</div>`;
+      if (el) el.innerHTML = '';
     });
   }
 }
 
-function _apRenderHeader(name, a) {
+function _apRenderHeader(name, stats) {
   const initials = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
   document.getElementById('apAvatar').textContent = initials;
   document.getElementById('apName').textContent = name;
-  const ts = a?.avg_treatment_score || 0;
   const tierEl = document.getElementById('apTier');
-  if (!a) { tierEl.textContent = ''; return; }
-  if (ts >= 80) { tierEl.textContent = '⭐ Top Performer'; tierEl.className = 'ap-tier top'; }
-  else if (ts >= 65) { tierEl.textContent = '👍 Good Performance'; tierEl.className = 'ap-tier good'; }
-  else if (ts >= 45) { tierEl.textContent = '📈 Needs Improvement'; tierEl.className = 'ap-tier mid'; }
-  else if (ts > 0)  { tierEl.textContent = '🔴 Underperforming'; tierEl.className = 'ap-tier low'; }
-  else { tierEl.textContent = ''; tierEl.className = 'ap-tier'; }
+  if (!stats) { tierEl.textContent = ''; tierEl.className = 'ap-tier'; return; }
+  const ts = stats.avg_treatment_score || 0;
+  if (ts >= 80)       { tierEl.textContent = '⭐ Top Performer';     tierEl.className = 'ap-tier top'; }
+  else if (ts >= 65)  { tierEl.textContent = '👍 Good Performance';  tierEl.className = 'ap-tier good'; }
+  else if (ts >= 45)  { tierEl.textContent = '📈 Needs Improvement'; tierEl.className = 'ap-tier mid'; }
+  else if (ts > 0)    { tierEl.textContent = '🔴 Underperforming';   tierEl.className = 'ap-tier low'; }
+  else                { tierEl.textContent = ''; tierEl.className = 'ap-tier'; }
 }
 
-function _apRenderKpis(a) {
+function _apRenderKpis(stats) {
   const el = document.getElementById('apKpis');
   if (!el) return;
-  const kpis = a ? [
-    { val: fmt(a.calls_handled  || 0), lbl: '📞 Calls' },
-    { val: fmt(a.wa_chats       || 0), lbl: '💬 WA Chats' },
-    { val: fmt(a.messages_sent  || 0), lbl: 'Msgs Sent' },
-    { val: fmt(a.leads          || 0), lbl: '👥 Leads' },
-    { val: a.avg_response_time_min > 0 ? `${fmt(a.avg_response_time_min)}m` : '—', lbl: '⏱ Avg Reply' },
-    { val: a.avg_treatment_score > 0 ? `${fmt(a.avg_treatment_score)}/100` : '—', lbl: '⭐ Treatment' },
-  ] : [];
-  el.innerHTML = kpis.map(k => `<div class="ap-kpi"><div class="ap-kpi-val">${k.val}</div><div class="ap-kpi-lbl">${k.lbl}</div></div>`).join('');
+  const s = stats || {};
+  // Only show a KPI cell when there's something meaningful to say
+  const all = [
+    { val: fmt(s.calls_handled || 0),  sub: s.calls_total > s.calls_handled ? `of ${fmt(s.calls_total)} total` : null, lbl: '📞 Calls Answered', show: (s.calls_total || 0) > 0 },
+    { val: fmt(s.wa_chats || 0),       sub: null, lbl: '💬 WA Chats', show: (s.wa_chats || 0) > 0 },
+    { val: fmt(s.messages_sent || 0),  sub: null, lbl: 'Msgs Sent',   show: (s.messages_sent || 0) > 0 },
+    { val: fmt(s.leads || 0),          sub: null, lbl: '👥 Leads',    show: (s.leads || 0) > 0 },
+    { val: s.avg_response_time_min > 0 ? `${fmt(s.avg_response_time_min)}m` : null, lbl: '⏱ Avg Reply',   show: (s.avg_response_time_min || 0) > 0 },
+    { val: s.avg_treatment_score > 0   ? `${fmt(s.avg_treatment_score)}/100` : null, lbl: '⭐ Treatment', show: (s.avg_treatment_score || 0) > 0 },
+  ].filter(k => k.show && k.val);
+
+  // Always show at least the calls/leads even if zero so the strip isn't blank
+  const display = all.length ? all : [
+    { val: fmt(s.calls_total || 0), sub: null, lbl: '📞 Calls', show: true },
+    { val: fmt(s.leads || 0),       sub: null, lbl: '👥 Leads', show: true },
+  ];
+
+  el.style.gridTemplateColumns = `repeat(${display.length}, 1fr)`;
+  el.innerHTML = display.map(k =>
+    `<div class="ap-kpi">
+      <div class="ap-kpi-val">${k.val}</div>
+      ${k.sub ? `<div style="font-size:10px;color:var(--text-light);margin-top:1px">${k.sub}</div>` : ''}
+      <div class="ap-kpi-lbl">${k.lbl}</div>
+    </div>`
+  ).join('');
 }
 
-function _apRenderOverview(a, detail) {
+function _apRenderOverview(stats, detail) {
   const el = document.getElementById('apTabOverview');
   if (!el) return;
-  if (!a) { el.innerHTML = `<div class="ap-empty">No data for this agent in the selected range.</div>`; return; }
-
-  const s = a.sentiment || {};
-  const tot = (s.positive||0)+(s.neutral||0)+(s.negative||0);
-  const pPct = tot ? Math.round(s.positive/tot*100) : 0;
-  const nuPct = tot ? Math.round(s.neutral/tot*100) : 0;
-  const nPct  = tot ? Math.round(s.negative/tot*100) : 0;
-
-  // 7-day trend
-  const trend = a.quality_trend || [];
+  const s = stats || {};
+  const sent = s.sentiment || {};
+  const sentTot = (sent.positive||0)+(sent.neutral||0)+(sent.negative||0);
+  const trend = s.quality_trend || [];
   const maxScore = trend.length ? Math.max(...trend.map(t=>t.avg_score||0), 1) : 1;
-  const trendBars = trend.length
-    ? trend.map(t => {
-        const pct = Math.round((t.avg_score||0)/maxScore*100);
-        const day = t.date ? t.date.slice(5) : '';
-        const col = t.avg_score >= 70 ? 'var(--green)' : t.avg_score >= 50 ? 'var(--blue)' : 'var(--red)';
-        return `<div class="ap-trend-bar-col"><div class="ap-trend-bar" style="height:${pct}%;background:${col}" title="${t.avg_score}"></div><div class="ap-trend-lbl">${day}</div></div>`;
-      }).join('')
-    : `<div style="color:var(--text-light);font-size:12px;text-align:center;width:100%">No trend data</div>`;
 
-  // Response time analysis from detail
-  let callsSummary = '';
-  if (detail) {
-    const answered = (detail.calls||[]).filter(c=>c.answered).length;
-    const total    = (detail.calls||[]).length;
-    const ansRate  = total ? Math.round(answered/total*100) : 0;
-    const col = ansRate >= 70 ? 'var(--green)' : ansRate >= 40 ? 'var(--warn)' : 'var(--red)';
-    callsSummary = `<div class="ap-mini-card" style="margin-top:12px">
-      <div class="ap-section-title">Call Answer Rate</div>
-      <div style="font-size:28px;font-weight:800;color:${col}">${ansRate}%</div>
-      <div style="font-size:12px;color:var(--text-light);margin-top:2px">${answered} answered / ${total} total calls</div>
-    </div>`;
+  let parts = [];
+
+  // ── Calls section (only if agent has calls) ─────────────────────────────
+  if ((s.calls_total || 0) > 0) {
+    const ansRate = Math.round((s.calls_handled||0) / (s.calls_total||1) * 100);
+    const rateCol = ansRate >= 70 ? 'var(--green)' : ansRate >= 40 ? '#FF8F3C' : 'var(--red)';
+    const avgDurStr = s.avg_call_duration_seconds > 0 ? durSec(s.avg_call_duration_seconds) : null;
+    parts.push(`
+      <div class="ap-mini-card">
+        <div class="ap-section-title">📞 Call Performance</div>
+        <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap">
+          <div>
+            <div style="font-size:30px;font-weight:800;color:${rateCol}">${ansRate}%</div>
+            <div style="font-size:11px;color:var(--text-light)">${s.calls_handled||0} answered of ${s.calls_total} calls</div>
+          </div>
+          ${avgDurStr ? `<div>
+            <div style="font-size:20px;font-weight:800;color:var(--navy)">${avgDurStr}</div>
+            <div style="font-size:11px;color:var(--text-light)">Avg call duration</div>
+          </div>` : ''}
+        </div>
+      </div>`);
   }
 
-  el.innerHTML = `
-    <div class="ap-grid2">
+  // ── Sentiment section (only if data exists) ──────────────────────────────
+  if (sentTot > 0) {
+    const pPct  = Math.round(sent.positive/sentTot*100);
+    const nuPct = Math.round(sent.neutral/sentTot*100);
+    const nPct  = Math.round(sent.negative/sentTot*100);
+    parts.push(`
       <div class="ap-mini-card">
-        <div class="ap-section-title">Sentiment Distribution</div>
-        ${tot === 0 ? `<div style="color:var(--text-light);font-size:12px">No sentiment data</div>` : `
-        <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--green)"></span> ${lang==='ar'?'إيجابي':'Positive'}</span><span style="font-weight:700;color:var(--green)">${s.positive||0}</span></div>
-        <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--blue)"></span> ${lang==='ar'?'محايد':'Neutral'}</span><span style="font-weight:700;color:var(--blue)">${s.neutral||0}</span></div>
-        <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--red)"></span> ${lang==='ar'?'سلبي':'Negative'}</span><span style="font-weight:700;color:var(--red)">${s.negative||0}</span></div>
-        <div class="ap-sent-bar">
-          <div class="ap-sent-pos" style="width:${pPct}%"></div>
-          <div class="ap-sent-neu" style="width:${nuPct}%"></div>
-          <div class="ap-sent-neg" style="width:${nPct}%"></div>
-        </div>`}
-      </div>
+        <div class="ap-section-title">Customer Sentiment</div>
+        <div style="display:flex;gap:16px;align-items:flex-start">
+          <div style="flex:1">
+            <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--green)"></span> Positive</span><span style="font-weight:700;color:var(--green)">${sent.positive}</span></div>
+            <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--blue)"></span> Neutral</span><span style="font-weight:700;color:var(--blue)">${sent.neutral}</span></div>
+            <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--red)"></span> Negative</span><span style="font-weight:700;color:var(--red)">${sent.negative}</span></div>
+          </div>
+          <div style="flex:1">
+            <div class="ap-sent-bar" style="height:8px;border-radius:4px">
+              <div class="ap-sent-pos" style="width:${pPct}%"></div>
+              <div class="ap-sent-neu" style="width:${nuPct}%"></div>
+              <div class="ap-sent-neg" style="width:${nPct}%"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-light);margin-top:5px">
+              <span>${pPct}%</span><span>${nuPct}%</span><span>${nPct}%</span>
+            </div>
+          </div>
+        </div>
+      </div>`);
+  }
+
+  // ── Quality trend (only if data exists) ─────────────────────────────────
+  if (trend.length) {
+    const bars = trend.map(t => {
+      const pct = Math.round((t.avg_score||0)/maxScore*100);
+      const col = t.avg_score >= 70 ? 'var(--green)' : t.avg_score >= 50 ? 'var(--blue)' : 'var(--red)';
+      return `<div class="ap-trend-bar-col"><div class="ap-trend-bar" style="height:${pct}%;background:${col}" title="${t.avg_score}"></div><div class="ap-trend-lbl">${(t.date||'').slice(5)}</div></div>`;
+    }).join('');
+    parts.push(`
       <div class="ap-mini-card">
         <div class="ap-section-title">7-Day Quality Trend</div>
-        <div class="ap-trend-wrap">${trendBars}</div>
-        <div style="font-size:11px;color:var(--text-light);margin-top:6px">Avg treatment score by day</div>
-      </div>
-    </div>
-    ${callsSummary}
-    ${detail ? `
-    <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-      <div class="ap-mini-card" style="text-align:center">
-        <div style="font-size:22px;font-weight:800;color:var(--navy)">${(detail.analyses||[]).filter(x=>x.outcome==='converted').length}</div>
-        <div style="font-size:11px;color:var(--text-light);margin-top:2px">Conversions</div>
-      </div>
-      <div class="ap-mini-card" style="text-align:center">
-        <div style="font-size:22px;font-weight:800;color:var(--red)">${(detail.analyses||[]).filter(x=>(x.risk_flags||[]).length>0).length}</div>
-        <div style="font-size:11px;color:var(--text-light);margin-top:2px">Leads w/ Risk Flags</div>
-      </div>
-      <div class="ap-mini-card" style="text-align:center">
-        <div style="font-size:22px;font-weight:800;color:var(--warn)">${detail.alerts?.length || 0}</div>
-        <div style="font-size:11px;color:var(--text-light);margin-top:2px">Open Alerts</div>
-      </div>
-    </div>` : ''}`;
+        <div class="ap-trend-wrap">${bars}</div>
+        <div style="font-size:11px;color:var(--text-light);margin-top:6px">Avg treatment score per day</div>
+      </div>`);
+  }
+
+  // ── Highlights row (conversions / risk / alerts) ─────────────────────────
+  if (detail) {
+    const conversions = (detail.analyses||[]).filter(x=>x.outcome==='converted').length;
+    const risks       = (detail.analyses||[]).filter(x=>(x.risk_flags||[]).length>0).length;
+    const openAlerts  = (detail.alerts||[]).length;
+    if (conversions > 0 || risks > 0 || openAlerts > 0) {
+      const cells = [];
+      if (conversions > 0) cells.push(`<div class="ap-mini-card" style="text-align:center"><div style="font-size:26px;font-weight:800;color:var(--green)">${conversions}</div><div style="font-size:11px;color:var(--text-light);margin-top:2px">Conversions</div></div>`);
+      if (risks > 0)       cells.push(`<div class="ap-mini-card" style="text-align:center"><div style="font-size:26px;font-weight:800;color:var(--red)">${risks}</div><div style="font-size:11px;color:var(--text-light);margin-top:2px">Leads w/ Risk Flags</div></div>`);
+      if (openAlerts > 0)  cells.push(`<div class="ap-mini-card" style="text-align:center"><div style="font-size:26px;font-weight:800;color:#FF8F3C">${openAlerts}</div><div style="font-size:11px;color:var(--text-light);margin-top:2px">Open Alerts</div></div>`);
+      if (cells.length) parts.push(`<div style="display:grid;grid-template-columns:repeat(${cells.length},1fr);gap:10px">${cells.join('')}</div>`);
+    }
+  }
+
+  el.innerHTML = parts.length
+    ? `<div style="display:flex;flex-direction:column;gap:12px">${parts.join('')}</div>`
+    : `<div class="ap-empty" style="padding:32px">No analysis data available for this agent in the selected period.<br><span style="font-size:12px;color:var(--text-light)">Try switching to a wider range (Week or Month).</span></div>`;
 }
 
 function _apRenderCalls(calls) {

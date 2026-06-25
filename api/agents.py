@@ -611,18 +611,18 @@ def agent_detail(
 def _agent_detail_inner(agent: str, range_: str, wa_line: str):
     target = _norm(agent)
     if not target:
-        return {"agent": agent, "calls": [], "wa_leads": [], "analyses": [], "alerts": []}
+        return {"agent": agent, "stats": {}, "calls": [], "wa_leads": [], "analyses": [], "alerts": []}
 
     since = _since(range_)
 
-    # ── Calls for this agent in range ─────────────────────────────────────────
+    # ── Calls for this agent in range (no .order() — avoids pagination issues) ──
     raw_calls = _paginate(
         lambda: supabase.table("calls")
         .select("lead_id,duration_seconds,called_at,agent_name")
         .gte("called_at", since)
-        .order("called_at", desc=True)
     )
     agent_calls = [c for c in raw_calls if _norm(c.get("agent_name")) == target]
+    agent_calls.sort(key=lambda x: x.get("called_at") or "", reverse=True)
 
     # ── Messages for this agent in range ─────────────────────────────────────
     raw_msgs = _paginate(
@@ -631,15 +631,16 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         .gte("sent_at", since)
     )
 
-    # ── Collect all lead IDs we need ─────────────────────────────────────────
-    call_lead_ids = {c["lead_id"] for c in agent_calls if c.get("lead_id")}
-    msg_lead_ids_all = {m["lead_id"] for m in raw_msgs if m.get("lead_id")}
+    # ── Collect lead IDs: call leads (unfiltered) + message leads ─────────────
+    call_lead_ids: set[str] = {c["lead_id"] for c in agent_calls if c.get("lead_id")}
+    msg_lead_ids_all: set[str] = {m["lead_id"] for m in raw_msgs if m.get("lead_id")}
     all_lead_ids = list(call_lead_ids | msg_lead_ids_all)
 
-    leads = []
+    # Fetch all lead details; keep Maqsam leads regardless of WA line filter
+    leads_raw: list[dict] = []
     idx = 0
     while idx < len(all_lead_ids):
-        leads.extend(
+        leads_raw.extend(
             supabase.table("leads")
             .select("id,phone,name,assigned_agent,status,score,channel,whatsapp_business_number")
             .in_("id", all_lead_ids[idx:idx + BATCH_SIZE])
@@ -647,39 +648,44 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         )
         idx += BATCH_SIZE
 
+    # WA-line filter: Maqsam leads always pass; only WA leads are filtered
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
-        leads = [l for l in leads if matches_business_line(l, wa_line)]
+        leads_raw = [
+            l for l in leads_raw
+            if str(l.get("channel") or "").lower() == "maqsam"
+            or matches_business_line(l, wa_line)
+            or (str(l.get("channel") or "").lower() == "whatsapp" and not l.get("whatsapp_business_number"))
+        ]
 
-    lead_by_id = {l["id"]: l for l in leads if l.get("id")}
-    lead_agent_map = {l["id"]: _norm(l.get("assigned_agent")) for l in leads if l.get("id")}
+    lead_by_id = {l["id"]: l for l in leads_raw if l.get("id")}
+    lead_agent_map = {l["id"]: _norm(l.get("assigned_agent")) for l in leads_raw if l.get("id")}
 
     # Build fallback map for message attribution
     lead_to_agent_fallback: dict[str, str] = {}
     for m in raw_msgs:
-        lid = m.get("lead_id")
-        ag = _norm(m.get("agent_name"))
+        lid = m.get("lead_id"); ag = _norm(m.get("agent_name"))
         if lid and m.get("direction") == "outbound" and ag:
             lead_to_agent_fallback.setdefault(lid, ag)
     for c in raw_calls:
-        lid = c.get("lead_id")
-        ag = _norm(c.get("agent_name"))
+        lid = c.get("lead_id"); ag = _norm(c.get("agent_name"))
         if lid and ag:
             lead_to_agent_fallback.setdefault(lid, ag)
 
-    # Filter messages attributed to this agent
-    agent_msgs = []
-    for m in raw_msgs:
-        ag = _message_agent_name(m, lead_agent_map=lead_agent_map, lead_to_agent_fallback=lead_to_agent_fallback)
-        if ag == target:
-            agent_msgs.append(m)
+    # Messages attributed to this agent
+    agent_msgs = [
+        m for m in raw_msgs
+        if _message_agent_name(m, lead_agent_map=lead_agent_map, lead_to_agent_fallback=lead_to_agent_fallback) == target
+    ]
 
-    # ── AI Analyses for this agent's leads ───────────────────────────────────
-    agent_lead_ids = (
-        {l["id"] for l in leads if _norm(l.get("assigned_agent")) == target}
+    # ── Lead IDs attributed to this agent ─────────────────────────────────────
+    agent_lead_ids: set[str] = (
+        {l["id"] for l in leads_raw if _norm(l.get("assigned_agent")) == target}
         | call_lead_ids
         | {m["lead_id"] for m in agent_msgs if m.get("lead_id")}
     )
-    analyses_raw = []
+
+    # ── AI Analyses ───────────────────────────────────────────────────────────
+    analyses_raw: list[dict] = []
     aid_list = list(agent_lead_ids)
     idx = 0
     while idx < len(aid_list):
@@ -687,12 +693,12 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
             supabase.table("ai_analysis")
             .select("lead_id,sentiment,treatment_score,outcome,summary,summary_en,summary_ar,risk_flags,analyzed_at,source")
             .in_("lead_id", aid_list[idx:idx + BATCH_SIZE])
-            .order("analyzed_at", desc=True)
             .execute().data or []
         )
         idx += BATCH_SIZE
+    analyses_raw.sort(key=lambda x: x.get("analyzed_at") or "", reverse=True)
 
-    # ── Alerts for this agent ─────────────────────────────────────────────────
+    # ── Alerts ────────────────────────────────────────────────────────────────
     alerts_raw = (
         supabase.table("alerts")
         .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
@@ -700,84 +706,19 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         .order("created_at", desc=True)
         .execute().data or []
     )
-
-    # ── Build response ────────────────────────────────────────────────────────
-    # Calls list
-    calls_out = []
-    for c in sorted(agent_calls, key=lambda x: x.get("called_at") or "", reverse=True)[:50]:
-        lead = lead_by_id.get(c.get("lead_id") or "")
-        dur = c.get("duration_seconds") or 0
-        calls_out.append({
-            "lead_phone": lead.get("phone") if lead else None,
-            "lead_name":  lead.get("name")  if lead else None,
-            "duration_seconds": dur,
-            "answered": dur > 0,
-            "called_at": c.get("called_at"),
-        })
-
-    # WA leads grouped by lead_id
-    by_lead: dict[str, dict] = {}
-    for m in agent_msgs:
-        lid = m.get("lead_id")
-        if not lid:
-            continue
-        if lid not in by_lead:
-            lead = lead_by_id.get(lid, {})
-            by_lead[lid] = {
-                "lead_phone": lead.get("phone"),
-                "lead_name":  lead.get("name"),
-                "messages_sent": 0,
-                "messages_received": 0,
-                "last_message_at": None,
-            }
-        entry = by_lead[lid]
-        if m.get("direction") == "outbound":
-            entry["messages_sent"] += 1
-        else:
-            entry["messages_received"] += 1
-        ts = m.get("sent_at")
-        if ts and (not entry["last_message_at"] or ts > entry["last_message_at"]):
-            entry["last_message_at"] = ts
-
-    wa_leads_out = sorted(by_lead.values(), key=lambda x: x["last_message_at"] or "", reverse=True)[:50]
-
-    # AI analyses – one per lead, most recent
-    seen_leads: set[str] = set()
-    analyses_out = []
-    for a in analyses_raw:
-        lid = a.get("lead_id")
-        if not lid or lid in seen_leads:
-            continue
-        seen_leads.add(lid)
-        lead = lead_by_id.get(lid, {})
-        analyses_out.append({
-            "lead_phone":     lead.get("phone"),
-            "lead_name":      lead.get("name"),
-            "sentiment":      a.get("sentiment"),
-            "treatment_score": a.get("treatment_score"),
-            "outcome":        a.get("outcome"),
-            "summary_en":     a.get("summary_en") or a.get("summary"),
-            "summary_ar":     a.get("summary_ar") or a.get("summary"),
-            "risk_flags":     a.get("risk_flags") or [],
-            "analyzed_at":    a.get("analyzed_at"),
-            "source":         a.get("source"),
-        })
-        if len(analyses_out) >= 30:
-            break
-
-    # Alerts attribution (same logic as _agent_alerts_inner)
-    all_leads_for_alerts = _paginate(lambda: supabase.table("leads").select("id,phone,name,assigned_agent"))
-    lead_by_id_full = {l["id"]: l for l in all_leads_for_alerts if l.get("id")}
-    lead_agent_full = {l["id"]: _norm(l.get("assigned_agent")) for l in all_leads_for_alerts if l.get("id")}
-    fallback_full: dict[str, str] = {}
+    # Need full lead table for alert attribution
+    all_leads_fa = _paginate(lambda: supabase.table("leads").select("id,phone,name,assigned_agent"))
+    lbi_full = {l["id"]: l for l in all_leads_fa if l.get("id")}
+    lag_full = {l["id"]: _norm(l.get("assigned_agent")) for l in all_leads_fa if l.get("id")}
+    fb_full: dict[str, str] = {}
     for m in raw_msgs:
         lid = m.get("lead_id"); ag = _norm(m.get("agent_name"))
         if lid and m.get("direction") == "outbound" and ag:
-            fallback_full.setdefault(lid, ag)
+            fb_full.setdefault(lid, ag)
     for c in raw_calls:
         lid = c.get("lead_id"); ag = _norm(c.get("agent_name"))
         if lid and ag:
-            fallback_full.setdefault(lid, ag)
+            fb_full.setdefault(lid, ag)
 
     alerts_out = []
     for a in alerts_raw:
@@ -785,24 +726,151 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         raw_ag = _norm(a.get("agent_name"))
         if raw_ag and raw_ag.lower() in ("unknown", "team", "n/a"):
             raw_ag = None
-        attributed = raw_ag or (lead_agent_full.get(lid) if lid else None) or (fallback_full.get(lid) if lid else None)
+        attributed = raw_ag or (lag_full.get(lid) if lid else None) or (fb_full.get(lid) if lid else None)
         if attributed != target:
             continue
-        lead = lead_by_id_full.get(lid, {})
+        lead = lbi_full.get(lid, {})
         alerts_out.append({
-            "id":        a.get("id"),
-            "lead_id":   lid,
-            "lead_phone": lead.get("phone"),
-            "lead_name":  lead.get("name"),
-            "severity":  a.get("severity") or "MED",
-            "type":      a.get("type") or "alert",
-            "message":   a.get("message") or "",
+            "id": a.get("id"), "lead_id": lid,
+            "lead_phone": lead.get("phone"), "lead_name": lead.get("name"),
+            "severity": a.get("severity") or "MED",
+            "type": a.get("type") or "alert",
+            "message": a.get("message") or "",
             "created_at": a.get("created_at"),
         })
 
+    # ── Aggregated stats (same range as lists) ────────────────────────────────
+    completed_calls = [c for c in agent_calls if (c.get("duration_seconds") or 0) > 0]
+    calls_handled = len(completed_calls)
+    avg_call_dur = (
+        round(sum(c["duration_seconds"] for c in completed_calls) / calls_handled)
+        if calls_handled else 0
+    )
+    outbound_msgs = [m for m in agent_msgs if m.get("direction") == "outbound"]
+    wa_chats = len({m["lead_id"] for m in outbound_msgs if m.get("lead_id")})
+    messages_sent = len(outbound_msgs)
+
+    # Response times
+    by_lead_rt: dict[str, list] = defaultdict(list)
+    for m in agent_msgs:
+        if m.get("lead_id"):
+            by_lead_rt[m["lead_id"]].append(m)
+    response_times = []
+    for msgs in by_lead_rt.values():
+        sorted_msgs = sorted(msgs, key=lambda x: x.get("sent_at") or "")
+        last_in = None
+        for m in sorted_msgs:
+            if m["direction"] == "inbound":
+                last_in = datetime.fromisoformat(m["sent_at"].replace("Z", "+00:00"))
+            elif m["direction"] == "outbound" and last_in:
+                out_t = datetime.fromisoformat(m["sent_at"].replace("Z", "+00:00"))
+                gap = (out_t - last_in).total_seconds() / 60
+                if gap >= 0:
+                    response_times.append(gap)
+                last_in = None
+
+    # Sentiment and treatment from analyses
+    sentiments: list[str] = []
+    treatment_scores: list[float] = []
+    daily_scores: dict[str, list] = defaultdict(list)
+    seven_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    lead_analysis: dict[str, list] = defaultdict(list)
+    for a in analyses_raw:
+        if a.get("lead_id"):
+            lead_analysis[a["lead_id"]].append(a)
+    for lid in agent_lead_ids:
+        for a in lead_analysis.get(lid, []):
+            if a.get("sentiment"):
+                sentiments.append(a["sentiment"])
+            if a.get("treatment_score") is not None:
+                if not (a.get("source") == "maqsam" and a["treatment_score"] == 0):
+                    treatment_scores.append(a["treatment_score"])
+            ts_val = a.get("analyzed_at")
+            score_val = a.get("treatment_score")
+            if ts_val and score_val is not None and ts_val >= seven_ago:
+                if not (a.get("source") == "maqsam" and score_val == 0):
+                    daily_scores[ts_val[:10]].append(score_val)
+    quality_trend = sorted(
+        [{"date": d, "avg_score": round(sum(s)/len(s),1)} for d,s in daily_scores.items()],
+        key=lambda x: x["date"],
+    )
+
+    # ── Build output lists ────────────────────────────────────────────────────
+    calls_out = [
+        {
+            "lead_phone": lead_by_id.get(c.get("lead_id") or "", {}).get("phone"),
+            "lead_name":  lead_by_id.get(c.get("lead_id") or "", {}).get("name"),
+            "duration_seconds": c.get("duration_seconds") or 0,
+            "answered": (c.get("duration_seconds") or 0) > 0,
+            "called_at": c.get("called_at"),
+        }
+        for c in agent_calls[:50]
+    ]
+
+    by_lead_wa: dict[str, dict] = {}
+    for m in agent_msgs:
+        lid = m.get("lead_id")
+        if not lid:
+            continue
+        if lid not in by_lead_wa:
+            lead = lead_by_id.get(lid, {})
+            by_lead_wa[lid] = {
+                "lead_phone": lead.get("phone"), "lead_name": lead.get("name"),
+                "messages_sent": 0, "messages_received": 0, "last_message_at": None,
+            }
+        entry = by_lead_wa[lid]
+        if m.get("direction") == "outbound":
+            entry["messages_sent"] += 1
+        else:
+            entry["messages_received"] += 1
+        ts = m.get("sent_at")
+        if ts and (not entry["last_message_at"] or ts > entry["last_message_at"]):
+            entry["last_message_at"] = ts
+    wa_leads_out = sorted(by_lead_wa.values(), key=lambda x: x["last_message_at"] or "", reverse=True)[:50]
+
+    seen: set[str] = set()
+    analyses_out = []
+    for a in analyses_raw:
+        lid = a.get("lead_id")
+        if not lid or lid in seen:
+            continue
+        seen.add(lid)
+        lead = lead_by_id.get(lid, {})
+        analyses_out.append({
+            "lead_phone":  lead.get("phone"),
+            "lead_name":   lead.get("name"),
+            "sentiment":   a.get("sentiment"),
+            "treatment_score": a.get("treatment_score"),
+            "outcome":     a.get("outcome"),
+            "summary_en":  a.get("summary_en") or a.get("summary"),
+            "summary_ar":  a.get("summary_ar") or a.get("summary"),
+            "risk_flags":  a.get("risk_flags") or [],
+            "analyzed_at": a.get("analyzed_at"),
+            "source":      a.get("source"),
+        })
+        if len(analyses_out) >= 30:
+            break
+
     return {
-        "agent":    target,
-        "range":    range_,
+        "agent": target,
+        "range": range_,
+        "stats": {
+            "calls_handled":            calls_handled,
+            "calls_total":              len(agent_calls),
+            "wa_chats":                 wa_chats,
+            "messages_sent":            messages_sent,
+            "leads":                    len(agent_lead_ids),
+            "avg_call_duration_seconds": avg_call_dur,
+            "avg_response_time_min":    round(sum(response_times)/len(response_times),1) if response_times else 0,
+            "avg_treatment_score":      round(sum(treatment_scores)/len(treatment_scores),1) if treatment_scores else 0,
+            "sentiment": {
+                "positive": sentiments.count("positive"),
+                "neutral":  sentiments.count("neutral"),
+                "negative": sentiments.count("negative"),
+            },
+            "quality_trend": quality_trend,
+            "open_alerts": len(alerts_out),
+        },
         "calls":    calls_out,
         "wa_leads": wa_leads_out,
         "analyses": analyses_out,
