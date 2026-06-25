@@ -648,14 +648,9 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         )
         idx += BATCH_SIZE
 
-    # WA-line filter: Maqsam leads always pass; only WA leads are filtered
-    if wa_line and wa_line.lower() not in ("all", "*", "any"):
-        leads_raw = [
-            l for l in leads_raw
-            if str(l.get("channel") or "").lower() == "maqsam"
-            or matches_business_line(l, wa_line)
-            or (str(l.get("channel") or "").lower() == "whatsapp" and not l.get("whatsapp_business_number"))
-        ]
+    # No WA-line filter here: the agent profile shows ALL the agent's activity
+    # across every line. Filtering by line would exclude leads from lead_by_id
+    # and break message attribution for WA-only agents.
 
     lead_by_id = {l["id"]: l for l in leads_raw if l.get("id")}
     lead_agent_map = {l["id"]: _norm(l.get("assigned_agent")) for l in leads_raw if l.get("id")}

@@ -2224,30 +2224,34 @@ async function openAgentProfile(agentName) {
 
   apSwitchTab('overview', document.getElementById('apTabBtn-overview'));
 
-  // Render header immediately from name alone; show loading state for data
-  _apRenderHeader(agentName, null);
-  document.getElementById('apKpis').innerHTML =
-    Array(6).fill(`<div class="ap-kpi"><div class="skeleton" style="height:22px;width:36px;margin:0 auto 6px"></div><div class="skeleton" style="height:10px;width:48px;margin:0 auto"></div></div>`).join('');
-  document.getElementById('apTabOverview').innerHTML = `<div class="ap-empty">Loading…</div>`;
+  // Show cached agent data immediately so the KPI strip is never blank
+  const cachedAgent = (_cache?.[3]?.agents || []).find(a => a.agent === agentName);
+  _apRenderHeader(agentName, cachedAgent);
+  _apRenderKpisFromCache(cachedAgent);
+  _apRenderOverviewFromCache(cachedAgent);
+
   ['apTabCalls','apTabWa','apTabAi','apTabAlerts'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.innerHTML = `<div class="ap-empty">Loading…</div>`;
   });
-  // Reset alerts tab label
   const alertBtn = document.getElementById('apTabBtn-alerts');
   if (alertBtn) alertBtn.textContent = '⚠️ Alerts';
 
   modal.classList.add('open');
 
+  // Always fetch with "week" so there's meaningful data regardless of dashboard range
+  const detailRange = 'week';
   try {
-    const url = `${API}/api/agents/detail?agent=${encodeURIComponent(agentName)}&range=${encodeURIComponent(range)}&wa_line=${encodeURIComponent(waLine)}`;
+    const url = `${API}/api/agents/detail?agent=${encodeURIComponent(agentName)}&range=${encodeURIComponent(detailRange)}&wa_line=all`;
     const r = await fetch(url);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     if (_apCurrentAgent !== agentName) return;
 
     const stats = data.stats || {};
-    _apRenderHeader(agentName, stats);
+    // Update header tier from fresh data if treatment score is available
+    if (stats.avg_treatment_score > 0) _apRenderHeader(agentName, stats);
+    // Update KPIs and overview from detail stats (week data)
     _apRenderKpis(stats);
     _apRenderOverview(stats, data);
     _apRenderCalls(data.calls || []);
@@ -2258,13 +2262,64 @@ async function openAgentProfile(agentName) {
       alertBtn.textContent = `⚠️ Alerts (${data.alerts.length})`;
   } catch(e) {
     console.error('[profile] fetch error:', e);
-    document.getElementById('apTabOverview').innerHTML =
-      `<div class="ap-empty" style="color:var(--red)">Failed to load: ${esc(String(e))}</div>`;
+    // Keep cached overview, just mark detail tabs as failed
     ['apTabCalls','apTabWa','apTabAi','apTabAlerts'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.innerHTML = '';
+      if (el) el.innerHTML = `<div class="ap-empty" style="color:var(--red)">Failed to load detail data.</div>`;
     });
   }
+}
+
+// Render KPI strip immediately from cached agents data (same as shown in table)
+function _apRenderKpisFromCache(a) {
+  const el = document.getElementById('apKpis');
+  if (!el) return;
+  if (!a) {
+    el.innerHTML = `<div class="ap-kpi"><div class="ap-kpi-val">—</div><div class="ap-kpi-lbl">Loading…</div></div>`;
+    return;
+  }
+  const kpis = [
+    { val: fmt(a.calls_handled  ?? a.leads ?? 0),   lbl: '📞 Calls' },
+    { val: fmt(a.wa_chats       ?? 0),               lbl: '💬 WA Chats' },
+    { val: fmt(a.messages_sent  ?? 0),               lbl: 'Msgs Sent' },
+    { val: fmt(a.leads          ?? 0),               lbl: '👥 Leads' },
+    { val: a.avg_response_time_min > 0 ? `${fmt(a.avg_response_time_min)}m` : '—', lbl: '⏱ Avg Reply' },
+    { val: a.avg_treatment_score > 0 ? `${fmt(a.avg_treatment_score)}/100` : '—', lbl: '⭐ Treatment' },
+  ].filter(k => k.val !== '0' && k.val !== fmt(0));
+  el.style.gridTemplateColumns = `repeat(${kpis.length || 2}, 1fr)`;
+  el.innerHTML = (kpis.length ? kpis : [
+    { val: fmt(a.leads || 0), lbl: '👥 Leads' },
+    { val: a.avg_treatment_score > 0 ? `${fmt(a.avg_treatment_score)}/100` : '—', lbl: '⭐ Treatment' },
+  ]).map(k => `<div class="ap-kpi"><div class="ap-kpi-val">${k.val}</div><div class="ap-kpi-lbl">${k.lbl}</div></div>`).join('');
+}
+
+// Render Overview tab from cached agents data while detail is loading
+function _apRenderOverviewFromCache(a) {
+  const el = document.getElementById('apTabOverview');
+  if (!el) return;
+  if (!a) { el.innerHTML = `<div class="ap-empty">Loading…</div>`; return; }
+  const s = a.sentiment || {};
+  const tot = (s.positive||0)+(s.neutral||0)+(s.negative||0);
+  const pPct  = tot ? Math.round(s.positive/tot*100) : 0;
+  const nuPct = tot ? Math.round(s.neutral/tot*100) : 0;
+  const nPct  = tot ? Math.round(s.negative/tot*100) : 0;
+  const trend = a.quality_trend || [];
+  const maxScore = trend.length ? Math.max(...trend.map(t=>t.avg_score||0), 1) : 1;
+  const bars = trend.map(t => {
+    const pct = Math.round((t.avg_score||0)/maxScore*100);
+    const col = t.avg_score >= 70 ? 'var(--green)' : t.avg_score >= 50 ? 'var(--blue)' : 'var(--red)';
+    return `<div class="ap-trend-bar-col"><div class="ap-trend-bar" style="height:${pct}%;background:${col}" title="${t.avg_score}"></div><div class="ap-trend-lbl">${(t.date||'').slice(5)}</div></div>`;
+  }).join('');
+  let html = '';
+  if (tot > 0) html += `<div class="ap-mini-card"><div class="ap-section-title">Sentiment</div>
+    <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--green)"></span> Positive</span><span style="font-weight:700;color:var(--green)">${s.positive}</span></div>
+    <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--blue)"></span> Neutral</span><span style="font-weight:700;color:var(--blue)">${s.neutral}</span></div>
+    <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--red)"></span> Negative</span><span style="font-weight:700;color:var(--red)">${s.negative}</span></div>
+    <div class="ap-sent-bar"><div class="ap-sent-pos" style="width:${pPct}%"></div><div class="ap-sent-neu" style="width:${nuPct}%"></div><div class="ap-sent-neg" style="width:${nPct}%"></div></div>
+  </div>`;
+  if (bars) html += `<div class="ap-mini-card"><div class="ap-section-title">7-Day Quality Trend</div><div class="ap-trend-wrap">${bars}</div></div>`;
+  if (!html) html = `<div class="ap-empty" style="padding:16px">Loading full details…</div>`;
+  el.innerHTML = `<div style="display:flex;flex-direction:column;gap:12px">${html}</div>`;
 }
 
 function _apRenderHeader(name, stats) {
