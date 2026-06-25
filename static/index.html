@@ -2024,7 +2024,7 @@ function renderAgents(data) {
       <td><div class="sparkline-cell"><button class="agent-name-btn" onclick='openAgentProfile(${JSON.stringify(a.agent||"")})'>${esc(a.agent || '—')}</button>${spark}</div></td>
       <td>${fmt(a.leads)}</td>
       <td>${(a.calls_handled || 0) > 0 ? `<strong>${fmt(a.calls_handled)}</strong>` : `<span style="color:var(--text-light)">—</span>`}</td>
-      <td>${(a.wa_chats || 0) > 0 ? `<span class="pill pill-blue" style="font-size:11px">${fmt(a.wa_chats)}</span>` : `<span style="color:var(--text-light)">—</span>`}</td>
+      <td><span class="pill pill-blue" style="font-size:11px">${fmt(a.wa_chats || 0)}</span></td>
       <td>${fmt(a.messages_sent || 0)}</td>
       <td>${avgDur > 0 ? dur(avgDur) : '—'}</td>
       <td>${tPill}</td>
