@@ -247,7 +247,11 @@ def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_sc
         .execute().data or []
     )
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
-        msg_lead_rows = [r for r in msg_lead_rows if matches_business_line(r, wa_line)]
+        msg_lead_rows = [
+            r for r in msg_lead_rows
+            if matches_business_line(r, wa_line)
+            or (str(r.get("channel") or "").lower() == "whatsapp" and not r.get("whatsapp_business_number"))
+        ]
     msg_lead_ids = {r["id"] for r in msg_lead_rows}
     all_active_ids = list(call_lead_ids | msg_lead_ids)
 
@@ -267,7 +271,14 @@ def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_sc
     # ── 3. Merge leads sharing the same phone into one card ───────────────────
     all_leads = _merge_by_phone(raw_leads)
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
-        all_leads = [lead for lead in all_leads if matches_business_line(lead, wa_line)]
+        all_leads = [
+            lead for lead in all_leads
+            if matches_business_line(lead, wa_line)
+            or (
+                any(c == "whatsapp" for c in (lead.get("channels") or []))
+                and not lead.get("whatsapp_business_number")
+            )
+        ]
 
     # Build reverse map: every raw lead_id → its merged primary lead_id
     raw_to_primary: dict[str, str] = {}
@@ -667,7 +678,11 @@ def _export_rows_light(range, wa_line, phone_search, country, min_score, max_sco
         .execute().data or []
     )
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
-        msg_lead_rows = [r for r in msg_lead_rows if matches_business_line(r, wa_line)]
+        msg_lead_rows = [
+            r for r in msg_lead_rows
+            if matches_business_line(r, wa_line)
+            or (str(r.get("channel") or "").lower() == "whatsapp" and not r.get("whatsapp_business_number"))
+        ]
     msg_lead_ids = {r["id"] for r in msg_lead_rows if r.get("id")}
     all_active_ids = list(call_lead_ids | msg_lead_ids)
     if not all_active_ids:
@@ -683,7 +698,14 @@ def _export_rows_light(range, wa_line, phone_search, country, min_score, max_sco
         )
     all_leads = _merge_by_phone(raw_leads)
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
-        all_leads = [lead for lead in all_leads if matches_business_line(lead, wa_line)]
+        all_leads = [
+            lead for lead in all_leads
+            if matches_business_line(lead, wa_line)
+            or (
+                any(c == "whatsapp" for c in (lead.get("channels") or []))
+                and not lead.get("whatsapp_business_number")
+            )
+        ]
 
     raw_to_primary: dict[str, str] = {}
     for merged in all_leads:
