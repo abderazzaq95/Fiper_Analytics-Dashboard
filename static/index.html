@@ -189,6 +189,53 @@ tr:hover td{background:#fafbff}
 .modal-title{font-size:14px;font-weight:800;color:var(--navy)}
 .modal-close{border:none;background:var(--bg);color:var(--text);width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:18px;line-height:1}
 .modal-body{padding:8px 0;overflow:auto}
+/* ── Agent Profile Modal ── */
+.modal-panel-wide{width:min(920px,100%);max-height:90vh}
+.ap-header{padding:18px 22px;background:linear-gradient(135deg,#1e2e4a 0%,#2d3c58 100%);display:flex;align-items:center;gap:14px;border-radius:var(--r) var(--r) 0 0;flex-shrink:0}
+.ap-avatar{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#fff;flex-shrink:0;border:2px solid rgba(255,255,255,.2)}
+.ap-name{font-size:17px;font-weight:800;color:#fff;line-height:1.2}
+.ap-tier{font-size:11px;font-weight:600;margin-top:3px;padding:2px 8px;border-radius:20px;display:inline-block}
+.ap-tier.top{background:rgba(38,207,75,.2);color:#7fffaa}
+.ap-tier.good{background:rgba(7,116,255,.2);color:#90c4ff}
+.ap-tier.mid{background:rgba(255,143,60,.2);color:#ffc08a}
+.ap-tier.low{background:rgba(255,0,3,.2);color:#ff9a9a}
+.ap-close-btn{margin-left:auto;background:rgba(255,255,255,.12);border:none;color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:18px;line-height:1;flex-shrink:0}
+.ap-kpis{display:grid;grid-template-columns:repeat(6,1fr);border-bottom:1px solid var(--border);flex-shrink:0}
+.ap-kpi{padding:12px 6px;text-align:center;border-right:1px solid var(--border);background:#fff}
+.ap-kpi:last-child{border-right:none}
+.ap-kpi-val{font-size:19px;font-weight:800;color:var(--navy)}
+.ap-kpi-lbl{font-size:10px;color:var(--text-light);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ap-tabs{display:flex;padding:0 12px;background:#fff;border-bottom:2px solid var(--border);flex-shrink:0;overflow-x:auto;gap:0}
+.ap-tab{padding:10px 14px;font-size:12px;font-weight:600;color:var(--text-light);cursor:pointer;border:none;background:transparent;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap;transition:.15s;font-family:inherit}
+.ap-tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+.ap-tab-panel{display:none;padding:16px 20px}
+.ap-tab-panel.active{display:block}
+.ap-section-title{font-size:11px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.ap-grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:600px){.ap-grid2{grid-template-columns:1fr}.ap-kpis{grid-template-columns:repeat(3,1fr)}}
+.ap-mini-card{background:var(--bg);border-radius:10px;padding:14px}
+.ap-sent-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-size:13px}
+.ap-sent-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.ap-sent-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;margin-top:10px}
+.ap-sent-pos{background:var(--green)}.ap-sent-neu{background:var(--blue)}.ap-sent-neg{background:var(--red)}
+.ap-trend-wrap{display:flex;align-items:flex-end;gap:3px;height:52px}
+.ap-trend-bar-col{display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;height:100%;justify-content:flex-end}
+.ap-trend-bar{width:100%;border-radius:2px 2px 0 0;min-height:2px;background:var(--blue)}
+.ap-trend-lbl{font-size:9px;color:var(--text-light)}
+.ap-table{width:100%;border-collapse:collapse;font-size:12px}
+.ap-table th{background:var(--bg);padding:7px 10px;font-weight:700;color:var(--text-light);font-size:11px;text-align:left;position:sticky;top:0;z-index:1}
+.ap-table td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.ap-table tr:last-child td{border-bottom:none}
+.ap-table tr:hover td{background:var(--bg)}
+.ap-ai-card{background:var(--bg);border-radius:10px;padding:12px 14px;margin-bottom:8px}
+.ap-ai-card:last-child{margin-bottom:0}
+.ap-ai-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px}
+.ap-ai-summary{font-size:12px;color:var(--text);line-height:1.5;margin-top:6px;padding:8px 10px;background:rgba(7,116,255,.04);border-left:2px solid var(--blue);border-radius:0 6px 6px 0}
+.ap-ai-risks{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.ap-ai-meta{font-size:11px;color:var(--text-light);margin-top:4px}
+.ap-empty{text-align:center;padding:32px 20px;color:var(--text-light);font-size:13px}
+.agent-name-btn{background:none;border:none;font-weight:700;color:var(--blue);cursor:pointer;font-size:13px;font-family:inherit;padding:0;text-decoration:none}
+.agent-name-btn:hover{color:var(--navy);text-decoration:underline}
 .agent-alert-card{padding:14px 20px;border-bottom:1px solid var(--border)}
 .agent-alert-card:last-child{border-bottom:none}
 .agent-alert-top{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
@@ -794,6 +841,41 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
         <button class="modal-close" type="button" onclick="closeAgentAlertsModal()" aria-label="Close">×</button>
       </div>
       <div class="modal-body" id="agentAlertsBody"></div>
+    </div>
+  </div>
+
+  <!-- Agent Profile Modal -->
+  <div class="modal-backdrop" id="agentProfileModal" onclick="closeAgentProfile(event)">
+    <div class="modal-panel modal-panel-wide" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
+      <!-- Header (filled by JS) -->
+      <div class="ap-header" id="apHeader">
+        <div class="ap-avatar" id="apAvatar">?</div>
+        <div>
+          <div class="ap-name" id="apName">—</div>
+          <div class="ap-tier" id="apTier"></div>
+        </div>
+        <button class="ap-close-btn" onclick="closeAgentProfile()" aria-label="Close">×</button>
+      </div>
+      <!-- KPI strip -->
+      <div class="ap-kpis" id="apKpis">
+        <div class="ap-kpi"><div class="ap-kpi-val skeleton" style="height:22px;width:40px;margin:0 auto 4px"></div><div class="ap-kpi-lbl">—</div></div>
+      </div>
+      <!-- Tabs -->
+      <div class="ap-tabs">
+        <button class="ap-tab active" id="apTabBtn-overview" onclick="apSwitchTab('overview',this)">Overview</button>
+        <button class="ap-tab" id="apTabBtn-calls" onclick="apSwitchTab('calls',this)">📞 Calls</button>
+        <button class="ap-tab" id="apTabBtn-wa" onclick="apSwitchTab('wa',this)">💬 WA Chats</button>
+        <button class="ap-tab" id="apTabBtn-ai" onclick="apSwitchTab('ai',this)">AI Analysis</button>
+        <button class="ap-tab" id="apTabBtn-alerts" onclick="apSwitchTab('alerts',this)">⚠️ Alerts</button>
+      </div>
+      <!-- Tab panels -->
+      <div style="overflow:auto;flex:1;min-height:0">
+        <div class="ap-tab-panel active" id="apTabOverview"></div>
+        <div class="ap-tab-panel" id="apTabCalls"></div>
+        <div class="ap-tab-panel" id="apTabWa"></div>
+        <div class="ap-tab-panel" id="apTabAi"></div>
+        <div class="ap-tab-panel" id="apTabAlerts"></div>
+      </div>
     </div>
   </div>
 
@@ -1864,7 +1946,7 @@ function renderAgents(data) {
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
             <span class="pa-avatar" style="background:${avatarBg}">${initials}</span>
             <div style="min-width:0">
-              <div style="font-size:12px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px">${name}</div>
+              <button onclick='openAgentProfile(${JSON.stringify(name)})' style="font-size:12px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;background:none;border:none;cursor:pointer;padding:0;font-family:inherit;text-align:left">${esc(name)}</button>
               <div style="font-size:10px;color:${accent};font-weight:700;margin-top:1px">${RANK_MEDALS[i]} ${isAr ? RANK_LABEL_AR[i] : RANK_LABEL_EN[i]}</div>
             </div>
           </div>
@@ -1939,7 +2021,7 @@ function renderAgents(data) {
     const spark = sparkline(a.quality_trend || []);
 
     return `<tr>
-      <td><div class="sparkline-cell"><span class="agent-name-cell">${a.agent || '—'}</span>${spark}</div></td>
+      <td><div class="sparkline-cell"><button class="agent-name-btn" onclick='openAgentProfile(${JSON.stringify(a.agent||"")})'>${esc(a.agent || '—')}</button>${spark}</div></td>
       <td>${fmt(a.leads)}</td>
       <td>${(a.calls_handled || 0) > 0 ? `<strong>${fmt(a.calls_handled)}</strong>` : `<span style="color:var(--text-light)">—</span>`}</td>
       <td>${(a.wa_chats || 0) > 0 ? `<span class="pill pill-blue" style="font-size:11px">${fmt(a.wa_chats)}</span>` : `<span style="color:var(--text-light)">—</span>`}</td>
@@ -2116,6 +2198,265 @@ function openRiskFlagDetails(flag) {
 function closeAgentAlertsModal(ev) {
   if (ev && ev.target !== ev.currentTarget) return;
   document.getElementById('agentAlertsModal')?.classList.remove('open');
+}
+
+// ── Agent Profile Modal ───────────────────────────────────────────────────────
+let _apCurrentAgent = null;
+
+function apSwitchTab(name, btn) {
+  document.querySelectorAll('.ap-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.ap-tab-panel').forEach(p => p.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const panel = document.getElementById('apTab' + name.charAt(0).toUpperCase() + name.slice(1));
+  if (panel) panel.classList.add('active');
+}
+
+function closeAgentProfile(ev) {
+  if (ev && ev.target !== ev.currentTarget) return;
+  document.getElementById('agentProfileModal')?.classList.remove('open');
+}
+
+async function openAgentProfile(agentName) {
+  if (!agentName) return;
+  _apCurrentAgent = agentName;
+  const modal = document.getElementById('agentProfileModal');
+  if (!modal) return;
+
+  // Reset to overview tab
+  apSwitchTab('overview', document.getElementById('apTabBtn-overview'));
+
+  // Fill header from cached data immediately
+  const cachedAgent = (_cache?.[3]?.agents || []).find(a => a.agent === agentName);
+  _apRenderHeader(agentName, cachedAgent);
+  _apRenderKpis(cachedAgent);
+  _apRenderOverview(cachedAgent, null);
+
+  // Show loading in detail tabs
+  const loadMsg = `<div class="ap-empty">Loading...</div>`;
+  ['apTabCalls','apTabWa','apTabAi','apTabAlerts'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = loadMsg;
+  });
+
+  modal.classList.add('open');
+
+  // Fetch detail data
+  try {
+    const url = `${API}/api/agents/detail?agent=${encodeURIComponent(agentName)}&range=${encodeURIComponent(range)}&wa_line=${encodeURIComponent(waLine)}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (_apCurrentAgent !== agentName) return; // modal was closed/switched
+    _apRenderOverview(cachedAgent, data);
+    _apRenderCalls(data.calls || []);
+    _apRenderWa(data.wa_leads || []);
+    _apRenderAi(data.analyses || []);
+    _apRenderProfileAlerts(data.alerts || []);
+    // Update alerts tab label with count
+    const alertBtn = document.getElementById('apTabBtn-alerts');
+    if (alertBtn) alertBtn.textContent = `⚠️ Alerts${data.alerts?.length ? ` (${data.alerts.length})` : ''}`;
+  } catch(e) {
+    console.error('[profile] fetch error:', e);
+    ['apTabCalls','apTabWa','apTabAi','apTabAlerts'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = `<div class="ap-empty" style="color:var(--red)">Failed to load: ${esc(String(e))}</div>`;
+    });
+  }
+}
+
+function _apRenderHeader(name, a) {
+  const initials = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+  document.getElementById('apAvatar').textContent = initials;
+  document.getElementById('apName').textContent = name;
+  const ts = a?.avg_treatment_score || 0;
+  const tierEl = document.getElementById('apTier');
+  if (!a) { tierEl.textContent = ''; return; }
+  if (ts >= 80) { tierEl.textContent = '⭐ Top Performer'; tierEl.className = 'ap-tier top'; }
+  else if (ts >= 65) { tierEl.textContent = '👍 Good Performance'; tierEl.className = 'ap-tier good'; }
+  else if (ts >= 45) { tierEl.textContent = '📈 Needs Improvement'; tierEl.className = 'ap-tier mid'; }
+  else if (ts > 0)  { tierEl.textContent = '🔴 Underperforming'; tierEl.className = 'ap-tier low'; }
+  else { tierEl.textContent = ''; tierEl.className = 'ap-tier'; }
+}
+
+function _apRenderKpis(a) {
+  const el = document.getElementById('apKpis');
+  if (!el) return;
+  const kpis = a ? [
+    { val: fmt(a.calls_handled  || 0), lbl: '📞 Calls' },
+    { val: fmt(a.wa_chats       || 0), lbl: '💬 WA Chats' },
+    { val: fmt(a.messages_sent  || 0), lbl: 'Msgs Sent' },
+    { val: fmt(a.leads          || 0), lbl: '👥 Leads' },
+    { val: a.avg_response_time_min > 0 ? `${fmt(a.avg_response_time_min)}m` : '—', lbl: '⏱ Avg Reply' },
+    { val: a.avg_treatment_score > 0 ? `${fmt(a.avg_treatment_score)}/100` : '—', lbl: '⭐ Treatment' },
+  ] : [];
+  el.innerHTML = kpis.map(k => `<div class="ap-kpi"><div class="ap-kpi-val">${k.val}</div><div class="ap-kpi-lbl">${k.lbl}</div></div>`).join('');
+}
+
+function _apRenderOverview(a, detail) {
+  const el = document.getElementById('apTabOverview');
+  if (!el) return;
+  if (!a) { el.innerHTML = `<div class="ap-empty">No data for this agent in the selected range.</div>`; return; }
+
+  const s = a.sentiment || {};
+  const tot = (s.positive||0)+(s.neutral||0)+(s.negative||0);
+  const pPct = tot ? Math.round(s.positive/tot*100) : 0;
+  const nuPct = tot ? Math.round(s.neutral/tot*100) : 0;
+  const nPct  = tot ? Math.round(s.negative/tot*100) : 0;
+
+  // 7-day trend
+  const trend = a.quality_trend || [];
+  const maxScore = trend.length ? Math.max(...trend.map(t=>t.avg_score||0), 1) : 1;
+  const trendBars = trend.length
+    ? trend.map(t => {
+        const pct = Math.round((t.avg_score||0)/maxScore*100);
+        const day = t.date ? t.date.slice(5) : '';
+        const col = t.avg_score >= 70 ? 'var(--green)' : t.avg_score >= 50 ? 'var(--blue)' : 'var(--red)';
+        return `<div class="ap-trend-bar-col"><div class="ap-trend-bar" style="height:${pct}%;background:${col}" title="${t.avg_score}"></div><div class="ap-trend-lbl">${day}</div></div>`;
+      }).join('')
+    : `<div style="color:var(--text-light);font-size:12px;text-align:center;width:100%">No trend data</div>`;
+
+  // Response time analysis from detail
+  let callsSummary = '';
+  if (detail) {
+    const answered = (detail.calls||[]).filter(c=>c.answered).length;
+    const total    = (detail.calls||[]).length;
+    const ansRate  = total ? Math.round(answered/total*100) : 0;
+    const col = ansRate >= 70 ? 'var(--green)' : ansRate >= 40 ? 'var(--warn)' : 'var(--red)';
+    callsSummary = `<div class="ap-mini-card" style="margin-top:12px">
+      <div class="ap-section-title">Call Answer Rate</div>
+      <div style="font-size:28px;font-weight:800;color:${col}">${ansRate}%</div>
+      <div style="font-size:12px;color:var(--text-light);margin-top:2px">${answered} answered / ${total} total calls</div>
+    </div>`;
+  }
+
+  el.innerHTML = `
+    <div class="ap-grid2">
+      <div class="ap-mini-card">
+        <div class="ap-section-title">Sentiment Distribution</div>
+        ${tot === 0 ? `<div style="color:var(--text-light);font-size:12px">No sentiment data</div>` : `
+        <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--green)"></span> ${lang==='ar'?'إيجابي':'Positive'}</span><span style="font-weight:700;color:var(--green)">${s.positive||0}</span></div>
+        <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--blue)"></span> ${lang==='ar'?'محايد':'Neutral'}</span><span style="font-weight:700;color:var(--blue)">${s.neutral||0}</span></div>
+        <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--red)"></span> ${lang==='ar'?'سلبي':'Negative'}</span><span style="font-weight:700;color:var(--red)">${s.negative||0}</span></div>
+        <div class="ap-sent-bar">
+          <div class="ap-sent-pos" style="width:${pPct}%"></div>
+          <div class="ap-sent-neu" style="width:${nuPct}%"></div>
+          <div class="ap-sent-neg" style="width:${nPct}%"></div>
+        </div>`}
+      </div>
+      <div class="ap-mini-card">
+        <div class="ap-section-title">7-Day Quality Trend</div>
+        <div class="ap-trend-wrap">${trendBars}</div>
+        <div style="font-size:11px;color:var(--text-light);margin-top:6px">Avg treatment score by day</div>
+      </div>
+    </div>
+    ${callsSummary}
+    ${detail ? `
+    <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+      <div class="ap-mini-card" style="text-align:center">
+        <div style="font-size:22px;font-weight:800;color:var(--navy)">${(detail.analyses||[]).filter(x=>x.outcome==='converted').length}</div>
+        <div style="font-size:11px;color:var(--text-light);margin-top:2px">Conversions</div>
+      </div>
+      <div class="ap-mini-card" style="text-align:center">
+        <div style="font-size:22px;font-weight:800;color:var(--red)">${(detail.analyses||[]).filter(x=>(x.risk_flags||[]).length>0).length}</div>
+        <div style="font-size:11px;color:var(--text-light);margin-top:2px">Leads w/ Risk Flags</div>
+      </div>
+      <div class="ap-mini-card" style="text-align:center">
+        <div style="font-size:22px;font-weight:800;color:var(--warn)">${detail.alerts?.length || 0}</div>
+        <div style="font-size:11px;color:var(--text-light);margin-top:2px">Open Alerts</div>
+      </div>
+    </div>` : ''}`;
+}
+
+function _apRenderCalls(calls) {
+  const el = document.getElementById('apTabCalls');
+  if (!el) return;
+  if (!calls.length) { el.innerHTML = `<div class="ap-empty">No calls in this period.</div>`; return; }
+  const rows = calls.map(c => {
+    const phone = c.lead_phone ? fmtPhone(c.lead_phone) : '—';
+    const name  = c.lead_name ? esc(c.lead_name) : '';
+    const dur   = c.answered ? `<span style="color:var(--green);font-weight:700">${durSec(c.duration_seconds)}</span>` : `<span style="color:var(--red)">Missed</span>`;
+    let when = '—';
+    try { when = c.called_at ? new Date(c.called_at).toLocaleString() : '—'; } catch(_){}
+    return `<tr><td>${phone}${name ? `<div style="font-size:11px;color:var(--text-light)">${name}</div>` : ''}</td><td>${dur}</td><td style="font-size:11px;color:var(--text-light)">${when}</td></tr>`;
+  }).join('');
+  el.innerHTML = `<table class="ap-table"><thead><tr><th>Lead</th><th>Duration</th><th>Date</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function _apRenderWa(waLeads) {
+  const el = document.getElementById('apTabWa');
+  if (!el) return;
+  if (!waLeads.length) { el.innerHTML = `<div class="ap-empty">No WA chats in this period.</div>`; return; }
+  const rows = waLeads.map(w => {
+    const phone = w.lead_phone ? fmtPhone(w.lead_phone) : '—';
+    const name  = w.lead_name  ? esc(w.lead_name) : '';
+    let when = '—';
+    try { when = w.last_message_at ? ago(w.last_message_at) : '—'; } catch(_){}
+    return `<tr>
+      <td>${phone}${name ? `<div style="font-size:11px;color:var(--text-light)">${name}</div>` : ''}</td>
+      <td style="text-align:center"><strong style="color:var(--blue)">${w.messages_sent||0}</strong></td>
+      <td style="text-align:center;color:var(--text-light)">${w.messages_received||0}</td>
+      <td style="font-size:11px;color:var(--text-light)">${when}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<table class="ap-table"><thead><tr><th>Lead</th><th style="text-align:center">Sent</th><th style="text-align:center">Received</th><th>Last Message</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function _apRenderAi(analyses) {
+  const el = document.getElementById('apTabAi');
+  if (!el) return;
+  if (!analyses.length) { el.innerHTML = `<div class="ap-empty">No AI analysis available for this agent's leads.</div>`; return; }
+  const cards = analyses.map(a => {
+    const phone = a.lead_phone ? fmtPhone(a.lead_phone) : '—';
+    const name  = a.lead_name  ? esc(a.lead_name) : '';
+    const ts    = a.treatment_score != null ? a.treatment_score : null;
+    const tsCls = ts === null ? 'pill-gray' : ts >= 70 ? 'pill-green' : ts >= 50 ? 'pill-warn' : 'pill-red';
+    const tsLabel = ts !== null ? `${ts}/100` : '—';
+    const sentCol = a.sentiment === 'positive' ? 'var(--green)' : a.sentiment === 'negative' ? 'var(--red)' : 'var(--blue)';
+    const risks  = (a.risk_flags||[]).map(f => `<span class="pill pill-red" style="font-size:10px">${esc(_translateTag ? _translateTag(f) : f)}</span>`).join('');
+    const outcome = a.outcome ? `<span class="pill ${a.outcome==='converted'?'pill-green':a.outcome==='no_answer'?'pill-gray':'pill-blue'}" style="font-size:10px">${esc(a.outcome)}</span>` : '';
+    const summary = lang==='ar' ? (a.summary_ar||a.summary_en||'') : (a.summary_en||'');
+    let when = '';
+    try { when = a.analyzed_at ? new Date(a.analyzed_at).toLocaleDateString() : ''; } catch(_){}
+    return `<div class="ap-ai-card">
+      <div class="ap-ai-head">
+        <span style="font-weight:700;color:var(--navy)">${phone}${name ? ` · ${name}` : ''}</span>
+        <span class="pill ${tsCls}" style="font-size:10px">⭐ ${tsLabel}</span>
+        ${a.sentiment ? `<span style="font-size:12px;font-weight:600;color:${sentCol}">${a.sentiment}</span>` : ''}
+        ${outcome}
+      </div>
+      ${risks ? `<div class="ap-ai-risks">${risks}</div>` : ''}
+      ${summary ? `<div class="ap-ai-summary">${esc(summary)}</div>` : ''}
+      ${when ? `<div class="ap-ai-meta">Analyzed ${when}</div>` : ''}
+    </div>`;
+  }).join('');
+  el.innerHTML = cards;
+}
+
+function _apRenderProfileAlerts(alerts) {
+  const el = document.getElementById('apTabAlerts');
+  if (!el) return;
+  if (!alerts.length) {
+    el.innerHTML = `<div class="ap-empty">✅ No open alerts for this agent.</div>`;
+    return;
+  }
+  el.innerHTML = alerts.map(a => {
+    const sev    = (a.severity||'MED').toUpperCase();
+    const sevCls = sev==='HIGH'?'pill-red':sev==='LOW'?'pill-blue':'pill-warn';
+    const phone  = a.lead_phone ? fmtPhone(a.lead_phone) : (lang==='ar'?'عميل غير معروف':'Unknown lead');
+    const name   = a.lead_name  ? ` · ${esc(a.lead_name)}` : '';
+    let created  = '—';
+    try { created = a.created_at ? new Date(a.created_at).toLocaleString() : '—'; } catch(_){}
+    return `<div class="agent-alert-card">
+      <div class="agent-alert-top"><span class="pill ${sevCls}">${esc(_alertSevLabel(sev))}</span><span class="agent-alert-title">${esc(_alertTypeLabel(a.type))}</span></div>
+      <div class="agent-alert-msg">${esc(a.message||'')}</div>
+      <div class="alert-meta">👤 ${esc(phone)}${name} · ${esc(created)}</div>
+    </div>`;
+  }).join('');
+}
+
+function durSec(s) {
+  if (!s) return '0s';
+  return s < 60 ? `${s}s` : `${Math.floor(s/60)}m ${s%60}s`;
 }
 
 function renderAlerts(quality) {

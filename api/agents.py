@@ -592,3 +592,219 @@ def _agent_alerts_inner(agent: str):
         })
 
     return {"agent": target, "alerts": rows}
+
+
+@router.get("/api/agents/detail")
+def agent_detail(
+    agent: str = Query(...),
+    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    wa_line: str = Query("all"),
+):
+    try:
+        return _agent_detail_inner(agent, range, wa_line)
+    except Exception as e:
+        import logging
+        logging.getLogger("fiper").error(f"/api/agents/detail error ({agent}): {e}", exc_info=True)
+        return {"agent": agent, "calls": [], "wa_leads": [], "analyses": [], "alerts": []}
+
+
+def _agent_detail_inner(agent: str, range_: str, wa_line: str):
+    target = _norm(agent)
+    if not target:
+        return {"agent": agent, "calls": [], "wa_leads": [], "analyses": [], "alerts": []}
+
+    since = _since(range_)
+
+    # ── Calls for this agent in range ─────────────────────────────────────────
+    raw_calls = _paginate(
+        lambda: supabase.table("calls")
+        .select("lead_id,duration_seconds,called_at,agent_name")
+        .gte("called_at", since)
+        .order("called_at", desc=True)
+    )
+    agent_calls = [c for c in raw_calls if _norm(c.get("agent_name")) == target]
+
+    # ── Messages for this agent in range ─────────────────────────────────────
+    raw_msgs = _paginate(
+        lambda: supabase.table("messages")
+        .select(add_whatsapp_line_select("agent_name,direction,sent_at,lead_id"))
+        .gte("sent_at", since)
+    )
+
+    # ── Collect all lead IDs we need ─────────────────────────────────────────
+    call_lead_ids = {c["lead_id"] for c in agent_calls if c.get("lead_id")}
+    msg_lead_ids_all = {m["lead_id"] for m in raw_msgs if m.get("lead_id")}
+    all_lead_ids = list(call_lead_ids | msg_lead_ids_all)
+
+    leads = []
+    idx = 0
+    while idx < len(all_lead_ids):
+        leads.extend(
+            supabase.table("leads")
+            .select("id,phone,name,assigned_agent,status,score,channel,whatsapp_business_number")
+            .in_("id", all_lead_ids[idx:idx + BATCH_SIZE])
+            .execute().data or []
+        )
+        idx += BATCH_SIZE
+
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        leads = [l for l in leads if matches_business_line(l, wa_line)]
+
+    lead_by_id = {l["id"]: l for l in leads if l.get("id")}
+    lead_agent_map = {l["id"]: _norm(l.get("assigned_agent")) for l in leads if l.get("id")}
+
+    # Build fallback map for message attribution
+    lead_to_agent_fallback: dict[str, str] = {}
+    for m in raw_msgs:
+        lid = m.get("lead_id")
+        ag = _norm(m.get("agent_name"))
+        if lid and m.get("direction") == "outbound" and ag:
+            lead_to_agent_fallback.setdefault(lid, ag)
+    for c in raw_calls:
+        lid = c.get("lead_id")
+        ag = _norm(c.get("agent_name"))
+        if lid and ag:
+            lead_to_agent_fallback.setdefault(lid, ag)
+
+    # Filter messages attributed to this agent
+    agent_msgs = []
+    for m in raw_msgs:
+        ag = _message_agent_name(m, lead_agent_map=lead_agent_map, lead_to_agent_fallback=lead_to_agent_fallback)
+        if ag == target:
+            agent_msgs.append(m)
+
+    # ── AI Analyses for this agent's leads ───────────────────────────────────
+    agent_lead_ids = (
+        {l["id"] for l in leads if _norm(l.get("assigned_agent")) == target}
+        | call_lead_ids
+        | {m["lead_id"] for m in agent_msgs if m.get("lead_id")}
+    )
+    analyses_raw = []
+    aid_list = list(agent_lead_ids)
+    idx = 0
+    while idx < len(aid_list):
+        analyses_raw.extend(
+            supabase.table("ai_analysis")
+            .select("lead_id,sentiment,treatment_score,outcome,summary,summary_en,summary_ar,risk_flags,analyzed_at,source")
+            .in_("lead_id", aid_list[idx:idx + BATCH_SIZE])
+            .order("analyzed_at", desc=True)
+            .execute().data or []
+        )
+        idx += BATCH_SIZE
+
+    # ── Alerts for this agent ─────────────────────────────────────────────────
+    alerts_raw = (
+        supabase.table("alerts")
+        .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
+        .eq("resolved", False)
+        .order("created_at", desc=True)
+        .execute().data or []
+    )
+
+    # ── Build response ────────────────────────────────────────────────────────
+    # Calls list
+    calls_out = []
+    for c in sorted(agent_calls, key=lambda x: x.get("called_at") or "", reverse=True)[:50]:
+        lead = lead_by_id.get(c.get("lead_id") or "")
+        dur = c.get("duration_seconds") or 0
+        calls_out.append({
+            "lead_phone": lead.get("phone") if lead else None,
+            "lead_name":  lead.get("name")  if lead else None,
+            "duration_seconds": dur,
+            "answered": dur > 0,
+            "called_at": c.get("called_at"),
+        })
+
+    # WA leads grouped by lead_id
+    by_lead: dict[str, dict] = {}
+    for m in agent_msgs:
+        lid = m.get("lead_id")
+        if not lid:
+            continue
+        if lid not in by_lead:
+            lead = lead_by_id.get(lid, {})
+            by_lead[lid] = {
+                "lead_phone": lead.get("phone"),
+                "lead_name":  lead.get("name"),
+                "messages_sent": 0,
+                "messages_received": 0,
+                "last_message_at": None,
+            }
+        entry = by_lead[lid]
+        if m.get("direction") == "outbound":
+            entry["messages_sent"] += 1
+        else:
+            entry["messages_received"] += 1
+        ts = m.get("sent_at")
+        if ts and (not entry["last_message_at"] or ts > entry["last_message_at"]):
+            entry["last_message_at"] = ts
+
+    wa_leads_out = sorted(by_lead.values(), key=lambda x: x["last_message_at"] or "", reverse=True)[:50]
+
+    # AI analyses – one per lead, most recent
+    seen_leads: set[str] = set()
+    analyses_out = []
+    for a in analyses_raw:
+        lid = a.get("lead_id")
+        if not lid or lid in seen_leads:
+            continue
+        seen_leads.add(lid)
+        lead = lead_by_id.get(lid, {})
+        analyses_out.append({
+            "lead_phone":     lead.get("phone"),
+            "lead_name":      lead.get("name"),
+            "sentiment":      a.get("sentiment"),
+            "treatment_score": a.get("treatment_score"),
+            "outcome":        a.get("outcome"),
+            "summary_en":     a.get("summary_en") or a.get("summary"),
+            "summary_ar":     a.get("summary_ar") or a.get("summary"),
+            "risk_flags":     a.get("risk_flags") or [],
+            "analyzed_at":    a.get("analyzed_at"),
+            "source":         a.get("source"),
+        })
+        if len(analyses_out) >= 30:
+            break
+
+    # Alerts attribution (same logic as _agent_alerts_inner)
+    all_leads_for_alerts = _paginate(lambda: supabase.table("leads").select("id,phone,name,assigned_agent"))
+    lead_by_id_full = {l["id"]: l for l in all_leads_for_alerts if l.get("id")}
+    lead_agent_full = {l["id"]: _norm(l.get("assigned_agent")) for l in all_leads_for_alerts if l.get("id")}
+    fallback_full: dict[str, str] = {}
+    for m in raw_msgs:
+        lid = m.get("lead_id"); ag = _norm(m.get("agent_name"))
+        if lid and m.get("direction") == "outbound" and ag:
+            fallback_full.setdefault(lid, ag)
+    for c in raw_calls:
+        lid = c.get("lead_id"); ag = _norm(c.get("agent_name"))
+        if lid and ag:
+            fallback_full.setdefault(lid, ag)
+
+    alerts_out = []
+    for a in alerts_raw:
+        lid = a.get("lead_id")
+        raw_ag = _norm(a.get("agent_name"))
+        if raw_ag and raw_ag.lower() in ("unknown", "team", "n/a"):
+            raw_ag = None
+        attributed = raw_ag or (lead_agent_full.get(lid) if lid else None) or (fallback_full.get(lid) if lid else None)
+        if attributed != target:
+            continue
+        lead = lead_by_id_full.get(lid, {})
+        alerts_out.append({
+            "id":        a.get("id"),
+            "lead_id":   lid,
+            "lead_phone": lead.get("phone"),
+            "lead_name":  lead.get("name"),
+            "severity":  a.get("severity") or "MED",
+            "type":      a.get("type") or "alert",
+            "message":   a.get("message") or "",
+            "created_at": a.get("created_at"),
+        })
+
+    return {
+        "agent":    target,
+        "range":    range_,
+        "calls":    calls_out,
+        "wa_leads": wa_leads_out,
+        "analyses": analyses_out,
+        "alerts":   alerts_out,
+    }
