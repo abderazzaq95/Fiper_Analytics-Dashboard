@@ -866,7 +866,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
         <button class="ap-tab" id="apTabBtn-calls" onclick="apSwitchTab('calls',this)">📞 Calls</button>
         <button class="ap-tab" id="apTabBtn-wa" onclick="apSwitchTab('wa',this)">💬 WA Chats</button>
         <button class="ap-tab" id="apTabBtn-ai" onclick="apSwitchTab('ai',this)">AI Analysis</button>
-        <button class="ap-tab" id="apTabBtn-alerts" onclick="apSwitchTab('alerts',this)">⚠️ Alerts</button>
+        <button class="ap-tab" id="apTabBtn-alerts" onclick="apOpenAlertsTab(this)">⚠️ Alerts</button>
       </div>
       <!-- Tab panels -->
       <div style="overflow:auto;flex:1;min-height:0">
@@ -2211,6 +2211,49 @@ function apSwitchTab(name, btn) {
   if (panel) panel.classList.add('active');
 }
 
+async function apOpenAlertsTab(btn) {
+  apSwitchTab('alerts', btn);
+  await apLoadProfileAlerts();
+}
+
+async function apLoadProfileAlerts(force = false) {
+  const agentName = _apCurrentAgent;
+  if (!agentName) return;
+  const panel = document.getElementById('apTabAlerts');
+  if (!panel) return;
+
+  if (!force && _apAlertsLoadedFor === agentName) return;
+  if (_apAlertsLoadingFor === agentName) return;
+
+  _apAlertsLoadingFor = agentName;
+  panel.innerHTML = `<div class="ap-empty">Loading alerts...</div>`;
+
+  try {
+    const url = `${API}/api/agents/alerts?agent=${encodeURIComponent(agentName)}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    if (_apCurrentAgent !== agentName) return;
+    const alerts = Array.isArray(data?.alerts) ? data.alerts : [];
+    _apRenderProfileAlerts(alerts);
+    _apAlertsLoadedFor = agentName;
+
+    const alertBtn = document.getElementById('apTabBtn-alerts');
+    if (alertBtn && alerts.length) {
+      alertBtn.textContent = `Alerts (${alerts.length})`;
+    } else if (alertBtn) {
+      alertBtn.textContent = 'Alerts';
+    }
+  } catch (e) {
+    console.error('[profile] alerts fetch error:', e);
+    if (_apCurrentAgent === agentName) {
+      panel.innerHTML = `<div class="ap-empty" style="color:var(--red)">Failed to load alerts.</div>`;
+    }
+  } finally {
+    if (_apAlertsLoadingFor === agentName) _apAlertsLoadingFor = null;
+  }
+}
+
 function closeAgentProfile(ev) {
   if (ev && ev.target !== ev.currentTarget) return;
   document.getElementById('agentProfileModal')?.classList.remove('open');
@@ -2219,6 +2262,8 @@ function closeAgentProfile(ev) {
 async function openAgentProfile(agentName) {
   if (!agentName) return;
   _apCurrentAgent = agentName;
+  _apAlertsLoadedFor = null;
+  _apAlertsLoadingFor = null;
   const modal = document.getElementById('agentProfileModal');
   if (!modal) return;
 
@@ -2230,16 +2275,14 @@ async function openAgentProfile(agentName) {
   _apRenderKpisFromCache(cachedAgent);
   _apRenderOverviewFromCache(cachedAgent);
 
-  ['apTabCalls','apTabWa','apTabAi','apTabAlerts'].forEach(id => {
+  ['apTabCalls','apTabWa','apTabAi'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.innerHTML = `<div class="ap-empty">Loading…</div>`;
+    if (el) el.innerHTML = `<div class="ap-empty">Loading...</div>`;
   });
-  const alertBtn = document.getElementById('apTabBtn-alerts');
-  if (alertBtn) alertBtn.textContent = '⚠️ Alerts';
 
   modal.classList.add('open');
 
-  // Fetch detail with "week" range — only used to populate the Calls/WA/AI/Alerts tabs.
+  // Fetch detail with "week" range ? only used to populate the Calls/WA/AI tabs.
   // KPIs and Overview always come from the agents cache (no flash, always has data).
   const detailRange = 'week';
   try {
@@ -2249,16 +2292,13 @@ async function openAgentProfile(agentName) {
     const data = await r.json();
     if (_apCurrentAgent !== agentName) return;
 
-    // Only populate the detail tabs — never overwrite the KPI strip or overview
+    // Only populate the detail tabs ? never overwrite the KPI strip or overview
     _apRenderCalls(data.calls || []);
     _apRenderWa(data.wa_leads || []);
     _apRenderAi(data.analyses || []);
-    _apRenderProfileAlerts(data.alerts || []);
-    if (alertBtn && (data.alerts||[]).length)
-      alertBtn.textContent = `⚠️ Alerts (${data.alerts.length})`;
   } catch(e) {
     console.error('[profile] fetch error:', e);
-    ['apTabCalls','apTabWa','apTabAi','apTabAlerts'].forEach(id => {
+    ['apTabCalls','apTabWa','apTabAi'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = `<div class="ap-empty" style="color:var(--red)">Failed to load detail data.</div>`;
     });
