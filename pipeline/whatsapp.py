@@ -21,11 +21,15 @@ import os
 import httpx
 from dotenv import load_dotenv
 from datetime import datetime, timezone
+from supabase import create_client
 
 load_dotenv()
 
 BASE_URL = os.getenv("MC_BASE_URL", "https://api.manycontacts.com/v1")
 HEADERS = {"apikey": os.getenv("MC_API_KEY", "")}
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+SUPABASE = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY) if SUPABASE_URL and SUPABASE_SERVICE_KEY else None
 _DEFAULT_BUSINESS_NUMBERS = ("96897245526", "905318880855")
 _BUSINESS_NUMBERS_RAW = os.getenv("MC_BUSINESS_NUMBERS") or os.getenv("MC_BUSINESS_NUMBER") or ",".join(_DEFAULT_BUSINESS_NUMBERS)
 
@@ -146,6 +150,25 @@ def matches_business_line(row: dict | None, selected_line: str | None) -> bool:
 _agent_cache: dict[str, str] = {}
 
 
+def _persist_users(users: list[dict]) -> None:
+    """Persist the ManyContacts user directory so other workers can resolve IDs."""
+    if not SUPABASE:
+        return
+    rows = []
+    for u in users:
+        if not isinstance(u, dict):
+            continue
+        user_id = str(u.get("id") or "").strip()
+        name = str(u.get("name") or u.get("fullName") or "").strip()
+        if not user_id:
+            continue
+        rows.append({"id": user_id, "name": name or None, "raw": u})
+    if not rows:
+        return
+    for idx in range(0, len(rows), 100):
+        SUPABASE.table("manycontacts_users").upsert(rows[idx:idx + 100], on_conflict="id").execute()
+
+
 async def fetch_users() -> list[dict]:
     """Return all ManyContacts users (agents)."""
     global _agent_cache
@@ -158,10 +181,30 @@ async def fetch_users() -> list[dict]:
 
 
 def resolve_agent_name(user_id: str | None) -> str | None:
-    """Map a ManyContacts user_id to a human name using the cached user list."""
+    """Map a ManyContacts user_id to a human name using cache + durable DB fallback."""
     if not user_id:
         return None
-    return _agent_cache.get(user_id, user_id)
+    cached = _agent_cache.get(user_id)
+    if cached:
+        return cached
+    if SUPABASE:
+        try:
+            rows = (
+                SUPABASE.table("manycontacts_users")
+                .select("name")
+                .eq("id", str(user_id))
+                .limit(1)
+                .execute()
+                .data
+            ) or []
+            if rows and rows[0].get("name"):
+                name = str(rows[0]["name"]).strip()
+                if name:
+                    _agent_cache[user_id] = name
+                    return name
+        except Exception:
+            pass
+    return user_id
 
 
 async def fetch_contacts(date_from: str | None = None, date_to: str | None = None, api_key: str | None = None) -> list[dict]:

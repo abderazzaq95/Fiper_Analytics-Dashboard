@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import re
-from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
+from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line, resolve_agent_name
 
 load_dotenv()
 router = APIRouter()
@@ -72,12 +72,17 @@ def _looks_like_uuid(value: str | None) -> bool:
 def _agent_label(*values: str | None) -> str | None:
     """Return the first human-readable agent label from a list of candidates."""
     for value in values:
+        if not value:
+            continue
+        if _looks_like_uuid(value):
+            resolved = _norm(resolve_agent_name(value))
+            if resolved and resolved.lower() not in ("unknown", "team", "n/a") and not _looks_like_uuid(resolved):
+                return resolved
+            continue
         normalized = _norm(value)
         if not normalized:
             continue
         if normalized.lower() in ("unknown", "team", "n/a"):
-            continue
-        if _looks_like_uuid(value):
             continue
         return normalized
     return None
@@ -99,6 +104,10 @@ def _message_agent_name(
     explicit = _norm(raw_agent)
     if explicit and not _looks_like_uuid(raw_agent):
         return explicit
+    if raw_agent and _looks_like_uuid(raw_agent):
+        resolved = _agent_label(resolve_agent_name(raw_agent))
+        if resolved:
+            return resolved
     lead_id = row.get("lead_id")
     if lead_id and lead_agent_map:
         lead_agent = _agent_label(lead_agent_map.get(lead_id))
@@ -185,7 +194,7 @@ def _agents_lightweight(range: str, wa_line: str = "all"):
             .execute().data or []
         )
         idx += 100
-    lead_agent_map = {r["id"]: _norm(r.get("assigned_agent")) for r in lead_rows if r.get("id")}
+    lead_agent_map = {r["id"]: _agent_label(r.get("assigned_agent")) for r in lead_rows if r.get("id")}
     lead_to_agent_fallback: dict[str, str] = {}
     for m in messages:
         lid = m.get("lead_id")
@@ -376,18 +385,18 @@ def _agents_inner(range: str, wa_line: str = "all"):
 
     # Alert attribution: normalized agent_name → list of alerts
     lead_by_id = {l["id"]: l for l in leads if l.get("id")}
-    lead_agent_map = {l["id"]: _norm(l.get("assigned_agent")) for l in leads}
+    lead_agent_map = {l["id"]: _agent_label(l.get("assigned_agent")) for l in leads}
 
     # All-time lead → agent fallback (uses unfiltered calls so old leads are covered)
     lead_to_agent_fallback: dict[str, str] = {}
     for m in messages:
         lid = m.get("lead_id")
-        ag = _norm(m.get("agent_name"))
+        ag = _agent_label(m.get("agent_name"))
         if lid and m.get("direction") == "outbound" and ag:
             lead_to_agent_fallback.setdefault(lid, ag)
     for c in calls:
         lid = c.get("lead_id")
-        ag = _norm(c.get("agent_name"))
+        ag = _agent_label(c.get("agent_name"))
         if lid and ag:
             lead_to_agent_fallback.setdefault(lid, ag)
 
@@ -395,7 +404,7 @@ def _agents_inner(range: str, wa_line: str = "all"):
     for a in alerts:
         lid = a.get("lead_id")
         # 'unknown' / None agent names are meaningless — treat as missing so fallback fires
-        raw_alert_agent = _norm(a.get("agent_name"))
+        raw_alert_agent = _agent_label(a.get("agent_name"))
         if raw_alert_agent and raw_alert_agent.lower() in ("unknown", "team", "n/a"):
             raw_alert_agent = None
         agent = _agent_label(
@@ -598,19 +607,19 @@ def _agent_alerts_inner(agent: str):
     lead_to_agent_fallback: dict[str, str] = {}
     for m in messages:
         lid = m.get("lead_id")
-        ag = _norm(m.get("agent_name"))
+        ag = _agent_label(m.get("agent_name"))
         if lid and m.get("direction") == "outbound" and ag:
             lead_to_agent_fallback.setdefault(lid, ag)
     for c in calls:
         lid = c.get("lead_id")
-        ag = _norm(c.get("agent_name"))
+        ag = _agent_label(c.get("agent_name"))
         if lid and ag:
             lead_to_agent_fallback.setdefault(lid, ag)
 
     rows = []
     for alert in alerts:
         lid = alert.get("lead_id")
-        raw_alert_agent = _norm(alert.get("agent_name"))
+        raw_alert_agent = _agent_label(alert.get("agent_name"))
         if raw_alert_agent and raw_alert_agent.lower() in ("unknown", "team", "n/a"):
             raw_alert_agent = None
         attributed_agent = _agent_label(

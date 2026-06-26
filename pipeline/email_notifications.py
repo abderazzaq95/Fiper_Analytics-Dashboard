@@ -13,6 +13,7 @@ import unicodedata
 import requests
 from dotenv import load_dotenv
 from supabase import create_client
+from pipeline.whatsapp import resolve_agent_name
 
 load_dotenv()
 
@@ -63,6 +64,10 @@ def _looks_like_uuid(value: str | None) -> bool:
 
 def _display_agent_name(*values: str | None) -> str | None:
     for value in values:
+        if not value:
+            continue
+        if _looks_like_uuid(value):
+            value = resolve_agent_name(value)
         normalized = _normalize_name(value)
         if not normalized:
             continue

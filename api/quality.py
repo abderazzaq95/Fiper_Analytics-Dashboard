@@ -2,10 +2,11 @@ from fastapi import APIRouter, Query
 from supabase import create_client
 import os
 import requests
+import re
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from collections import Counter
-from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
+from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line, resolve_agent_name
 
 load_dotenv()
 router = APIRouter()
@@ -56,10 +57,21 @@ def _lead_phone(lead: dict | None) -> str | None:
 
 
 def _lead_agent_name(lead: dict | None, latest_msg: dict | None = None) -> str | None:
+    candidates = []
     if lead and lead.get("assigned_agent"):
-        return lead.get("assigned_agent")
+        candidates.append(lead.get("assigned_agent"))
     if latest_msg and latest_msg.get("agent_name"):
-        return latest_msg.get("agent_name")
+        candidates.append(latest_msg.get("agent_name"))
+    for value in candidates:
+        if not value:
+            continue
+        if re.fullmatch(r"[0-9a-fA-F-]{36}", str(value).strip()):
+            resolved = resolve_agent_name(value)
+            if resolved and not re.fullmatch(r"[0-9a-fA-F-]{36}", str(resolved).strip()) and resolved.lower() not in ("unknown", "team", "n/a"):
+                return resolved
+        normalized = str(value).strip()
+        if normalized and normalized.lower() not in ("unknown", "team", "n/a"):
+            return normalized
     return None
 
 

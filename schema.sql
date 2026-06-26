@@ -91,6 +91,18 @@ CREATE TABLE IF NOT EXISTS alerts (
 );
 
 -- ============================================================
+-- manycontacts_users
+-- ============================================================
+CREATE TABLE IF NOT EXISTS manycontacts_users (
+  id         TEXT PRIMARY KEY,
+  name       TEXT,
+  raw        JSONB,
+  synced_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_manycontacts_users_name ON manycontacts_users(name);
+
+-- ============================================================
 -- Indexes for common query patterns
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_leads_status        ON leads(status);
