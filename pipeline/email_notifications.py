@@ -55,6 +55,25 @@ def _name_keys(name: str | None) -> set[str]:
     return {normalized, compact, no_vowels}
 
 
+def _looks_like_uuid(value: str | None) -> bool:
+    if not value:
+        return False
+    return bool(re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", str(value).strip()))
+
+
+def _display_agent_name(*values: str | None) -> str | None:
+    for value in values:
+        normalized = _normalize_name(value)
+        if not normalized:
+            continue
+        if normalized.lower() in ("unknown", "team", "n/a"):
+            continue
+        if _looks_like_uuid(value):
+            continue
+        return normalized
+    return None
+
+
 def _load_agent_contacts() -> dict[str, dict]:
     now = time.time()
     if now - (_contacts_cache.get("loaded_at") or 0) < CONTACT_CACHE_SECONDS:
@@ -100,11 +119,10 @@ def _agent_contact(agent_name: str | None) -> dict | None:
 
 
 def _lead_agent_name(lead: dict | None, latest_msg: dict | None = None) -> str | None:
-    if lead and lead.get("assigned_agent"):
-        return lead.get("assigned_agent")
-    if latest_msg and latest_msg.get("agent_name"):
-        return latest_msg.get("agent_name")
-    return None
+    return _display_agent_name(
+        lead.get("assigned_agent") if lead else None,
+        latest_msg.get("agent_name") if latest_msg else None,
+    )
 
 
 def _lead_phone(lead: dict | None) -> str | None:
@@ -182,8 +200,36 @@ def send_test_notification(to: str, phone: str = "") -> bool:
 
 
 def notify_agent_alert(alert: dict) -> bool:
-    agent = alert.get("agent_name") or "unknown"
+    agent = _display_agent_name(alert.get("agent_name")) or "unknown"
     recipient = _agent_email(agent)
+    if not recipient:
+        lead_id = alert.get("lead_id")
+        if lead_id:
+            try:
+                lead_rows = _paginate(
+                    lambda: supabase.table("leads")
+                    .select("id,assigned_agent")
+                    .eq("id", lead_id)
+                    .limit(1)
+                )
+                lead = lead_rows[0] if lead_rows else None
+                latest_msg_rows = _paginate(
+                    lambda: supabase.table("messages")
+                    .select("lead_id,direction,body,agent_name,sent_at")
+                    .eq("lead_id", lead_id)
+                    .order("sent_at", desc=True)
+                )
+                latest_msg = latest_msg_rows[0] if latest_msg_rows else None
+                resolved = _display_agent_name(
+                    alert.get("agent_name"),
+                    lead.get("assigned_agent") if lead else None,
+                    latest_msg.get("agent_name") if latest_msg else None,
+                )
+                if resolved:
+                    agent = resolved
+                    recipient = _agent_email(resolved)
+            except Exception:
+                pass
     if not recipient:
         return False
 
@@ -265,6 +311,7 @@ def send_supervisor_report(report_label: str = "") -> bool:
     alert_lead_ids = list({a.get("lead_id") for a in open_alerts if a.get("lead_id")})
     lead_map: dict[str, dict] = {}
     latest_msg_map: dict[str, dict] = {}
+    latest_call_map: dict[str, dict] = {}
     if alert_lead_ids:
         try:
             lead_rows = _paginate(
@@ -288,14 +335,32 @@ def send_supervisor_report(report_label: str = "") -> bool:
                     latest_msg_map[lead_id] = msg
         except Exception:
             latest_msg_map = {}
+        try:
+            call_rows = _paginate(
+                lambda: supabase.table("calls")
+                .select("lead_id,agent_name,called_at")
+                .in_("lead_id", alert_lead_ids)
+                .order("called_at", desc=True)
+            )
+            for call in call_rows:
+                lead_id = call.get("lead_id")
+                if lead_id and lead_id not in latest_call_map:
+                    latest_call_map[lead_id] = call
+        except Exception:
+            latest_call_map = {}
 
     for alert in open_alerts:
         lead = lead_map.get(alert.get("lead_id") or "")
         latest_msg = latest_msg_map.get(alert.get("lead_id") or "", {})
+        latest_call = latest_call_map.get(alert.get("lead_id") or "", {})
         if lead:
             alert["lead_phone"] = _lead_phone(lead)
             alert["lead_name"] = lead.get("name")
-            alert["agent_name"] = _lead_agent_name(lead, latest_msg) or alert.get("agent_name")
+        alert["agent_name"] = _display_agent_name(
+            alert.get("agent_name"),
+            _lead_agent_name(lead, latest_msg) if lead else None,
+            latest_call.get("agent_name") if latest_call else None,
+        ) or alert.get("agent_name")
 
     calls = _paginate(
         lambda: supabase.table("calls")
@@ -317,7 +382,8 @@ def send_supervisor_report(report_label: str = "") -> bool:
     type_counts = Counter(a.get("type") or "unknown" for a in open_alerts)
     by_agent: dict[str, list] = defaultdict(list)
     for alert in open_alerts:
-        by_agent[(alert.get("agent_name") or "unknown").strip() or "unknown"].append(alert)
+        agent = _display_agent_name(alert.get("agent_name")) or "unknown"
+        by_agent[agent].append(alert)
 
     completed = sum(1 for c in calls if (c.get("outcome") or "").lower() == "completed")
     no_answer = sum(1 for c in calls if (c.get("outcome") or "").lower() == "no_answer")

@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
+import re
 from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
 
 load_dotenv()
@@ -65,8 +66,21 @@ def _norm(name: str | None) -> str | None:
 def _looks_like_uuid(value: str | None) -> bool:
     if not value:
         return False
-    import re
     return bool(re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", str(value).strip()))
+
+
+def _agent_label(*values: str | None) -> str | None:
+    """Return the first human-readable agent label from a list of candidates."""
+    for value in values:
+        normalized = _norm(value)
+        if not normalized:
+            continue
+        if normalized.lower() in ("unknown", "team", "n/a"):
+            continue
+        if _looks_like_uuid(value):
+            continue
+        return normalized
+    return None
 
 
 def _message_agent_name(
@@ -377,12 +391,12 @@ def _agents_inner(range: str, wa_line: str = "all"):
         raw_alert_agent = _norm(a.get("agent_name"))
         if raw_alert_agent and raw_alert_agent.lower() in ("unknown", "team", "n/a"):
             raw_alert_agent = None
-        agent = (
-            raw_alert_agent
-            or (lead_agent_map.get(lid) if lid else None)
-            or (lead_to_agent_fallback.get(lid) if lid else None)
+        agent = _agent_label(
+            raw_alert_agent,
+            lead_agent_map.get(lid) if lid else None,
+            lead_to_agent_fallback.get(lid) if lid else None,
         )
-        if agent and agent.lower() not in ("team", "unknown"):
+        if agent:
             lead = lead_by_id.get(lid, {})
             agent_alerts[agent].append({
                 "id": a.get("id"),
@@ -580,10 +594,10 @@ def _agent_alerts_inner(agent: str):
         raw_alert_agent = _norm(alert.get("agent_name"))
         if raw_alert_agent and raw_alert_agent.lower() in ("unknown", "team", "n/a"):
             raw_alert_agent = None
-        attributed_agent = (
-            raw_alert_agent
-            or (lead_agent_map.get(lid) if lid else None)
-            or (lead_to_agent_fallback.get(lid) if lid else None)
+        attributed_agent = _agent_label(
+            raw_alert_agent,
+            lead_agent_map.get(lid) if lid else None,
+            lead_to_agent_fallback.get(lid) if lid else None,
         )
         if attributed_agent != target:
             continue
@@ -674,16 +688,29 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         if lid and ag:
             lead_to_agent_fallback.setdefault(lid, ag)
 
+    def _call_agent_name(row: dict) -> str | None:
+        raw_ag = row.get("agent_name")
+        explicit = _norm(raw_ag)
+        if explicit and not _looks_like_uuid(raw_ag):
+            return explicit
+        lid = row.get("lead_id")
+        if lid:
+            return lead_agent_map.get(lid) or lead_to_agent_fallback.get(lid)
+        return None
+
+    agent_calls = [c for c in raw_calls if _call_agent_name(c) == target]
+    agent_calls.sort(key=lambda x: x.get("called_at") or "", reverse=True)
+
     # Messages attributed to this agent
     agent_msgs = [
         m for m in raw_msgs
         if _message_agent_name(m, lead_agent_map=lead_agent_map, lead_to_agent_fallback=lead_to_agent_fallback) == target
     ]
 
-    # ── Lead IDs attributed to this agent ─────────────────────────────────────
+    # Lead IDs attributed to this agent
     agent_lead_ids: set[str] = (
         {l["id"] for l in leads_raw if _norm(l.get("assigned_agent")) == target}
-        | call_lead_ids
+        | {c["lead_id"] for c in agent_calls if c.get("lead_id")}
         | {m["lead_id"] for m in agent_msgs if m.get("lead_id")}
     )
 
@@ -729,7 +756,11 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         raw_ag = _norm(a.get("agent_name"))
         if raw_ag and raw_ag.lower() in ("unknown", "team", "n/a"):
             raw_ag = None
-        attributed = raw_ag or (lag_full.get(lid) if lid else None) or (fb_full.get(lid) if lid else None)
+        attributed = _agent_label(
+            raw_ag,
+            lag_full.get(lid) if lid else None,
+            fb_full.get(lid) if lid else None,
+        )
         if attributed != target:
             continue
         lead = lbi_full.get(lid, {})
@@ -885,3 +916,5 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         "analyses": analyses_out,
         "alerts":   alerts_out,
     }
+
+
