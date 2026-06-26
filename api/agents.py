@@ -327,13 +327,13 @@ def _agents_inner(range: str, wa_line: str = "all"):
     # leads grouped by assigned_agent (WhatsApp path)
     agent_leads: dict[str, list] = defaultdict(list)
     for l in leads:
-        ag = _norm(l.get("assigned_agent"))
+        ag = _agent_label(l.get("assigned_agent"))
         if ag:
             agent_leads[ag].append(l)
 
     # WhatsApp messages grouped by agent
     lead_by_id = {l["id"]: l for l in leads if l.get("id")}
-    lead_agent_map = {l["id"]: _norm(l.get("assigned_agent")) for l in leads if l.get("id")}
+    lead_agent_map = {l["id"]: _agent_label(l.get("assigned_agent")) for l in leads if l.get("id")}
 
     # Build a historical fallback map from outbound messages and calls so rows
     # without an explicit agent_name still count for the right agent.
@@ -594,7 +594,7 @@ def _agent_alerts_inner(agent: str):
     calls = _paginate(lambda: supabase.table("calls").select("agent_name,lead_id"))
 
     lead_by_id = {l["id"]: l for l in leads if l.get("id")}
-    lead_agent_map = {l["id"]: _norm(l.get("assigned_agent")) for l in leads if l.get("id")}
+    lead_agent_map = {l["id"]: _agent_label(l.get("assigned_agent")) for l in leads if l.get("id")}
     lead_to_agent_fallback: dict[str, str] = {}
     for m in messages:
         lid = m.get("lead_id")
@@ -693,7 +693,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
     # and break message attribution for WA-only agents.
 
     lead_by_id = {l["id"]: l for l in leads_raw if l.get("id")}
-    lead_agent_map = {l["id"]: _norm(l.get("assigned_agent")) for l in leads_raw if l.get("id")}
+    lead_agent_map = {l["id"]: _agent_label(l.get("assigned_agent")) for l in leads_raw if l.get("id")}
 
     # Build fallback map for message attribution
     lead_to_agent_fallback: dict[str, str] = {}
@@ -757,7 +757,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
     # Need full lead table for alert attribution
     all_leads_fa = _paginate(lambda: supabase.table("leads").select("id,phone,name,assigned_agent"))
     lbi_full = {l["id"]: l for l in all_leads_fa if l.get("id")}
-    lag_full = {l["id"]: _norm(l.get("assigned_agent")) for l in all_leads_fa if l.get("id")}
+    lag_full = {l["id"]: _agent_label(l.get("assigned_agent")) for l in all_leads_fa if l.get("id")}
     fb_full: dict[str, str] = {}
     for m in raw_msgs:
         lid = m.get("lead_id"); ag = _norm(m.get("agent_name"))
