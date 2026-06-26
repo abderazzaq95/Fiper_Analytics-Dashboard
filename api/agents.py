@@ -681,7 +681,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
     )
 
     # ── Collect lead IDs: call leads (unfiltered) + message leads ─────────────
-    call_lead_ids: set[str] = {c["lead_id"] for c in agent_calls if c.get("lead_id")}
+    call_lead_ids: set[str] = {c["lead_id"] for c in raw_calls if c.get("lead_id")}
     msg_lead_ids_all: set[str] = {m["lead_id"] for m in raw_msgs if m.get("lead_id")}
     all_lead_ids = list(call_lead_ids | msg_lead_ids_all)
 
