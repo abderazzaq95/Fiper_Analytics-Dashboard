@@ -763,13 +763,23 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         .order("created_at", desc=True)
         .execute().data or []
     )
-    # Need full lead table for alert attribution
-    all_leads_fa = _paginate(lambda: supabase.table("leads").select("id,phone,name,assigned_agent"))
-    lbi_full = {l["id"]: l for l in all_leads_fa if l.get("id")}
-    lag_full = {l["id"]: _agent_label(l.get("assigned_agent")) for l in all_leads_fa if l.get("id")}
+    alert_lead_ids = [a.get("lead_id") for a in alerts_raw if a.get("lead_id") and a.get("lead_id") not in lead_by_id]
+    idx = 0
+    while idx < len(alert_lead_ids):
+        rows = (
+            supabase.table("leads")
+            .select("id,phone,name,assigned_agent")
+            .in_("id", alert_lead_ids[idx:idx + BATCH_SIZE])
+            .execute().data or []
+        )
+        for r in rows:
+            if r.get("id"):
+                lead_by_id[r["id"]] = r
+        idx += BATCH_SIZE
+
     fb_full: dict[str, str] = {}
     for m in raw_msgs:
-        lid = m.get("lead_id"); ag = _norm(m.get("agent_name"))
+        lid = m.get("lead_id"); ag = _agent_label(m.get("agent_name"))
         if lid and m.get("direction") == "outbound" and ag:
             fb_full.setdefault(lid, ag)
     for c in raw_calls:
@@ -780,17 +790,17 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
     alerts_out = []
     for a in alerts_raw:
         lid = a.get("lead_id")
-        raw_ag = _norm(a.get("agent_name"))
+        raw_ag = _agent_label(a.get("agent_name"))
         if raw_ag and raw_ag.lower() in ("unknown", "team", "n/a"):
             raw_ag = None
         attributed = _agent_label(
             raw_ag,
-            lag_full.get(lid) if lid else None,
+            lead_agent_map.get(lid) if lid else None,
             fb_full.get(lid) if lid else None,
         )
         if attributed != target:
             continue
-        lead = lbi_full.get(lid, {})
+        lead = lead_by_id.get(lid, {})
         alerts_out.append({
             "id": a.get("id"), "lead_id": lid,
             "lead_phone": lead.get("phone"), "lead_name": lead.get("name"),
