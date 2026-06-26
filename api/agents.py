@@ -12,6 +12,11 @@ router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 BATCH_SIZE = 100
 
+# Server-side cache for /api/agents — keyed by (range, wa_line), TTL 5 minutes.
+# Prevents the 45-request aggregation from running on every page load/refresh.
+_agents_cache: dict[str, tuple[float, dict]] = {}
+_AGENTS_CACHE_TTL = 300  # seconds
+
 
 def _paginate(build_query) -> list:
     """Exhaust Supabase pagination — calls build_query() fresh each page."""
@@ -124,21 +129,40 @@ def _message_agent_name(
 def agents(
     range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
     wa_line: str = Query("all"),
+    refresh: str = Query("0"),
 ):
+    import logging, time
+    log = logging.getLogger("fiper")
+    cache_key = f"{range}:{wa_line}"
+    now_ts = time.time()
+
+    # Return cached result if still fresh (skip cache when refresh=1)
+    if refresh != "1":
+        cached = _agents_cache.get(cache_key)
+        if cached:
+            cached_at, cached_data = cached
+            if now_ts - cached_at < _AGENTS_CACHE_TTL:
+                return cached_data
+
     try:
         data = _agents_inner(range, wa_line)
         if not data.get("agents"):
             fallback = _agents_lightweight(range, wa_line)
             if fallback.get("agents"):
+                _agents_cache[cache_key] = (now_ts, fallback)
                 return fallback
+        _agents_cache[cache_key] = (now_ts, data)
         return data
     except Exception as e:
-        import logging
-        logging.getLogger("fiper").error(f"/api/agents error ({range}): {e}", exc_info=True)
+        log.error(f"/api/agents error ({range}): {e}", exc_info=True)
+        # Try lightweight fallback before giving up
         try:
-            return _agents_lightweight(range, wa_line)
+            fallback = _agents_lightweight(range, wa_line)
+            if fallback.get("agents"):
+                _agents_cache[cache_key] = (now_ts, fallback)
+                return fallback
         except Exception as fallback_error:
-            logging.getLogger("fiper").error(
+            log.error(
                 f"/api/agents lightweight fallback error ({range}): {fallback_error}",
                 exc_info=True,
             )
@@ -286,50 +310,86 @@ def _agents_lightweight(range: str, wa_line: str = "all"):
     return {"range": range, "agents": rows, "fallback": "lightweight"}
 
 
+def _fetch_in_parallel(table: str, select: str, id_field: str, ids: list[str], extra_filters=None) -> list[dict]:
+    """Fetch rows where id_field IN ids, using parallel threads for batch requests."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    if not ids:
+        return []
+    chunks = [ids[i:i + BATCH_SIZE] for i in range(0, len(ids), BATCH_SIZE)]
+
+    def fetch_chunk(chunk):
+        q = supabase.table(table).select(select).in_(id_field, chunk)
+        if extra_filters:
+            for method, args in extra_filters:
+                q = getattr(q, method)(*args)
+        return q.execute().data or []
+
+    results: list[dict] = []
+    # Use up to 6 parallel workers — each Supabase request is ~200-400ms
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = {executor.submit(fetch_chunk, chunk): chunk for chunk in chunks}
+        for future in as_completed(futures):
+            try:
+                results.extend(future.result())
+            except Exception:
+                pass
+    return results
+
+
 def _agents_inner(range: str, wa_line: str = "all"):
+    from concurrent.futures import ThreadPoolExecutor, as_completed as cf_as_completed
     since = _since(range)
 
-    messages = _paginate(lambda: supabase.table("messages").select(add_whatsapp_line_select("agent_name,direction,sent_at,lead_id")).gte("sent_at", since))
-    calls    = _paginate(lambda: supabase.table("calls").select("agent_name,lead_id,duration_seconds,called_at").gte("called_at", since))
-    alerts   = (
-        supabase.table("alerts")
-        .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
-        .eq("resolved", False)
-        .order("created_at", desc=True)
-        .execute().data or []
-    )
-    # All-time call→lead→agent map for alert attribution (unfiltered by date)
+    # Fetch messages, calls, and alerts in parallel (3 independent queries)
+    def _fetch_messages():
+        return _paginate(lambda: supabase.table("messages")
+            .select(add_whatsapp_line_select("agent_name,direction,sent_at,lead_id"))
+            .gte("sent_at", since))
+
+    def _fetch_calls():
+        return _paginate(lambda: supabase.table("calls")
+            .select("agent_name,lead_id,duration_seconds,called_at")
+            .gte("called_at", since))
+
+    def _fetch_alerts():
+        return (supabase.table("alerts")
+            .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
+            .eq("resolved", False)
+            .order("created_at", desc=True)
+            .execute().data or [])
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        f_msgs   = executor.submit(_fetch_messages)
+        f_calls  = executor.submit(_fetch_calls)
+        f_alerts = executor.submit(_fetch_alerts)
+        messages = f_msgs.result()
+        calls    = f_calls.result()
+        alerts   = f_alerts.result()
+
+    # Collect all active lead IDs
     active_lead_ids = {
         row.get("lead_id")
         for row in [*messages, *calls, *alerts]
         if row.get("lead_id")
     }
     active_ids = list(active_lead_ids)
-    leads = []
-    idx = 0
-    while idx < len(active_ids):
-        leads.extend(
-            supabase.table("leads")
-            .select("id,phone,name,assigned_agent,status,score,channel,whatsapp_business_number")
-            .in_("id", active_ids[idx:idx + BATCH_SIZE])
-            .execute().data or []
-        )
-        idx += BATCH_SIZE
+
+    # Fetch leads and analyses in parallel using threaded batch requests
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f_leads    = executor.submit(_fetch_in_parallel, "leads",
+            "id,phone,name,assigned_agent,status,score,channel,whatsapp_business_number",
+            "id", active_ids)
+        f_analyses = executor.submit(_fetch_in_parallel, "ai_analysis",
+            "lead_id,sentiment,treatment_score,source,analyzed_at,outcome",
+            "lead_id", active_ids)
+        leads    = f_leads.result()
+        analyses = f_analyses.result()
+
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         messages = [m for m in messages if matches_business_line(m, wa_line)]
         leads = [l for l in leads if matches_business_line(l, wa_line)]
         alert_lead_map = {l["id"]: l for l in leads if l.get("id")}
         alerts = [a for a in alerts if matches_business_line(alert_lead_map.get(a.get("lead_id") or ""), wa_line)]
-    analyses = []
-    idx = 0
-    while idx < len(active_ids):
-        analyses.extend(
-            supabase.table("ai_analysis")
-            .select("lead_id,sentiment,treatment_score,source,analyzed_at,outcome")
-            .in_("lead_id", active_ids[idx:idx + BATCH_SIZE])
-            .execute().data or []
-        )
-        idx += BATCH_SIZE
 
     # ── Build lookup dicts (all agent keys normalized to Title Case) ──────────
 

@@ -1410,11 +1410,27 @@ def _require_email_debug_token(token: str):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Warm agent cache on startup
+    # Warm agent name cache on startup
     try:
         await whatsapp.fetch_users()
     except Exception as e:
         log.warning(f"Could not pre-load agent cache: {e}")
+
+    # Pre-populate agents API cache in a background thread so first user request is fast
+    import time
+    def _warm_agents_cache():
+        try:
+            from api.agents import _agents_inner, _agents_cache
+            log.info("Warming /api/agents cache…")
+            for rng in ("week", "today"):
+                data = _agents_inner(rng, "all")
+                _agents_cache[f"{rng}:all"] = (time.time(), data)
+            log.info("Done warming /api/agents cache")
+        except Exception as e:
+            log.warning(f"Agents cache warmup failed: {e}")
+
+    import asyncio as _asyncio
+    _asyncio.get_event_loop().run_in_executor(None, _warm_agents_cache)
 
     scheduler.add_job(
         run_maqsam_realtime_sync,
