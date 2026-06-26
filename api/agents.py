@@ -101,11 +101,11 @@ def _message_agent_name(
         return explicit
     lead_id = row.get("lead_id")
     if lead_id and lead_agent_map:
-        lead_agent = lead_agent_map.get(lead_id)
+        lead_agent = _agent_label(lead_agent_map.get(lead_id))
         if lead_agent:
             return lead_agent
     if lead_id and lead_to_agent_fallback:
-        fallback = lead_to_agent_fallback.get(lead_id)
+        fallback = _agent_label(lead_to_agent_fallback.get(lead_id))
         if fallback:
             return fallback
     return None
@@ -194,7 +194,7 @@ def _agents_lightweight(range: str, wa_line: str = "all"):
             lead_to_agent_fallback.setdefault(lid, ag)
     for c in calls:
         lid = c.get("lead_id")
-        ag = _norm(c.get("agent_name"))
+        ag = _agent_label(c.get("agent_name"))
         if lid and ag:
             lead_to_agent_fallback.setdefault(lid, ag)
 
@@ -345,7 +345,7 @@ def _agents_inner(range: str, wa_line: str = "all"):
             lead_to_agent_fallback.setdefault(lid, ag)
     for c in calls:
         lid = c.get("lead_id")
-        ag = _norm(c.get("agent_name"))
+        ag = _agent_label(c.get("agent_name"))
         if lid and ag:
             lead_to_agent_fallback.setdefault(lid, ag)
 
@@ -702,7 +702,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         if lid and m.get("direction") == "outbound" and ag:
             lead_to_agent_fallback.setdefault(lid, ag)
     for c in raw_calls:
-        lid = c.get("lead_id"); ag = _norm(c.get("agent_name"))
+        lid = c.get("lead_id"); ag = _agent_label(c.get("agent_name"))
         if lid and ag:
             lead_to_agent_fallback.setdefault(lid, ag)
 
@@ -764,7 +764,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         if lid and m.get("direction") == "outbound" and ag:
             fb_full.setdefault(lid, ag)
     for c in raw_calls:
-        lid = c.get("lead_id"); ag = _norm(c.get("agent_name"))
+        lid = c.get("lead_id"); ag = _agent_label(c.get("agent_name"))
         if lid and ag:
             fb_full.setdefault(lid, ag)
 
