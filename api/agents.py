@@ -199,7 +199,11 @@ def _agents_lightweight(range: str, wa_line: str = "all"):
             lead_to_agent_fallback.setdefault(lid, ag)
 
     agents = sorted({
-        *(_norm(c.get("agent_name")) for c in calls if _norm(c.get("agent_name"))),
+        *(
+            _agent_label(c.get("agent_name"))
+            for c in calls
+            if _agent_label(c.get("agent_name"))
+        ),
         *(
             _message_agent_name(
                 m,
@@ -213,12 +217,16 @@ def _agents_lightweight(range: str, wa_line: str = "all"):
                 lead_to_agent_fallback=lead_to_agent_fallback,
             )
         ),
-        *(_norm(a.get("agent_name")) for a in alerts if _norm(a.get("agent_name"))),
+        *(
+            _agent_label(a.get("agent_name"))
+            for a in alerts
+            if _agent_label(a.get("agent_name"))
+        ),
     })
 
     rows = []
     for agent in agents:
-        agent_calls = [c for c in calls if _norm(c.get("agent_name")) == agent]
+        agent_calls = [c for c in calls if _agent_label(c.get("agent_name")) == agent]
         agent_msgs = [
             m for m in messages
             if _message_agent_name(
@@ -229,8 +237,7 @@ def _agents_lightweight(range: str, wa_line: str = "all"):
         ]
         agent_alerts = [
             a for a in alerts
-            if _norm(a.get("agent_name")) == agent
-            and (a.get("agent_name") or "").lower() not in ("team", "unknown")
+            if _agent_label(a.get("agent_name")) == agent
         ]
         completed_calls = [c for c in agent_calls if (c.get("duration_seconds") or 0) > 0]
         lead_ids = {
@@ -356,7 +363,7 @@ def _agents_inner(range: str, wa_line: str = "all"):
     agent_calls: dict[str, list] = defaultdict(list)
     call_lead_ids_by_agent: dict[str, set] = defaultdict(set)
     for c in calls:
-        ag = _norm(c.get("agent_name"))
+        ag = _agent_label(c.get("agent_name"))
         if ag:
             agent_calls[ag].append(c)
             if c.get("lead_id"):
@@ -510,12 +517,24 @@ def _agents_inner(range: str, wa_line: str = "all"):
     result.sort(key=lambda x: x["calls_handled"], reverse=True)
     if not result:
         fallback_agents = set()
-        fallback_agents.update(_norm(c.get("agent_name")) for c in calls if _norm(c.get("agent_name")))
-        fallback_agents.update(_norm(m.get("agent_name")) for m in messages if _norm(m.get("agent_name")))
+        fallback_agents.update(_agent_label(c.get("agent_name")) for c in calls if _agent_label(c.get("agent_name")))
+        fallback_agents.update(
+            _message_agent_name(
+                m,
+                lead_agent_map=lead_agent_map,
+                lead_to_agent_fallback=lead_to_agent_fallback,
+            )
+            for m in messages
+            if _message_agent_name(
+                m,
+                lead_agent_map=lead_agent_map,
+                lead_to_agent_fallback=lead_to_agent_fallback,
+            )
+        )
         fallback_agents.update(agent_alerts.keys())
         for agent in fallback_agents:
-            ac = [c for c in calls if _norm(c.get("agent_name")) == agent]
-            am = [m for m in messages if _norm(m.get("agent_name")) == agent]
+            ac = [c for c in calls if _agent_label(c.get("agent_name")) == agent]
+            am = [m for m in messages if _message_agent_name(m, lead_agent_map=lead_agent_map, lead_to_agent_fallback=lead_to_agent_fallback) == agent]
             lead_ids = {
                 row.get("lead_id")
                 for row in [*ac, *am]
@@ -643,8 +662,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         .select("lead_id,duration_seconds,called_at,agent_name")
         .gte("called_at", since)
     )
-    agent_calls = [c for c in raw_calls if _norm(c.get("agent_name")) == target]
-    agent_calls.sort(key=lambda x: x.get("called_at") or "", reverse=True)
+    # Calls attributed through explicit name first, then lead-based fallback
 
     # ── Messages for this agent in range ─────────────────────────────────────
     raw_msgs = _paginate(
