@@ -665,46 +665,106 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
 
     since = _since(range_)
 
-    # ── Calls for this agent in range (no .order() — avoids pagination issues) ──
-    raw_calls = _paginate(
-        lambda: supabase.table("calls")
-        .select("lead_id,duration_seconds,called_at,agent_name")
-        .gte("called_at", since)
-    )
-    # Calls attributed through explicit name first, then lead-based fallback
+    # ── Step 1: All name spelling variants that _norm resolves to this agent ──
+    # ilike is case-insensitive, so we only need distinct SPELLINGS (not case variants).
+    # E.g. target="Feras Zabalawi" → also match "Feras Zabalwi", "Firas Zabalwi" in DB.
+    target_spellings: set[str] = {target}
+    for raw_key, resolved in _NAME_ALIASES.items():
+        if resolved == target:
+            target_spellings.add(raw_key.strip().title())
+    target_keys_list = list(target_spellings)
 
-    # ── Messages for this agent in range ─────────────────────────────────────
-    raw_msgs = _paginate(
-        lambda: supabase.table("messages")
-        .select(add_whatsapp_line_select("agent_name,direction,sent_at,lead_id"))
-        .gte("sent_at", since)
-    )
-
-    # ── Collect lead IDs: call leads (unfiltered) + message leads ─────────────
+    # ── Step 2: Fetch only this agent's calls (filter at DB level) ────────────
+    raw_calls: list[dict] = []
+    for name_variant in target_keys_list:
+        batch = _paginate(
+            lambda nv=name_variant: supabase.table("calls")
+            .select("lead_id,duration_seconds,called_at,agent_name")
+            .gte("called_at", since)
+            .ilike("agent_name", nv)
+        )
+        raw_calls.extend(batch)
+    # Deduplicate by (lead_id, called_at) in case variants overlapped
+    seen_calls: set[tuple] = set()
+    deduped_calls: list[dict] = []
+    for c in raw_calls:
+        key = (c.get("lead_id"), c.get("called_at"))
+        if key not in seen_calls:
+            seen_calls.add(key); deduped_calls.append(c)
+    raw_calls = deduped_calls
     call_lead_ids: set[str] = {c["lead_id"] for c in raw_calls if c.get("lead_id")}
-    msg_lead_ids_all: set[str] = {m["lead_id"] for m in raw_msgs if m.get("lead_id")}
-    all_lead_ids = list(call_lead_ids | msg_lead_ids_all)
 
-    # Fetch all lead details; keep Maqsam leads regardless of WA line filter
-    leads_raw: list[dict] = []
+    # ── Step 3: Leads assigned to this agent, active within range ────────────
+    assigned_lead_rows: list[dict] = []
+    for name_variant in target_keys_list:
+        try:
+            rows = (
+                supabase.table("leads")
+                .select("id,phone,name,assigned_agent,status,score,channel,whatsapp_business_number")
+                .ilike("assigned_agent", name_variant)
+                .gte("last_message_at", since)
+                .execute().data or []
+            )
+            assigned_lead_rows.extend(rows)
+        except Exception:
+            pass
+    # Deduplicate
+    seen_leads: set[str] = set()
+    deduped_assigned: list[dict] = []
+    for l in assigned_lead_rows:
+        if l.get("id") and l["id"] not in seen_leads:
+            seen_leads.add(l["id"]); deduped_assigned.append(l)
+    assigned_lead_rows = deduped_assigned
+    assigned_lead_ids: set[str] = {l["id"] for l in assigned_lead_rows}
+
+    # ── Step 4: Fetch messages by agent name (direct attribution) ─────────────
+    msgs_by_name: list[dict] = []
+    for name_variant in target_keys_list:
+        batch = _paginate(
+            lambda nv=name_variant: supabase.table("messages")
+            .select(add_whatsapp_line_select("agent_name,direction,sent_at,lead_id"))
+            .gte("sent_at", since)
+            .ilike("agent_name", nv)
+        )
+        msgs_by_name.extend(batch)
+    msg_lead_ids_direct: set[str] = {m["lead_id"] for m in msgs_by_name if m.get("lead_id")}
+
+    # ── Step 5: Fetch ALL messages for this agent's leads (covers assigned leads
+    #    whose messages may have no agent_name) ────────────────────────────────
+    all_agent_lead_ids = list(call_lead_ids | assigned_lead_ids | msg_lead_ids_direct)
+    raw_msgs: list[dict] = list(msgs_by_name)
+    if all_agent_lead_ids:
+        # Fetch messages for leads not already covered by the name-based fetch
+        extra_lead_ids = [lid for lid in all_agent_lead_ids if lid not in msg_lead_ids_direct]
+        idx = 0
+        while idx < len(extra_lead_ids):
+            raw_msgs.extend(
+                supabase.table("messages")
+                .select(add_whatsapp_line_select("agent_name,direction,sent_at,lead_id"))
+                .gte("sent_at", since)
+                .in_("lead_id", extra_lead_ids[idx:idx + BATCH_SIZE])
+                .execute().data or []
+            )
+            idx += BATCH_SIZE
+
+    # ── Step 6: Fetch lead details for all relevant lead IDs ──────────────────
+    already_fetched = {l["id"] for l in assigned_lead_rows}
+    remaining_ids = [lid for lid in all_agent_lead_ids if lid not in already_fetched]
+    leads_raw: list[dict] = list(assigned_lead_rows)
     idx = 0
-    while idx < len(all_lead_ids):
+    while idx < len(remaining_ids):
         leads_raw.extend(
             supabase.table("leads")
             .select("id,phone,name,assigned_agent,status,score,channel,whatsapp_business_number")
-            .in_("id", all_lead_ids[idx:idx + BATCH_SIZE])
+            .in_("id", remaining_ids[idx:idx + BATCH_SIZE])
             .execute().data or []
         )
         idx += BATCH_SIZE
 
-    # No WA-line filter here: the agent profile shows ALL the agent's activity
-    # across every line. Filtering by line would exclude leads from lead_by_id
-    # and break message attribution for WA-only agents.
-
     lead_by_id = {l["id"]: l for l in leads_raw if l.get("id")}
     lead_agent_map = {l["id"]: _agent_label(l.get("assigned_agent")) for l in leads_raw if l.get("id")}
 
-    # Build fallback map for message attribution
+    # Fallback: attribute messages/calls via the call/message agent_name on the same lead
     lead_to_agent_fallback: dict[str, str] = {}
     for m in raw_msgs:
         lid = m.get("lead_id"); ag = _norm(m.get("agent_name"))
@@ -715,26 +775,14 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         if lid and ag:
             lead_to_agent_fallback.setdefault(lid, ag)
 
-    def _call_agent_name(row: dict) -> str | None:
-        raw_ag = row.get("agent_name")
-        explicit = _norm(raw_ag)
-        if explicit and not _looks_like_uuid(raw_ag):
-            return explicit
-        lid = row.get("lead_id")
-        if lid:
-            return lead_agent_map.get(lid) or lead_to_agent_fallback.get(lid)
-        return None
+    # All fetched data IS already filtered to this agent — no further attribution needed
+    agent_calls = sorted(raw_calls, key=lambda x: x.get("called_at") or "", reverse=True)
 
-    agent_calls = [c for c in raw_calls if _call_agent_name(c) == target]
-    agent_calls.sort(key=lambda x: x.get("called_at") or "", reverse=True)
-
-    # Messages attributed to this agent
     agent_msgs = [
         m for m in raw_msgs
         if _message_agent_name(m, lead_agent_map=lead_agent_map, lead_to_agent_fallback=lead_to_agent_fallback) == target
     ]
 
-    # Lead IDs attributed to this agent
     agent_lead_ids: set[str] = (
         {l["id"] for l in leads_raw if _norm(l.get("assigned_agent")) == target}
         | {c["lead_id"] for c in agent_calls if c.get("lead_id")}
