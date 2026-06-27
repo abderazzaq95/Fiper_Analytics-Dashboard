@@ -49,7 +49,7 @@ async def _broadcast(event_type: str, payload: dict | None = None):
         _sse_clients.discard(q)
 
 _GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
-_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 _GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{_GEMINI_MODEL}:generateContent"
 
 _AI_SYSTEM_PROMPT = """You are a quality assurance analyst for Fiper, a trading broker in Arabic-speaking markets.
@@ -1635,13 +1635,15 @@ Rules: direct and professional, use actual numbers, English only, no bullet poin
                 json=payload,
             )
             if not resp.is_success:
-                log.warning(f"[perf-report] Gemini HTTP {resp.status_code} for {target}: {resp.text[:300]}")
-                return {"agent": target, "report": "AI analysis temporarily unavailable."}
+                err = resp.text[:300]
+                log.warning(f"[perf-report] Gemini HTTP {resp.status_code} for {target}: {err}")
+                return {"agent": target, "report": f"AI analysis unavailable (HTTP {resp.status_code}: {err})"}
             body = resp.json()
             candidates = body.get("candidates") or []
             if not candidates:
-                log.warning(f"[perf-report] Gemini returned no candidates for {target}: {body}")
-                return {"agent": target, "report": "AI analysis temporarily unavailable."}
+                block = (body.get("promptFeedback") or {}).get("blockReason", "")
+                log.warning(f"[perf-report] Gemini no candidates for {target}: block={block} body={body}")
+                return {"agent": target, "report": f"AI analysis unavailable (no response{': ' + block if block else ''})."}
             report = (
                 candidates[0]
                 .get("content", {})
