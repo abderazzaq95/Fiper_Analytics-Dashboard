@@ -49,7 +49,7 @@ async def _broadcast(event_type: str, payload: dict | None = None):
         _sse_clients.discard(q)
 
 _GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
-_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash-8b")
 _GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{_GEMINI_MODEL}:generateContent"
 
 _AI_SYSTEM_PROMPT = """You are a quality assurance analyst for Fiper, a trading broker in Arabic-speaking markets.
