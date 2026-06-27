@@ -1559,52 +1559,48 @@ _PERF_CACHE: dict[str, tuple[float, str]] = {}  # key → (ts, report_text)
 _PERF_CACHE_TTL = 600  # 10 minutes
 
 
-@app.get("/api/agents/performance")
-async def agent_performance_report(
-    agent: str = Query(...),
-    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
-):
-    """Generate a Gemini-written performance narrative for one agent."""
+@app.post("/api/agents/performance")
+async def agent_performance_report(request: Request):
+    """Generate a Gemini performance narrative. Stats are passed in by the
+    frontend (from the detail response) so we never fetch the DB twice."""
     import time as _time, httpx as _httpx, json as _json
-    from api.agents import _norm as _anorm, _agent_detail_inner
+    from api.agents import _norm as _anorm
+
+    body   = await request.json()
+    agent  = body.get("agent", "")
+    stats  = body.get("stats", {})
+    range_ = body.get("range", "week")
 
     target = _anorm(agent)
     if not target:
         return {"agent": agent, "report": "Unknown agent."}
 
-    cache_key = f"{target}:{range}"
+    cache_key = f"{target}:{range_}"
     cached = _PERF_CACHE.get(cache_key)
     if cached and (_time.time() - cached[0]) < _PERF_CACHE_TTL:
         return {"agent": target, "report": cached[1]}
 
-    try:
-        detail = _agent_detail_inner(target, range, "all")
-        stats  = detail.get("stats", {})
-    except Exception as e:
-        log.warning(f"[perf-report] detail error for {target}: {e}")
-        return {"agent": target, "report": "Could not load agent data."}
-
     range_labels = {"today": "today", "week": "this week", "month": "this month",
                     "7d": "the last 7 days", "30d": "the last 30 days"}
-    period = range_labels.get(range, range)
+    period = range_labels.get(range_, range_)
 
-    total_calls  = stats.get("calls_total", 0)
-    answered     = stats.get("calls_handled", 0)
-    missed       = total_calls - answered
-    answer_rate  = round(answered / total_calls * 100) if total_calls else 0
-    avg_dur      = stats.get("avg_call_duration_seconds", 0)
-    dur_str      = f"{avg_dur}s" if avg_dur < 60 else f"{round(avg_dur/60, 1)}m"
-    wa_chats     = stats.get("wa_chats", 0)
-    msgs_sent    = stats.get("messages_sent", 0)
-    avg_rt       = stats.get("avg_response_time_min", 0)
-    treatment    = stats.get("avg_treatment_score", 0)
-    sentiment    = stats.get("sentiment", {})
-    pos          = sentiment.get("positive", 0)
-    neu          = sentiment.get("neutral", 0)
-    neg          = sentiment.get("negative", 0)
-    total_anal   = pos + neu + neg
-    open_alerts  = stats.get("open_alerts", 0)
-    leads        = stats.get("leads", 0)
+    total_calls = stats.get("calls_total", 0)
+    answered    = stats.get("calls_handled", 0)
+    missed      = total_calls - answered
+    answer_rate = round(answered / total_calls * 100) if total_calls else 0
+    avg_dur     = stats.get("avg_call_duration_seconds", 0)
+    dur_str     = f"{avg_dur}s" if avg_dur < 60 else f"{round(avg_dur/60,1)}m"
+    wa_chats    = stats.get("wa_chats", 0)
+    msgs_sent   = stats.get("messages_sent", 0)
+    avg_rt      = stats.get("avg_response_time_min", 0)
+    treatment   = stats.get("avg_treatment_score", 0)
+    sentiment   = stats.get("sentiment", {})
+    pos         = sentiment.get("positive", 0)
+    neu         = sentiment.get("neutral", 0)
+    neg         = sentiment.get("negative", 0)
+    total_anal  = pos + neu + neg
+    open_alerts = stats.get("open_alerts", 0)
+    leads       = stats.get("leads", 0)
 
     prompt = f"""You are a sales performance analyst at Fiper, a trading broker.
 Write a performance review for agent "{target}" covering {period}.
@@ -1612,7 +1608,7 @@ Write a performance review for agent "{target}" covering {period}.
 PERFORMANCE DATA:
 - Calls: {total_calls} total | {answered} answered ({answer_rate}%) | {missed} missed
 - Avg call duration: {dur_str}
-- WhatsApp: {wa_chats} unique leads contacted | {msgs_sent} messages sent | avg response time {avg_rt} min
+- WhatsApp: {wa_chats} unique leads contacted | {msgs_sent} messages sent | avg response {avg_rt} min
 - Total leads: {leads}
 - Treatment score: {treatment}/100
 - Sentiment ({total_anal} analyzed): {pos} positive, {neu} neutral, {neg} negative
@@ -1621,9 +1617,9 @@ PERFORMANCE DATA:
 Write 3 short paragraphs:
 1. Call performance — volume, answer rate, duration quality
 2. Customer engagement — WA chats, response speed, sentiment breakdown
-3. Quality & compliance — treatment score, alerts, and ONE specific actionable recommendation
+3. Quality & compliance — treatment score, alerts, ONE specific actionable recommendation
 
-Rules: direct and professional, use the actual numbers, write in English, no bullet points inside paragraphs, under 200 words total."""
+Rules: direct and professional, use actual numbers, English only, no bullet points inside paragraphs, under 200 words total."""
 
     try:
         payload = {
