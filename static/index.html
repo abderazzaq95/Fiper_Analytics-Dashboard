@@ -191,7 +191,8 @@ tr:hover td{background:#fafbff}
 .modal-body{padding:8px 0;overflow:auto}
 /* ── Agent Profile Modal ── */
 .modal-panel-wide{width:min(920px,100%);max-height:90vh}
-.ap-header{padding:18px 22px;background:linear-gradient(135deg,#1e2e4a 0%,#2d3c58 100%);display:flex;align-items:center;gap:14px;border-radius:var(--r) var(--r) 0 0;flex-shrink:0}
+.ap-header{padding:18px 22px;background:linear-gradient(135deg,#1e2e4a 0%,#2d3c58 100%);display:flex;align-items:center;gap:14px;border-radius:var(--r) var(--r) 0 0;flex-shrink:0;cursor:grab;user-select:none}
+.ap-header.dragging{cursor:grabbing}
 .ap-avatar{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#fff;flex-shrink:0;border:2px solid rgba(255,255,255,.2)}
 .ap-name{font-size:17px;font-weight:800;color:#fff;line-height:1.2}
 .ap-tier{font-size:11px;font-weight:600;margin-top:3px;padding:2px 8px;border-radius:20px;display:inline-block}
@@ -847,7 +848,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 
   <!-- Agent Profile Modal -->
   <div class="modal-backdrop" id="agentProfileModal" onclick="closeAgentProfile(event)">
-    <div class="modal-panel modal-panel-wide" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
+    <div class="modal-panel modal-panel-wide" id="apPanel" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
       <!-- Header (filled by JS) -->
       <div class="ap-header" id="apHeader">
         <div class="ap-avatar" id="apAvatar">?</div>
@@ -2260,9 +2261,50 @@ function closeAgentProfile(ev) {
   document.getElementById('agentProfileModal')?.classList.remove('open');
 }
 
+// ── Draggable agent profile modal ────────────────────────────────────────────
+(function() {
+  let _drag = false, _ox = 0, _oy = 0;
+
+  document.addEventListener('mousedown', function(e) {
+    const header = e.target.closest('#apHeader');
+    if (!header || e.target.closest('button')) return;
+    const panel = document.getElementById('apPanel');
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    panel.style.position = 'fixed';
+    panel.style.margin   = '0';
+    panel.style.left     = rect.left + 'px';
+    panel.style.top      = rect.top  + 'px';
+    _ox = e.clientX - rect.left;
+    _oy = e.clientY - rect.top;
+    _drag = true;
+    header.classList.add('dragging');
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!_drag) return;
+    const panel = document.getElementById('apPanel');
+    if (!panel) return;
+    const maxX = window.innerWidth  - panel.offsetWidth;
+    const maxY = window.innerHeight - panel.offsetHeight;
+    panel.style.left = Math.max(0, Math.min(e.clientX - _ox, maxX)) + 'px';
+    panel.style.top  = Math.max(0, Math.min(e.clientY - _oy, maxY)) + 'px';
+  });
+
+  document.addEventListener('mouseup', function() {
+    if (!_drag) return;
+    _drag = false;
+    document.getElementById('apHeader')?.classList.remove('dragging');
+  });
+})();
+
 async function openAgentProfile(agentName) {
   if (!agentName) return;
   _apCurrentAgent = agentName;
+  // Reset drag position so modal re-centers on each open
+  const _panel = document.getElementById('apPanel');
+  if (_panel) { _panel.style.position = ''; _panel.style.left = ''; _panel.style.top = ''; _panel.style.margin = ''; }
   _apAlertsLoadedFor = null;
   _apAlertsLoadingFor = null;
   const modal = document.getElementById('agentProfileModal');
