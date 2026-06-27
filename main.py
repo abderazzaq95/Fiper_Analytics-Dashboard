@@ -1574,12 +1574,13 @@ async def agent_performance_report(request: Request):
     agent  = body.get("agent", "")
     stats  = body.get("stats", {})
     range_ = body.get("range", "week")
+    lang   = body.get("lang", "en")
 
     target = _anorm(agent)
     if not target:
         return {"agent": agent, "report": "Unknown agent."}
 
-    cache_key = f"{target}:{range_}"
+    cache_key = f"{target}:{range_}:{lang}"
     cached = _PERF_CACHE.get(cache_key)
     if cached and (_time.time() - cached[0]) < _PERF_CACHE_TTL:
         return {"agent": target, "report": cached[1]}
@@ -1606,7 +1607,27 @@ async def agent_performance_report(request: Request):
     open_alerts = stats.get("open_alerts", 0)
     leads       = stats.get("leads", 0)
 
-    prompt = f"""You are a sales performance analyst at Fiper, a trading broker.
+    if lang == "ar":
+        prompt = f"""أنت محلل أداء مبيعات في شركة فايبر (Fiper)، وهي شركة وساطة في التداول.
+اكتب تقرير أداء للوكيل "{target}" خلال الفترة ({period}).
+
+بيانات الأداء:
+- المكالمات: {total_calls} إجمالي | {answered} مُجاب ({answer_rate}%) | {missed} فائت
+- متوسط مدة المكالمة: {dur_str}
+- واتساب: {wa_chats} عميل محادثة فريد | {msgs_sent} رسالة مُرسلة | متوسط الرد {avg_rt} دقيقة
+- إجمالي العملاء: {leads}
+- درجة المعاملة: {treatment}/100
+- المشاعر ({total_anal} محللة): {pos} إيجابي، {neu} محايد، {neg} سلبي
+- التنبيهات المفتوحة: {open_alerts}
+
+اكتب 3 فقرات قصيرة:
+1. أداء المكالمات — الحجم، معدل الإجابة، جودة المدة
+2. تفاعل العملاء — محادثات الواتساب، سرعة الرد، توزيع المشاعر
+3. الجودة والامتثال — درجة المعاملة، التنبيهات، توصية عملية واحدة محددة
+
+القواعد: مهني ومباشر، استخدم الأرقام الفعلية، باللغة العربية فقط، بدون نقاط تعداد داخل الفقرات، لا تتجاوز 200 كلمة."""
+    else:
+        prompt = f"""You are a sales performance analyst at Fiper, a trading broker.
 Write a performance review for agent "{target}" covering {period}.
 
 PERFORMANCE DATA:

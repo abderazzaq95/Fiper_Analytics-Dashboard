@@ -2401,7 +2401,7 @@ async function openAgentProfile(agentName) {
     return fetch(`${API}/api/agents/performance`, {
       method: 'POST',
       headers: {'content-type': 'application/json'},
-      body: JSON.stringify({agent: agentName, range: detailRange, stats: data.stats || {}})
+      body: JSON.stringify({agent: agentName, range: detailRange, stats: data.stats || {}, lang})
     });
   }).then(r => {
     if (!r || !r.ok) return null;
@@ -2672,15 +2672,23 @@ function _apRenderPerformanceReport(report) {
   const el = document.getElementById('apTabAi');
   if (!el) return;
   if (!report) { el.innerHTML = `<div class="ap-empty">No performance data available.</div>`; return; }
-  // Split into paragraphs and render cleanly
-  const paras = report.split(/\n\n+/).filter(p => p.trim()).map(p =>
-    `<p style="margin:0 0 14px;line-height:1.65;color:var(--text)">${esc(p.trim())}</p>`
-  ).join('');
+  const isAr = lang === 'ar';
+  // Convert **bold** markdown to <strong>, then split into paragraphs
+  const md = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  const paras = report.split(/\n\n+/).filter(p => p.trim()).map(p => {
+    const line = p.trim();
+    // Heading lines (all bold or starts with **) → styled header
+    if (/^\*\*[^*]+\*\*[.:،]?\s*$/.test(line)) {
+      return `<p style="margin:16px 0 6px;font-weight:700;color:var(--navy);font-size:13px;letter-spacing:.3px">${md(line)}</p>`;
+    }
+    return `<p style="margin:0 0 12px;line-height:1.7;color:var(--text)">${md(line)}</p>`;
+  }).join('');
+  const title = isAr ? 'تحليل الأداء بالذكاء الاصطناعي' : 'AI Performance Analysis';
   el.innerHTML = `<div style="padding:16px 20px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)">
       <span style="font-size:18px">🤖</span>
-      <span style="font-weight:700;color:var(--navy);font-size:14px">AI Performance Analysis</span>
-      <span class="pill pill-blue" style="font-size:10px;margin-left:auto">Gemini</span>
+      <span style="font-weight:700;color:var(--navy);font-size:14px">${title}</span>
+      <span class="pill pill-blue" style="font-size:10px;margin-left:auto">Groq</span>
     </div>
     ${paras}
   </div>`;
