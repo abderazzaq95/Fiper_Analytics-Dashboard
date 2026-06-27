@@ -864,10 +864,10 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
       </div>
       <!-- Tabs -->
       <div class="ap-tabs">
-        <button class="ap-tab active" id="apTabBtn-overview" onclick="apSwitchTab('overview',this)">Overview</button>
-        <button class="ap-tab" id="apTabBtn-calls" onclick="apSwitchTab('calls',this)">📞 Calls</button>
-        <button class="ap-tab" id="apTabBtn-wa" onclick="apSwitchTab('wa',this)">💬 WA Chats</button>
-        <button class="ap-tab" id="apTabBtn-ai" onclick="apSwitchTab('ai',this)">AI Analysis</button>
+        <button class="ap-tab active" id="apTabBtn-overview" onclick="apSwitchTab('overview',this)" data-en="Overview" data-ar="نظرة عامة">Overview</button>
+        <button class="ap-tab" id="apTabBtn-calls" onclick="apSwitchTab('calls',this)" data-en="📞 Calls" data-ar="📞 المكالمات">📞 Calls</button>
+        <button class="ap-tab" id="apTabBtn-wa" onclick="apSwitchTab('wa',this)" data-en="💬 WA Chats" data-ar="💬 واتساب">💬 WA Chats</button>
+        <button class="ap-tab" id="apTabBtn-ai" onclick="apSwitchTab('ai',this)" data-en="AI Analysis" data-ar="تحليل الذكاء الاصطناعي">AI Analysis</button>
         <button class="ap-tab" id="apTabBtn-alerts" onclick="apOpenAlertsTab(this)">⚠️ Alerts</button>
       </div>
       <!-- Tab panels -->
@@ -2263,7 +2263,7 @@ async function apLoadProfileAlerts(force = false) {
   if (_apAlertsLoadingFor === agentName) return;
 
   _apAlertsLoadingFor = agentName;
-  panel.innerHTML = `<div class="ap-empty">Loading alerts...</div>`;
+  panel.innerHTML = `<div class="ap-empty">${_apt('loadingAlerts')}</div>`;
 
   try {
     const url = `${API}/api/agents/alerts?agent=${encodeURIComponent(agentName)}`;
@@ -2276,15 +2276,11 @@ async function apLoadProfileAlerts(force = false) {
     _apAlertsLoadedFor = agentName;
 
     const alertBtn = document.getElementById('apTabBtn-alerts');
-    if (alertBtn && alerts.length) {
-      alertBtn.textContent = `Alerts (${alerts.length})`;
-    } else if (alertBtn) {
-      alertBtn.textContent = 'Alerts';
-    }
+    if (alertBtn) alertBtn.textContent = alerts.length ? _apt('alertsBtnN',{n:alerts.length}) : _apt('alertsBtn');
   } catch (e) {
     console.error('[profile] alerts fetch error:', e);
     if (_apCurrentAgent === agentName) {
-      panel.innerHTML = `<div class="ap-empty" style="color:var(--red)">Failed to load alerts.</div>`;
+      panel.innerHTML = `<div class="ap-empty" style="color:var(--red)">${_apt('failedAlerts')}</div>`;
     }
   } finally {
     if (_apAlertsLoadingFor === agentName) _apAlertsLoadingFor = null;
@@ -2355,7 +2351,7 @@ async function openAgentProfile(agentName) {
 
   ['apTabCalls','apTabWa','apTabAi','apTabAlerts'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.innerHTML = `<div class="ap-empty">Loading...</div>`;
+    if (el) el.innerHTML = `<div class="ap-empty">${_apt('loading')}</div>`;
   });
 
   modal.classList.add('open');
@@ -2393,11 +2389,11 @@ async function openAgentProfile(agentName) {
       }
     }
     const alertBtn = document.getElementById('apTabBtn-alerts');
-    if (alertBtn) alertBtn.textContent = (data.alerts||[]).length ? `⚠️ Alerts (${data.alerts.length})` : 'Alerts';
+    if (alertBtn) alertBtn.textContent = (data.alerts||[]).length ? _apt('alertsBtnN',{n:data.alerts.length}) : _apt('alertsBtn');
 
     // Now request Gemini report using the stats we already have — no extra DB query
     const aiEl = document.getElementById('apTabAi');
-    if (aiEl) aiEl.innerHTML = `<div class="ap-empty" style="color:var(--blue)">🤖 Generating performance report…</div>`;
+    if (aiEl) aiEl.innerHTML = `<div class="ap-empty" style="color:var(--blue)">${_apt('generating')}</div>`;
     return fetch(`${API}/api/agents/performance`, {
       method: 'POST',
       headers: {'content-type': 'application/json'},
@@ -2414,11 +2410,83 @@ async function openAgentProfile(agentName) {
     if (_apCurrentAgent !== agentName) return;
     ['apTabCalls','apTabWa','apTabAlerts'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.innerHTML = `<div class="ap-empty" style="color:var(--red)">Failed to load data.</div>`;
+      if (el) el.innerHTML = `<div class="ap-empty" style="color:var(--red)">${_apt('failedData')}</div>`;
     });
     const aiEl = document.getElementById('apTabAi');
-    if (aiEl) aiEl.innerHTML = `<div class="ap-empty" style="color:var(--red)">AI analysis unavailable.</div>`;
+    if (aiEl) aiEl.innerHTML = `<div class="ap-empty" style="color:var(--red)">${_apt('failedData')}</div>`;
   });
+}
+
+// ── Agent profile i18n ──────────────────────────────────────────────────────
+const _AP_T = {
+  loading:       ['Loading…','جاري التحميل…'],
+  loadingAlerts: ['Loading alerts…','جاري تحميل التنبيهات…'],
+  failedData:    ['Failed to load data.','فشل تحميل البيانات.'],
+  failedAlerts:  ['Failed to load alerts.','فشل تحميل التنبيهات.'],
+  generating:    ['🤖 Generating performance report…','🤖 جاري إنشاء تقرير الأداء…'],
+  // tiers
+  topPerformer:  ['⭐ Top Performer','⭐ أفضل أداء'],
+  goodPerf:      ['👍 Good Performance','👍 أداء جيد'],
+  needsImprov:   ['📈 Needs Improvement','📈 يحتاج تحسين'],
+  underperf:     ['🔴 Underperforming','🔴 أداء ضعيف'],
+  // KPI labels
+  callsAns:      ['📞 Calls Answered','📞 مكالمات مُجابة'],
+  callsLbl:      ['📞 Calls','📞 المكالمات'],
+  answered:      ['📞 Answered','📞 مُجاب'],
+  ofTotal:       ['of {n} total','من {n} إجمالي'],
+  waChats:       ['💬 WA Chats','💬 محادثات واتساب'],
+  msgsSent:      ['Msgs Sent','رسائل مُرسلة'],
+  leads:         ['👥 Leads','👥 العملاء'],
+  avgReply:      ['⏱ Avg Reply','⏱ متوسط الرد'],
+  treatment:     ['⭐ Treatment','⭐ المعاملة'],
+  // overview
+  callPerf:      ['📞 Call Performance','📞 أداء المكالمات'],
+  ansOfCalls:    ['{a} answered of {t} calls','{a} مُجاب من {t} مكالمة'],
+  avgCallDur:    ['Avg call duration','متوسط مدة المكالمة'],
+  custSent:      ['Customer Sentiment','مشاعر العملاء'],
+  sentimentSub:  ['How leads felt during conversations (from {n} analyzed)','كيف شعر العملاء خلال المحادثات (من {n} محللة)'],
+  positive:      ['Positive','إيجابي'],
+  neutral:       ['Neutral','محايد'],
+  negative:      ['Negative','سلبي'],
+  treatQuality:  ['Treatment Quality — Last 7 Days','جودة المعاملة — آخر 7 أيام'],
+  treatSub:      ['AI score for how well the agent handled each customer (0–100)','درجة الذكاء الاصطناعي لجودة التعامل مع كل عميل (0–100)'],
+  conversions:   ['Conversions','تحويلات'],
+  riskLeads:     ['Leads w/ Risk Flags','عملاء بمخاطر'],
+  openAlerts:    ['Open Alerts','تنبيهات مفتوحة'],
+  noAnalysis:    ['No analysis data available for this agent in the selected period.','لا توجد بيانات تحليل لهذا الوكيل في الفترة المحددة.'],
+  tryWider:      ['Try switching to a wider range (Week or Month).','جرّب تغيير النطاق الزمني (أسبوع أو شهر).'],
+  loadingFull:   ['Loading full details…','جاري تحميل التفاصيل الكاملة…'],
+  // calls tab
+  noCalls:       ['No calls in this period.','لا توجد مكالمات في هذه الفترة.'],
+  totalLbl:      ['total','إجمالي'],
+  answeredLbl:   ['answered','مُجاب'],
+  missedLbl:     ['missed','فائت'],
+  missedCall:    ['Missed','فائتة'],
+  avgLbl:        ['avg','متوسط'],
+  leadCol:       ['Lead','العميل'],
+  durationCol:   ['Duration','المدة'],
+  dateCol:       ['Date','التاريخ'],
+  // WA tab
+  noWa:          ['No WA chats in this period.','لا توجد محادثات واتساب في هذه الفترة.'],
+  leadsContacted:['leads contacted','عميل تم التواصل معه'],
+  messagesSent:  ['messages sent','رسالة مُرسلة'],
+  avgReplyLbl:   ['avg reply','متوسط الرد'],
+  sentCol:       ['Sent','مُرسل'],
+  recvCol:       ['Recv','مُستلم'],
+  lastMsgCol:    ['Last Msg','آخر رسالة'],
+  // AI tab
+  aiTitle:       ['AI Performance Analysis','تحليل الأداء بالذكاء الاصطناعي'],
+  noReport:      ['No performance data available.','لا توجد بيانات أداء متاحة.'],
+  // alerts tab
+  noAlerts:      ['✅ No open alerts for this agent.','✅ لا توجد تنبيهات مفتوحة لهذا الوكيل.'],
+  alertsBtn:     ['⚠️ Alerts','⚠️ التنبيهات'],
+  alertsBtnN:    ['⚠️ Alerts ({n})','⚠️ التنبيهات ({n})'],
+};
+function _apt(k, vars) {
+  const pair = _AP_T[k];
+  let s = pair ? pair[lang === 'ar' ? 1 : 0] : k;
+  if (vars) for (const [kk, v] of Object.entries(vars)) s = s.replaceAll(`{${kk}}`, v);
+  return s;
 }
 
 // Render KPI strip immediately from cached agents data (same as shown in table)
@@ -2426,21 +2494,21 @@ function _apRenderKpisFromCache(a) {
   const el = document.getElementById('apKpis');
   if (!el) return;
   if (!a) {
-    el.innerHTML = `<div class="ap-kpi"><div class="ap-kpi-val">—</div><div class="ap-kpi-lbl">Loading…</div></div>`;
+    el.innerHTML = `<div class="ap-kpi"><div class="ap-kpi-val">—</div><div class="ap-kpi-lbl">${_apt('loading')}</div></div>`;
     return;
   }
   const kpis = [
-    { val: fmt(a.calls_handled  ?? a.leads ?? 0),   lbl: '📞 Answered' },
-    { val: fmt(a.wa_chats       ?? 0),               lbl: '💬 WA Chats' },
-    { val: fmt(a.messages_sent  ?? 0),               lbl: 'Msgs Sent' },
-    { val: fmt(a.leads          ?? 0),               lbl: '👥 Leads' },
-    { val: a.avg_response_time_min > 0 ? `${fmt(a.avg_response_time_min)}m` : '—', lbl: '⏱ Avg Reply' },
-    { val: a.avg_treatment_score > 0 ? `${fmt(a.avg_treatment_score)}/100` : '—', lbl: '⭐ Treatment' },
+    { val: fmt(a.calls_handled  ?? a.leads ?? 0),   lbl: _apt('answered') },
+    { val: fmt(a.wa_chats       ?? 0),               lbl: _apt('waChats') },
+    { val: fmt(a.messages_sent  ?? 0),               lbl: _apt('msgsSent') },
+    { val: fmt(a.leads          ?? 0),               lbl: _apt('leads') },
+    { val: a.avg_response_time_min > 0 ? `${fmt(a.avg_response_time_min)}m` : '—', lbl: _apt('avgReply') },
+    { val: a.avg_treatment_score > 0 ? `${fmt(a.avg_treatment_score)}/100` : '—', lbl: _apt('treatment') },
   ].filter(k => k.val !== '0' && k.val !== fmt(0));
   el.style.gridTemplateColumns = `repeat(${kpis.length || 2}, 1fr)`;
   el.innerHTML = (kpis.length ? kpis : [
-    { val: fmt(a.leads || 0), lbl: '👥 Leads' },
-    { val: a.avg_treatment_score > 0 ? `${fmt(a.avg_treatment_score)}/100` : '—', lbl: '⭐ Treatment' },
+    { val: fmt(a.leads || 0), lbl: _apt('leads') },
+    { val: a.avg_treatment_score > 0 ? `${fmt(a.avg_treatment_score)}/100` : '—', lbl: _apt('treatment') },
   ]).map(k => `<div class="ap-kpi"><div class="ap-kpi-val">${k.val}</div><div class="ap-kpi-lbl">${k.lbl}</div></div>`).join('');
 }
 
@@ -2448,7 +2516,7 @@ function _apRenderKpisFromCache(a) {
 function _apRenderOverviewFromCache(a) {
   const el = document.getElementById('apTabOverview');
   if (!el) return;
-  if (!a) { el.innerHTML = `<div class="ap-empty">Loading…</div>`; return; }
+  if (!a) { el.innerHTML = `<div class="ap-empty">${_apt('loading')}</div>`; return; }
   const s = a.sentiment || {};
   const tot = (s.positive||0)+(s.neutral||0)+(s.negative||0);
   const pPct  = tot ? Math.round(s.positive/tot*100) : 0;
@@ -2463,19 +2531,19 @@ function _apRenderOverviewFromCache(a) {
   }).join('');
   let html = '';
   if (tot > 0) html += `<div class="ap-mini-card">
-    <div class="ap-section-title">Customer Sentiment</div>
-    <div style="font-size:11px;color:var(--text-light);margin-bottom:8px">How leads felt during conversations (from ${tot} analyzed)</div>
-    <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--green)"></span> Positive</span><span style="font-weight:700;color:var(--green)">${s.positive} <span style="font-size:10px;font-weight:400">(${pPct}%)</span></span></div>
-    <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--blue)"></span> Neutral</span><span style="font-weight:700;color:var(--blue)">${s.neutral} <span style="font-size:10px;font-weight:400">(${nuPct}%)</span></span></div>
-    <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--red)"></span> Negative</span><span style="font-weight:700;color:var(--red)">${s.negative} <span style="font-size:10px;font-weight:400">(${nPct}%)</span></span></div>
+    <div class="ap-section-title">${_apt('custSent')}</div>
+    <div style="font-size:11px;color:var(--text-light);margin-bottom:8px">${_apt('sentimentSub',{n:tot})}</div>
+    <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--green)"></span> ${_apt('positive')}</span><span style="font-weight:700;color:var(--green)">${s.positive} <span style="font-size:10px;font-weight:400">(${pPct}%)</span></span></div>
+    <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--blue)"></span> ${_apt('neutral')}</span><span style="font-weight:700;color:var(--blue)">${s.neutral} <span style="font-size:10px;font-weight:400">(${nuPct}%)</span></span></div>
+    <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--red)"></span> ${_apt('negative')}</span><span style="font-weight:700;color:var(--red)">${s.negative} <span style="font-size:10px;font-weight:400">(${nPct}%)</span></span></div>
     <div class="ap-sent-bar"><div class="ap-sent-pos" style="width:${pPct}%"></div><div class="ap-sent-neu" style="width:${nuPct}%"></div><div class="ap-sent-neg" style="width:${nPct}%"></div></div>
   </div>`;
   if (bars) html += `<div class="ap-mini-card">
-    <div class="ap-section-title">Treatment Quality — Last 7 Days</div>
-    <div style="font-size:11px;color:var(--text-light);margin-bottom:8px">AI score for how well the agent handled each customer (0–100)</div>
+    <div class="ap-section-title">${_apt('treatQuality')}</div>
+    <div style="font-size:11px;color:var(--text-light);margin-bottom:8px">${_apt('treatSub')}</div>
     <div class="ap-trend-wrap">${bars}</div>
   </div>`;
-  if (!html) html = `<div class="ap-empty" style="padding:16px">Loading full details…</div>`;
+  if (!html) html = `<div class="ap-empty" style="padding:16px">${_apt('loadingFull')}</div>`;
   el.innerHTML = `<div style="display:flex;flex-direction:column;gap:12px">${html}</div>`;
 }
 
@@ -2486,10 +2554,10 @@ function _apRenderHeader(name, stats) {
   const tierEl = document.getElementById('apTier');
   if (!stats) { tierEl.textContent = ''; tierEl.className = 'ap-tier'; return; }
   const ts = stats.avg_treatment_score || 0;
-  if (ts >= 80)       { tierEl.textContent = '⭐ Top Performer';     tierEl.className = 'ap-tier top'; }
-  else if (ts >= 65)  { tierEl.textContent = '👍 Good Performance';  tierEl.className = 'ap-tier good'; }
-  else if (ts >= 45)  { tierEl.textContent = '📈 Needs Improvement'; tierEl.className = 'ap-tier mid'; }
-  else if (ts > 0)    { tierEl.textContent = '🔴 Underperforming';   tierEl.className = 'ap-tier low'; }
+  if (ts >= 80)       { tierEl.textContent = _apt('topPerformer');  tierEl.className = 'ap-tier top'; }
+  else if (ts >= 65)  { tierEl.textContent = _apt('goodPerf');      tierEl.className = 'ap-tier good'; }
+  else if (ts >= 45)  { tierEl.textContent = _apt('needsImprov');   tierEl.className = 'ap-tier mid'; }
+  else if (ts > 0)    { tierEl.textContent = _apt('underperf');     tierEl.className = 'ap-tier low'; }
   else                { tierEl.textContent = ''; tierEl.className = 'ap-tier'; }
 }
 
@@ -2499,18 +2567,18 @@ function _apRenderKpis(stats) {
   const s = stats || {};
   // Only show a KPI cell when there's something meaningful to say
   const all = [
-    { val: fmt(s.calls_handled || 0),  sub: s.calls_total > s.calls_handled ? `of ${fmt(s.calls_total)} total` : null, lbl: '📞 Calls Answered', show: (s.calls_total || 0) > 0 },
-    { val: fmt(s.wa_chats || 0),       sub: null, lbl: '💬 WA Chats', show: (s.wa_chats || 0) > 0 },
-    { val: fmt(s.messages_sent || 0),  sub: null, lbl: 'Msgs Sent',   show: (s.messages_sent || 0) > 0 },
-    { val: fmt(s.leads || 0),          sub: null, lbl: '👥 Leads',    show: (s.leads || 0) > 0 },
-    { val: s.avg_response_time_min > 0 ? `${fmt(s.avg_response_time_min)}m` : null, lbl: '⏱ Avg Reply',   show: (s.avg_response_time_min || 0) > 0 },
-    { val: s.avg_treatment_score > 0   ? `${fmt(s.avg_treatment_score)}/100` : null, lbl: '⭐ Treatment', show: (s.avg_treatment_score || 0) > 0 },
+    { val: fmt(s.calls_handled || 0),  sub: s.calls_total > s.calls_handled ? _apt('ofTotal',{n:fmt(s.calls_total)}) : null, lbl: _apt('callsAns'), show: (s.calls_total || 0) > 0 },
+    { val: fmt(s.wa_chats || 0),       sub: null, lbl: _apt('waChats'),   show: (s.wa_chats || 0) > 0 },
+    { val: fmt(s.messages_sent || 0),  sub: null, lbl: _apt('msgsSent'),  show: (s.messages_sent || 0) > 0 },
+    { val: fmt(s.leads || 0),          sub: null, lbl: _apt('leads'),     show: (s.leads || 0) > 0 },
+    { val: s.avg_response_time_min > 0 ? `${fmt(s.avg_response_time_min)}m` : null, lbl: _apt('avgReply'),   show: (s.avg_response_time_min || 0) > 0 },
+    { val: s.avg_treatment_score > 0   ? `${fmt(s.avg_treatment_score)}/100` : null, lbl: _apt('treatment'), show: (s.avg_treatment_score || 0) > 0 },
   ].filter(k => k.show && k.val);
 
   // Always show at least the calls/leads even if zero so the strip isn't blank
   const display = all.length ? all : [
-    { val: fmt(s.calls_total || 0), sub: null, lbl: '📞 Calls', show: true },
-    { val: fmt(s.leads || 0),       sub: null, lbl: '👥 Leads', show: true },
+    { val: fmt(s.calls_total || 0), sub: null, lbl: _apt('callsLbl'), show: true },
+    { val: fmt(s.leads || 0),       sub: null, lbl: _apt('leads'),    show: true },
   ];
 
   el.style.gridTemplateColumns = `repeat(${display.length}, 1fr)`;
@@ -2540,15 +2608,15 @@ function _apRenderOverview(stats, detail) {
     const avgDurStr = s.avg_call_duration_seconds > 0 ? durSec(s.avg_call_duration_seconds) : null;
     parts.push(`
       <div class="ap-mini-card">
-        <div class="ap-section-title">📞 Call Performance</div>
+        <div class="ap-section-title">${_apt('callPerf')}</div>
         <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap">
           <div>
             <div style="font-size:30px;font-weight:800;color:${rateCol}">${ansRate}%</div>
-            <div style="font-size:11px;color:var(--text-light)">${s.calls_handled||0} answered of ${s.calls_total} calls</div>
+            <div style="font-size:11px;color:var(--text-light)">${_apt('ansOfCalls',{a:s.calls_handled||0,t:s.calls_total})}</div>
           </div>
           ${avgDurStr ? `<div>
             <div style="font-size:20px;font-weight:800;color:var(--navy)">${avgDurStr}</div>
-            <div style="font-size:11px;color:var(--text-light)">Avg call duration</div>
+            <div style="font-size:11px;color:var(--text-light)">${_apt('avgCallDur')}</div>
           </div>` : ''}
         </div>
       </div>`);
@@ -2561,11 +2629,11 @@ function _apRenderOverview(stats, detail) {
     const nPct  = Math.round(sent.negative/sentTot*100);
     parts.push(`
       <div class="ap-mini-card">
-        <div class="ap-section-title">Customer Sentiment</div>
-        <div style="font-size:11px;color:var(--text-light);margin-bottom:8px">How leads felt during conversations (from ${sentTot} analyzed)</div>
-        <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--green)"></span> Positive</span><span style="font-weight:700;color:var(--green)">${sent.positive} <span style="font-size:10px;font-weight:400">(${pPct}%)</span></span></div>
-        <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--blue)"></span> Neutral</span><span style="font-weight:700;color:var(--blue)">${sent.neutral} <span style="font-size:10px;font-weight:400">(${nuPct}%)</span></span></div>
-        <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--red)"></span> Negative</span><span style="font-weight:700;color:var(--red)">${sent.negative} <span style="font-size:10px;font-weight:400">(${nPct}%)</span></span></div>
+        <div class="ap-section-title">${_apt('custSent')}</div>
+        <div style="font-size:11px;color:var(--text-light);margin-bottom:8px">${_apt('sentimentSub',{n:sentTot})}</div>
+        <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--green)"></span> ${_apt('positive')}</span><span style="font-weight:700;color:var(--green)">${sent.positive} <span style="font-size:10px;font-weight:400">(${pPct}%)</span></span></div>
+        <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--blue)"></span> ${_apt('neutral')}</span><span style="font-weight:700;color:var(--blue)">${sent.neutral} <span style="font-size:10px;font-weight:400">(${nuPct}%)</span></span></div>
+        <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--red)"></span> ${_apt('negative')}</span><span style="font-weight:700;color:var(--red)">${sent.negative} <span style="font-size:10px;font-weight:400">(${nPct}%)</span></span></div>
         <div class="ap-sent-bar" style="margin-top:10px">
           <div class="ap-sent-pos" style="width:${pPct}%"></div>
           <div class="ap-sent-neu" style="width:${nuPct}%"></div>
@@ -2584,8 +2652,8 @@ function _apRenderOverview(stats, detail) {
     }).join('');
     parts.push(`
       <div class="ap-mini-card">
-        <div class="ap-section-title">Treatment Quality — Last 7 Days</div>
-        <div style="font-size:11px;color:var(--text-light);margin-bottom:8px">AI score for how well the agent handled each customer (0–100)</div>
+        <div class="ap-section-title">${_apt('treatQuality')}</div>
+        <div style="font-size:11px;color:var(--text-light);margin-bottom:8px">${_apt('treatSub')}</div>
         <div class="ap-trend-wrap">${bars}</div>
       </div>`);
   }
@@ -2597,38 +2665,38 @@ function _apRenderOverview(stats, detail) {
     const openAlerts  = (detail.alerts||[]).length;
     if (conversions > 0 || risks > 0 || openAlerts > 0) {
       const cells = [];
-      if (conversions > 0) cells.push(`<div class="ap-mini-card" style="text-align:center"><div style="font-size:26px;font-weight:800;color:var(--green)">${conversions}</div><div style="font-size:11px;color:var(--text-light);margin-top:2px">Conversions</div></div>`);
-      if (risks > 0)       cells.push(`<div class="ap-mini-card" style="text-align:center"><div style="font-size:26px;font-weight:800;color:var(--red)">${risks}</div><div style="font-size:11px;color:var(--text-light);margin-top:2px">Leads w/ Risk Flags</div></div>`);
-      if (openAlerts > 0)  cells.push(`<div class="ap-mini-card" style="text-align:center"><div style="font-size:26px;font-weight:800;color:#FF8F3C">${openAlerts}</div><div style="font-size:11px;color:var(--text-light);margin-top:2px">Open Alerts</div></div>`);
+      if (conversions > 0) cells.push(`<div class="ap-mini-card" style="text-align:center"><div style="font-size:26px;font-weight:800;color:var(--green)">${conversions}</div><div style="font-size:11px;color:var(--text-light);margin-top:2px">${_apt('conversions')}</div></div>`);
+      if (risks > 0)       cells.push(`<div class="ap-mini-card" style="text-align:center"><div style="font-size:26px;font-weight:800;color:var(--red)">${risks}</div><div style="font-size:11px;color:var(--text-light);margin-top:2px">${_apt('riskLeads')}</div></div>`);
+      if (openAlerts > 0)  cells.push(`<div class="ap-mini-card" style="text-align:center"><div style="font-size:26px;font-weight:800;color:#FF8F3C">${openAlerts}</div><div style="font-size:11px;color:var(--text-light);margin-top:2px">${_apt('openAlerts')}</div></div>`);
       if (cells.length) parts.push(`<div style="display:grid;grid-template-columns:repeat(${cells.length},1fr);gap:10px">${cells.join('')}</div>`);
     }
   }
 
   el.innerHTML = parts.length
     ? `<div style="display:flex;flex-direction:column;gap:12px">${parts.join('')}</div>`
-    : `<div class="ap-empty" style="padding:32px">No analysis data available for this agent in the selected period.<br><span style="font-size:12px;color:var(--text-light)">Try switching to a wider range (Week or Month).</span></div>`;
+    : `<div class="ap-empty" style="padding:32px">${_apt('noAnalysis')}<br><span style="font-size:12px;color:var(--text-light)">${_apt('tryWider')}</span></div>`;
 }
 
 function _apRenderCalls(calls, stats) {
   const el = document.getElementById('apTabCalls');
   if (!el) return;
-  if (!calls.length && !(stats.calls_total > 0)) { el.innerHTML = `<div class="ap-empty">No calls in this period.</div>`; return; }
+  if (!calls.length && !(stats.calls_total > 0)) { el.innerHTML = `<div class="ap-empty">${_apt('noCalls')}</div>`; return; }
   // Use stats for totals — they cover all calls, not just the 50 returned
   const totalCalls    = stats.calls_total   || calls.length;
   const answeredCalls = stats.calls_handled || calls.filter(c => c.answered).length;
   const missedCalls   = totalCalls - answeredCalls;
   const summary  = `<div style="display:flex;gap:20px;padding:12px 16px;background:var(--bg);border-radius:8px;margin-bottom:12px;font-size:13px;flex-wrap:wrap">
-    <span>📞 <strong>${totalCalls}</strong> total</span>
-    <span style="color:var(--green)">✅ <strong>${answeredCalls}</strong> answered</span>
-    <span style="color:var(--red)">❌ <strong>${missedCalls}</strong> missed</span>
-    ${stats.avg_call_duration_seconds ? `<span style="color:var(--text-light)">⏱ avg ${durSec(stats.avg_call_duration_seconds)}</span>` : ''}
+    <span>📞 <strong>${totalCalls}</strong> ${_apt('totalLbl')}</span>
+    <span style="color:var(--green)">✅ <strong>${answeredCalls}</strong> ${_apt('answeredLbl')}</span>
+    <span style="color:var(--red)">❌ <strong>${missedCalls}</strong> ${_apt('missedLbl')}</span>
+    ${stats.avg_call_duration_seconds ? `<span style="color:var(--text-light)">⏱ ${_apt('avgLbl')} ${durSec(stats.avg_call_duration_seconds)}</span>` : ''}
   </div>`;
   const rows = calls.map(c => {
     const phone = c.lead_phone ? fmtPhone(c.lead_phone) : '—';
     const name  = c.lead_name ? esc(c.lead_name) : '';
     const dur   = c.answered
       ? `<span style="color:var(--green);font-weight:700">${durSec(c.duration_seconds)}</span>`
-      : `<span style="color:var(--red);font-weight:600">Missed</span>`;
+      : `<span style="color:var(--red);font-weight:600">${_apt('missedCall')}</span>`;
     let when = '—';
     try { when = c.called_at ? new Date(c.called_at).toLocaleString() : '—'; } catch(_){}
     return `<tr>
@@ -2637,21 +2705,21 @@ function _apRenderCalls(calls, stats) {
       <td style="font-size:11px;color:var(--text-light)">${when}</td>
     </tr>`;
   }).join('');
-  el.innerHTML = summary + `<table class="ap-table"><thead><tr><th>Lead</th><th>Duration</th><th>Date</th></tr></thead><tbody>${rows}</tbody></table>`;
+  el.innerHTML = summary + `<table class="ap-table"><thead><tr><th>${_apt('leadCol')}</th><th>${_apt('durationCol')}</th><th>${_apt('dateCol')}</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function _apRenderWa(waLeads, stats) {
   const el = document.getElementById('apTabWa');
   if (!el) return;
-  if (!waLeads.length && !(stats.wa_chats > 0)) { el.innerHTML = `<div class="ap-empty">No WA chats in this period.</div>`; return; }
+  if (!waLeads.length && !(stats.wa_chats > 0)) { el.innerHTML = `<div class="ap-empty">${_apt('noWa')}</div>`; return; }
   // Use stats for totals — they cover all leads, not just the 50 returned
   const totalLeads = stats.wa_chats      || waLeads.length;
   const totalSent  = stats.messages_sent || waLeads.reduce((s,w) => s + (w.messages_sent||0), 0);
   const avgRt = stats.avg_response_time_min > 0 ? `${fmt(stats.avg_response_time_min,1)}m` : null;
   const summary = `<div style="display:flex;gap:20px;padding:12px 16px;background:var(--bg);border-radius:8px;margin-bottom:12px;font-size:13px;flex-wrap:wrap">
-    <span>💬 <strong>${totalLeads}</strong> leads contacted</span>
-    <span style="color:var(--blue)">📤 <strong>${totalSent}</strong> messages sent</span>
-    ${avgRt ? `<span style="color:var(--text-light)">⏱ avg reply ${avgRt}</span>` : ''}
+    <span>💬 <strong>${totalLeads}</strong> ${_apt('leadsContacted')}</span>
+    <span style="color:var(--blue)">📤 <strong>${totalSent}</strong> ${_apt('messagesSent')}</span>
+    ${avgRt ? `<span style="color:var(--text-light)">⏱ ${_apt('avgReplyLbl')} ${avgRt}</span>` : ''}
   </div>`;
   const rows = waLeads.map(w => {
     const phone = w.lead_phone ? fmtPhone(w.lead_phone) : '—';
@@ -2665,13 +2733,13 @@ function _apRenderWa(waLeads, stats) {
       <td style="font-size:11px;color:var(--text-light)">${when}</td>
     </tr>`;
   }).join('');
-  el.innerHTML = summary + `<table class="ap-table"><thead><tr><th>Lead</th><th style="text-align:center">Sent</th><th style="text-align:center">Recv</th><th>Last Msg</th></tr></thead><tbody>${rows}</tbody></table>`;
+  el.innerHTML = summary + `<table class="ap-table"><thead><tr><th>${_apt('leadCol')}</th><th style="text-align:center">${_apt('sentCol')}</th><th style="text-align:center">${_apt('recvCol')}</th><th>${_apt('lastMsgCol')}</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function _apRenderPerformanceReport(report) {
   const el = document.getElementById('apTabAi');
   if (!el) return;
-  if (!report) { el.innerHTML = `<div class="ap-empty">No performance data available.</div>`; return; }
+  if (!report) { el.innerHTML = `<div class="ap-empty">${_apt('noReport')}</div>`; return; }
   const isAr = lang === 'ar';
   // Convert **bold** markdown to <strong>, then split into paragraphs
   const md = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
@@ -2698,7 +2766,7 @@ function _apRenderProfileAlerts(alerts) {
   const el = document.getElementById('apTabAlerts');
   if (!el) return;
   if (!alerts.length) {
-    el.innerHTML = `<div class="ap-empty">✅ No open alerts for this agent.</div>`;
+    el.innerHTML = `<div class="ap-empty">${_apt('noAlerts')}</div>`;
     return;
   }
   el.innerHTML = alerts.map(a => {
