@@ -2044,6 +2044,38 @@ function sortAgents(key) {
   else loadAll();
 }
 
+// Background-sync accurate WA/call stats for every agent from the detail API.
+// Fires once after page load so the table always shows correct numbers without
+// requiring the user to open each agent's modal individually.
+let _syncInProgress = false;
+async function _syncAllAgentDetails(agentsList) {
+  if (_syncInProgress || !agentsList?.length) return;
+  _syncInProgress = true;
+  const currentRange = range;
+  for (let i = 0; i < agentsList.length; i++) {
+    const agentName = agentsList[i].agent;
+    if (!agentName) continue;
+    try {
+      const url = `${API}/api/agents/detail?agent=${encodeURIComponent(agentName)}&range=${encodeURIComponent(currentRange)}&wa_line=all`;
+      const r = await fetch(url);
+      if (!r.ok) continue;
+      const data = await r.json();
+      if (!data?.stats || !_cache?.[3]?.agents) continue;
+      const s = data.stats;
+      const idx = _cache[3].agents.findIndex(a => a.agent === agentName);
+      if (idx < 0) continue;
+      const a = _cache[3].agents[idx];
+      if (s.wa_chats      != null) a.wa_chats      = s.wa_chats;
+      if (s.messages_sent != null) a.messages_sent = s.messages_sent;
+      if (s.leads         != null) a.leads         = s.leads;
+      if (s.calls_handled != null) a.calls_handled = s.calls_handled;
+      if (s.calls_total   != null) a.calls_total   = s.calls_total;
+      renderAgents(_cache[3]);
+    } catch (_) {}
+  }
+  _syncInProgress = false;
+}
+
 // ── Alert i18n helpers ────────────────────────────────────────────────────────
 const _ALERT_TYPE_AR = {
   no_reply:            'لا رد',
@@ -2805,7 +2837,7 @@ function renderAll(ov, ch, leads, agents, quality, traffic) {
   // Sections that need quality/agents data — skip if not yet loaded
   if (quality) { renderOutcomes(quality); renderSentiment(quality); renderTopics(quality); renderFAQ(quality); renderQualityRisk(quality, ov); renderAlerts(quality); }
   else { renderQualityLoading(); }
-  if (agents)  { renderAgents(agents); }
+  if (agents)  { renderAgents(agents); _syncAllAgentDetails(agents.agents || []); }
   else { renderAgentsLoading(); }
   document.getElementById('lastUpdText').textContent = (lang==='ar'?'تحديث: ':'Updated: ') + new Date().toLocaleTimeString();
   _hasRenderedOnce = true;
@@ -3532,6 +3564,7 @@ async function loadAll(bgRefresh = false) {
     _rangeCache[_cacheKey(range)] = { status, data: fullData };
     _saveCache(range, fullData);
     renderAgents(agents);
+    _syncAllAgentDetails(agents.agents || []);
     renderAlerts(quality);
     renderSentiment(quality);
     renderTopics(quality);
