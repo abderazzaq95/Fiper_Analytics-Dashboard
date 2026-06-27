@@ -1621,28 +1621,36 @@ Write 3 short paragraphs:
 
 Rules: direct and professional, use actual numbers, English only, no bullet points inside paragraphs, under 200 words total."""
 
+    if not _GEMINI_KEY:
+        return {"agent": target, "report": "AI analysis not configured."}
+
     try:
         payload = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.3, "maxOutputTokens": 400},
         }
-        async with _httpx.AsyncClient(timeout=25) as client:
+        async with _httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
                 f"{_GEMINI_URL}?key={_GEMINI_KEY}",
-                headers={"content-type": "application/json"},
-                content=_json.dumps(payload),
+                json=payload,
             )
-            resp.raise_for_status()
+            if not resp.is_success:
+                log.warning(f"[perf-report] Gemini HTTP {resp.status_code} for {target}: {resp.text[:300]}")
+                return {"agent": target, "report": "AI analysis temporarily unavailable."}
+            body = resp.json()
+            candidates = body.get("candidates") or []
+            if not candidates:
+                log.warning(f"[perf-report] Gemini returned no candidates for {target}: {body}")
+                return {"agent": target, "report": "AI analysis temporarily unavailable."}
             report = (
-                resp.json()
-                .get("candidates", [{}])[0]
+                candidates[0]
                 .get("content", {})
                 .get("parts", [{}])[0]
                 .get("text", "")
                 .strip()
             )
     except Exception as e:
-        log.warning(f"[perf-report] Gemini error for {target}: {e}")
+        log.warning(f"[perf-report] Gemini exception for {target}: {type(e).__name__}: {e}")
         return {"agent": target, "report": "AI analysis temporarily unavailable."}
 
     _PERF_CACHE[cache_key] = (_time.time(), report)

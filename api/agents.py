@@ -737,112 +737,108 @@ def agent_detail(
 
 
 def _agent_detail_inner(agent: str, range_: str, wa_line: str):
+    from concurrent.futures import ThreadPoolExecutor
     target = _norm(agent)
     if not target:
         return {"agent": agent, "stats": {}, "calls": [], "wa_leads": [], "analyses": [], "alerts": []}
 
     since = _since(range_)
+    msg_select = add_whatsapp_line_select("agent_name,direction,sent_at,lead_id")
 
-    # ── Step 1: All name spelling variants that _norm resolves to this agent ──
-    # ilike is case-insensitive, so we only need distinct SPELLINGS (not case variants).
-    # E.g. target="Feras Zabalawi" → also match "Feras Zabalwi", "Firas Zabalwi" in DB.
+    # Build all spelling variants for this agent (ilike is case-insensitive)
     target_spellings: set[str] = {target}
     for raw_key, resolved in _NAME_ALIASES.items():
         if resolved == target:
             target_spellings.add(raw_key.strip().title())
     target_keys_list = list(target_spellings)
 
-    # ── Step 2: Fetch only this agent's calls (filter at DB level) ────────────
-    raw_calls: list[dict] = []
-    for name_variant in target_keys_list:
-        batch = _paginate(
-            lambda nv=name_variant: supabase.table("calls")
+    # ── Round 1 (parallel): calls + assigned leads + messages by name ─────────
+    def _fetch_calls_nv(nv):
+        return _paginate(lambda nv2=nv: supabase.table("calls")
             .select("lead_id,duration_seconds,called_at,agent_name")
-            .gte("called_at", since)
-            .ilike("agent_name", nv)
-        )
-        raw_calls.extend(batch)
-    # Deduplicate by (lead_id, called_at) in case variants overlapped
-    seen_calls: set[tuple] = set()
-    deduped_calls: list[dict] = []
-    for c in raw_calls:
-        key = (c.get("lead_id"), c.get("called_at"))
-        if key not in seen_calls:
-            seen_calls.add(key); deduped_calls.append(c)
-    raw_calls = deduped_calls
-    call_lead_ids: set[str] = {c["lead_id"] for c in raw_calls if c.get("lead_id")}
+            .gte("called_at", since).ilike("agent_name", nv2))
 
-    # ── Step 3: Leads assigned to this agent, active within range ────────────
-    assigned_lead_rows: list[dict] = []
-    for name_variant in target_keys_list:
+    def _fetch_assigned_nv(nv):
         try:
-            rows = (
-                supabase.table("leads")
-                .select("id,phone,name,assigned_agent,status,score,channel,whatsapp_business_number")
-                .ilike("assigned_agent", name_variant)
-                .gte("last_message_at", since)
+            return supabase.table("leads")\
+                .select("id,phone,name,assigned_agent,status,score,channel,whatsapp_business_number")\
+                .ilike("assigned_agent", nv).gte("last_message_at", since)\
                 .execute().data or []
-            )
-            assigned_lead_rows.extend(rows)
         except Exception:
-            pass
-    # Deduplicate
-    seen_leads: set[str] = set()
-    deduped_assigned: list[dict] = []
-    for l in assigned_lead_rows:
-        if l.get("id") and l["id"] not in seen_leads:
-            seen_leads.add(l["id"]); deduped_assigned.append(l)
-    assigned_lead_rows = deduped_assigned
+            return []
+
+    def _fetch_msgs_nv(nv):
+        return _paginate(lambda nv2=nv: supabase.table("messages")
+            .select(msg_select).gte("sent_at", since).ilike("agent_name", nv2))
+
+    raw_calls_parts: list[list] = []
+    assigned_parts: list[list] = []
+    msgs_name_parts: list[list] = []
+
+    with ThreadPoolExecutor(max_workers=min(len(target_keys_list) * 3, 9)) as ex:
+        fc = [ex.submit(_fetch_calls_nv, nv) for nv in target_keys_list]
+        fa = [ex.submit(_fetch_assigned_nv, nv) for nv in target_keys_list]
+        fm = [ex.submit(_fetch_msgs_nv, nv) for nv in target_keys_list]
+        for f in fc: raw_calls_parts.extend(f.result())
+        for f in fa: assigned_parts.extend(f.result())
+        for f in fm: msgs_name_parts.extend(f.result())
+
+    # Deduplicate calls
+    seen_calls: set[tuple] = set()
+    raw_calls: list[dict] = []
+    for c in raw_calls_parts:
+        k = (c.get("lead_id"), c.get("called_at"))
+        if k not in seen_calls:
+            seen_calls.add(k); raw_calls.append(c)
+
+    # Deduplicate assigned leads
+    seen_lids: set[str] = set()
+    assigned_lead_rows: list[dict] = []
+    for l in assigned_parts:
+        if l.get("id") and l["id"] not in seen_lids:
+            seen_lids.add(l["id"]); assigned_lead_rows.append(l)
+
+    call_lead_ids: set[str] = {c["lead_id"] for c in raw_calls if c.get("lead_id")}
     assigned_lead_ids: set[str] = {l["id"] for l in assigned_lead_rows}
+    msg_lead_ids_direct: set[str] = {m["lead_id"] for m in msgs_name_parts if m.get("lead_id")}
 
-    # ── Step 4: Fetch messages by agent name (direct attribution) ─────────────
-    msgs_by_name: list[dict] = []
-    for name_variant in target_keys_list:
-        batch = _paginate(
-            lambda nv=name_variant: supabase.table("messages")
-            .select(add_whatsapp_line_select("agent_name,direction,sent_at,lead_id"))
-            .gte("sent_at", since)
-            .ilike("agent_name", nv)
-        )
-        msgs_by_name.extend(batch)
-    msg_lead_ids_direct: set[str] = {m["lead_id"] for m in msgs_by_name if m.get("lead_id")}
-
-    # ── Step 5: Fetch ALL messages for this agent's leads (covers assigned leads
-    #    whose messages may have no agent_name) ────────────────────────────────
     all_agent_lead_ids = list(call_lead_ids | assigned_lead_ids | msg_lead_ids_direct)
-    raw_msgs: list[dict] = list(msgs_by_name)
-    if all_agent_lead_ids:
-        # Fetch messages for leads not already covered by the name-based fetch
-        extra_lead_ids = [lid for lid in all_agent_lead_ids if lid not in msg_lead_ids_direct]
-        idx = 0
-        while idx < len(extra_lead_ids):
-            raw_msgs.extend(
-                supabase.table("messages")
-                .select(add_whatsapp_line_select("agent_name,direction,sent_at,lead_id"))
-                .gte("sent_at", since)
-                .in_("lead_id", extra_lead_ids[idx:idx + BATCH_SIZE])
-                .execute().data or []
-            )
-            idx += BATCH_SIZE
+    extra_lead_ids   = [lid for lid in all_agent_lead_ids if lid not in msg_lead_ids_direct]
+    remaining_ids    = [lid for lid in all_agent_lead_ids if lid not in assigned_lead_ids]
 
-    # ── Step 6: Fetch lead details for all relevant lead IDs ──────────────────
-    already_fetched = {l["id"] for l in assigned_lead_rows}
-    remaining_ids = [lid for lid in all_agent_lead_ids if lid not in already_fetched]
-    leads_raw: list[dict] = list(assigned_lead_rows)
-    idx = 0
-    while idx < len(remaining_ids):
-        leads_raw.extend(
-            supabase.table("leads")
-            .select("id,phone,name,assigned_agent,status,score,channel,whatsapp_business_number")
-            .in_("id", remaining_ids[idx:idx + BATCH_SIZE])
-            .execute().data or []
-        )
-        idx += BATCH_SIZE
+    # ── Round 2 (parallel): extra messages + lead details + open alerts ────────
+    extra_chunks   = [extra_lead_ids[i:i+BATCH_SIZE]  for i in range(0, len(extra_lead_ids),  BATCH_SIZE)]
+    remain_chunks  = [remaining_ids[i:i+BATCH_SIZE]   for i in range(0, len(remaining_ids),   BATCH_SIZE)]
 
-    lead_by_id = {l["id"]: l for l in leads_raw if l.get("id")}
+    def _fetch_extra_msgs(chunk):
+        return supabase.table("messages").select(msg_select)\
+            .gte("sent_at", since).in_("lead_id", chunk).execute().data or []
+
+    def _fetch_lead_detail(chunk):
+        return supabase.table("leads")\
+            .select("id,phone,name,assigned_agent,status,score,channel,whatsapp_business_number")\
+            .in_("id", chunk).execute().data or []
+
+    def _fetch_all_alerts():
+        return supabase.table("alerts")\
+            .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")\
+            .eq("resolved", False).order("created_at", desc=True).execute().data or []
+
+    raw_msgs:   list[dict] = list(msgs_name_parts)
+    leads_raw:  list[dict] = list(assigned_lead_rows)
+    alerts_raw: list[dict] = []
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        fe = [ex.submit(_fetch_extra_msgs, ch)  for ch in extra_chunks]
+        fl = [ex.submit(_fetch_lead_detail, ch) for ch in remain_chunks]
+        fa2 = ex.submit(_fetch_all_alerts)
+        for f in fe: raw_msgs.extend(f.result())
+        for f in fl: leads_raw.extend(f.result())
+        alerts_raw = fa2.result()
+
+    lead_by_id    = {l["id"]: l for l in leads_raw if l.get("id")}
     lead_agent_map = {l["id"]: _agent_label(l.get("assigned_agent")) for l in leads_raw if l.get("id")}
 
-    # Fallback: attribute messages/calls via the call/message agent_name on the same lead
     lead_to_agent_fallback: dict[str, str] = {}
     for m in raw_msgs:
         lid = m.get("lead_id"); ag = _norm(m.get("agent_name"))
@@ -853,55 +849,45 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         if lid and ag:
             lead_to_agent_fallback.setdefault(lid, ag)
 
-    # All fetched data IS already filtered to this agent — no further attribution needed
     agent_calls = sorted(raw_calls, key=lambda x: x.get("called_at") or "", reverse=True)
-
-    agent_msgs = [
-        m for m in raw_msgs
-        if _message_agent_name(m, lead_agent_map=lead_agent_map, lead_to_agent_fallback=lead_to_agent_fallback) == target
-    ]
+    agent_msgs  = [m for m in raw_msgs
+                   if _message_agent_name(m, lead_agent_map=lead_agent_map,
+                                          lead_to_agent_fallback=lead_to_agent_fallback) == target]
 
     agent_lead_ids: set[str] = (
         {l["id"] for l in leads_raw if _norm(l.get("assigned_agent")) == target}
         | {c["lead_id"] for c in agent_calls if c.get("lead_id")}
-        | {m["lead_id"] for m in agent_msgs if m.get("lead_id")}
+        | {m["lead_id"] for m in agent_msgs  if m.get("lead_id")}
     )
 
-    # ── AI Analyses ───────────────────────────────────────────────────────────
-    analyses_raw: list[dict] = []
+    # ── Round 3 (parallel): analyses + alert lead details ─────────────────────
     aid_list = list(agent_lead_ids)
-    idx = 0
-    while idx < len(aid_list):
-        analyses_raw.extend(
-            supabase.table("ai_analysis")
-            .select("lead_id,sentiment,treatment_score,outcome,summary,risk_flags,analyzed_at,source")
-            .in_("lead_id", aid_list[idx:idx + BATCH_SIZE])
-            .execute().data or []
-        )
-        idx += BATCH_SIZE
-    analyses_raw.sort(key=lambda x: x.get("analyzed_at") or "", reverse=True)
+    alert_extra_ids = [a.get("lead_id") for a in alerts_raw
+                       if a.get("lead_id") and a.get("lead_id") not in lead_by_id]
 
-    # ── Alerts ────────────────────────────────────────────────────────────────
-    alerts_raw = (
-        supabase.table("alerts")
-        .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
-        .eq("resolved", False)
-        .order("created_at", desc=True)
-        .execute().data or []
-    )
-    alert_lead_ids = [a.get("lead_id") for a in alerts_raw if a.get("lead_id") and a.get("lead_id") not in lead_by_id]
-    idx = 0
-    while idx < len(alert_lead_ids):
-        rows = (
-            supabase.table("leads")
-            .select("id,phone,name,assigned_agent")
-            .in_("id", alert_lead_ids[idx:idx + BATCH_SIZE])
-            .execute().data or []
-        )
-        for r in rows:
-            if r.get("id"):
-                lead_by_id[r["id"]] = r
-        idx += BATCH_SIZE
+    aid_chunks         = [aid_list[i:i+BATCH_SIZE]        for i in range(0, len(aid_list),        BATCH_SIZE)]
+    alert_lead_chunks  = [alert_extra_ids[i:i+BATCH_SIZE] for i in range(0, len(alert_extra_ids), BATCH_SIZE)]
+
+    def _fetch_analyses(chunk):
+        return supabase.table("ai_analysis")\
+            .select("lead_id,sentiment,treatment_score,outcome,summary,risk_flags,analyzed_at,source")\
+            .in_("lead_id", chunk).execute().data or []
+
+    def _fetch_alert_leads(chunk):
+        return supabase.table("leads")\
+            .select("id,phone,name,assigned_agent").in_("id", chunk).execute().data or []
+
+    analyses_raw: list[dict] = []
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        fan = [ex.submit(_fetch_analyses,    ch) for ch in aid_chunks]
+        fal = [ex.submit(_fetch_alert_leads, ch) for ch in alert_lead_chunks]
+        for f in fan: analyses_raw.extend(f.result())
+        for f in fal:
+            for r in f.result():
+                if r.get("id"):
+                    lead_by_id[r["id"]] = r
+
+    analyses_raw.sort(key=lambda x: x.get("analyzed_at") or "", reverse=True)
 
     fb_full: dict[str, str] = {}
     for m in raw_msgs:
