@@ -3554,6 +3554,19 @@ async function loadAll(bgRefresh = false) {
       : (hasQuality(previous?.[4]) ? previous[4] : (_lastGoodQuality || null));
     if (hasAgents(agentsRaw)) _lastGoodAgents = agentsRaw;
     if (hasQuality(qualityRaw)) _lastGoodQuality = qualityRaw;
+    // Carry over previously-synced WA stats so a background refresh never
+    // clears accurate numbers back to '…'
+    const prevAgentMap = Object.fromEntries(
+      (previous?.[3]?.agents || []).map(a => [a.agent, a])
+    );
+    (agents.agents || []).forEach(a => {
+      const prev = prevAgentMap[a.agent];
+      if (prev?._wa_synced) {
+        a._wa_synced    = true;
+        a.wa_chats      = prev.wa_chats;
+        a.messages_sent = prev.messages_sent;
+      }
+    });
     const fullData = [ov, ch, leads, agents, quality, traffic];
     _cache = fullData;
     _lastRenderedData = fullData;
