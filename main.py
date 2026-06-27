@@ -1556,7 +1556,7 @@ def dashboard():
 # ---------------------------------------------------------------------------
 
 _PERF_CACHE: dict[str, tuple[float, str]] = {}  # key → (ts, report_text)
-_PERF_CACHE_TTL = 600  # 10 minutes
+_PERF_CACHE_TTL = 3600  # 1 hour — conserves Gemini quota
 
 
 @app.post("/api/agents/performance")
@@ -1637,7 +1637,9 @@ Rules: direct and professional, use actual numbers, English only, no bullet poin
             if not resp.is_success:
                 err = resp.text[:300]
                 log.warning(f"[perf-report] Gemini HTTP {resp.status_code} for {target}: {err}")
-                return {"agent": target, "report": f"AI analysis unavailable (HTTP {resp.status_code}: {err})"}
+                if resp.status_code == 429:
+                    return {"agent": target, "report": "Gemini API quota reached — the AI analysis will be available again once the quota resets (usually within an hour). Consider upgrading your Gemini API plan for higher limits."}
+                return {"agent": target, "report": f"AI analysis unavailable (HTTP {resp.status_code})."}
             body = resp.json()
             candidates = body.get("candidates") or []
             if not candidates:
