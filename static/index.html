@@ -2284,7 +2284,7 @@ async function openAgentProfile(agentName) {
   modal.classList.add('open');
 
   // Fetch detail (calls/WA/alerts) and performance report in parallel
-  const detailRange = 'week';
+  const detailRange = range;
   const detailUrl = `${API}/api/agents/detail?agent=${encodeURIComponent(agentName)}&range=${encodeURIComponent(detailRange)}&wa_line=all`;
 
   // Fetch detail first, then send its stats to Gemini (no double DB load)
