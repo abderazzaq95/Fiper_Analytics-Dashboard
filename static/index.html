@@ -2026,8 +2026,8 @@ function renderAgents(data) {
       <td><div class="sparkline-cell"><button class="agent-name-btn" onclick='openAgentProfile(${JSON.stringify(a.agent||"")})'>${esc(a.agent || '—')}</button>${spark}</div></td>
       <td>${fmt(a.leads)}</td>
       <td>${(a.calls_handled || 0) > 0 ? `<strong>${fmt(a.calls_handled)}</strong>` : `<span style="color:var(--text-light)">—</span>`}</td>
-      <td><span class="pill pill-blue" style="font-size:11px">${fmt(a.wa_chats || 0)}</span></td>
-      <td>${fmt(a.messages_sent || 0)}</td>
+      <td><span class="pill pill-blue" style="font-size:11px">${a._wa_synced ? fmt(a.wa_chats || 0) : '<span style="color:var(--text-light)">…</span>'}</span></td>
+      <td>${a._wa_synced ? fmt(a.messages_sent || 0) : '<span style="color:var(--text-light)">…</span>'}</td>
       <td>${avgDur > 0 ? dur(avgDur) : '—'}</td>
       <td>${tPill}</td>
       <td>${sentPill}</td>
@@ -2044,36 +2044,32 @@ function sortAgents(key) {
   else loadAll();
 }
 
-// Background-sync accurate WA/call stats for every agent from the detail API.
-// Fires once after page load so the table always shows correct numbers without
-// requiring the user to open each agent's modal individually.
-let _syncInProgress = false;
-async function _syncAllAgentDetails(agentsList) {
-  if (_syncInProgress || !agentsList?.length) return;
-  _syncInProgress = true;
+// Parallel-sync accurate WA stats for every agent from the detail API.
+// All requests fire simultaneously; each row updates the moment its data arrives.
+// WA Chats / Msgs Sent show "—" until their detail fetch completes so the user
+// never sees stale wrong numbers.
+function _syncAllAgentDetails(agentsList) {
+  if (!agentsList?.length) return;
+  const toSync = agentsList.filter(a => a.agent && !a._wa_synced);
+  if (!toSync.length) return;
   const currentRange = range;
-  for (let i = 0; i < agentsList.length; i++) {
-    const agentName = agentsList[i].agent;
-    if (!agentName) continue;
-    try {
-      const url = `${API}/api/agents/detail?agent=${encodeURIComponent(agentName)}&range=${encodeURIComponent(currentRange)}&wa_line=all`;
-      const r = await fetch(url);
-      if (!r.ok) continue;
-      const data = await r.json();
-      if (!data?.stats || !_cache?.[3]?.agents) continue;
+  toSync.forEach(agent => {
+    const url = `${API}/api/agents/detail?agent=${encodeURIComponent(agent.agent)}&range=${encodeURIComponent(currentRange)}&wa_line=all`;
+    fetch(url).then(r => r.ok ? r.json() : null).then(data => {
+      if (!data?.stats || !_cache?.[3]?.agents) return;
       const s = data.stats;
-      const idx = _cache[3].agents.findIndex(a => a.agent === agentName);
-      if (idx < 0) continue;
+      const idx = _cache[3].agents.findIndex(a => a.agent === agent.agent);
+      if (idx < 0) return;
       const a = _cache[3].agents[idx];
       if (s.wa_chats      != null) a.wa_chats      = s.wa_chats;
       if (s.messages_sent != null) a.messages_sent = s.messages_sent;
       if (s.leads         != null) a.leads         = s.leads;
       if (s.calls_handled != null) a.calls_handled = s.calls_handled;
       if (s.calls_total   != null) a.calls_total   = s.calls_total;
+      a._wa_synced = true;
       renderAgents(_cache[3]);
-    } catch (_) {}
-  }
-  _syncInProgress = false;
+    }).catch(() => {});
+  });
 }
 
 // ── Alert i18n helpers ────────────────────────────────────────────────────────
