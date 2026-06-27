@@ -651,54 +651,72 @@ def _agent_alerts_inner(agent: str):
     if not target:
         return {"agent": agent, "alerts": []}
 
-    leads = _paginate(lambda: supabase.table("leads").select("id,phone,name,assigned_agent"))
-    alerts = (
+    # All name spelling variants for DB matching
+    target_spellings: set[str] = {target}
+    for raw_key, resolved in _NAME_ALIASES.items():
+        if resolved == target:
+            target_spellings.add(raw_key.strip().title())
+    spelling_list = list(target_spellings)
+
+    # Fetch all open alerts (small dataset — ~333 rows)
+    all_alerts = (
         supabase.table("alerts")
         .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
         .eq("resolved", False)
         .order("created_at", desc=True)
         .execute().data or []
     )
-    messages = _paginate(lambda: supabase.table("messages").select("agent_name,direction,lead_id"))
-    calls = _paginate(lambda: supabase.table("calls").select("agent_name,lead_id"))
 
-    lead_by_id = {l["id"]: l for l in leads if l.get("id")}
-    lead_agent_map = {l["id"]: _agent_label(l.get("assigned_agent")) for l in leads if l.get("id")}
-    lead_to_agent_fallback: dict[str, str] = {}
-    for m in messages:
-        lid = m.get("lead_id")
-        ag = _agent_label(m.get("agent_name"))
-        if lid and m.get("direction") == "outbound" and ag:
-            lead_to_agent_fallback.setdefault(lid, ag)
-    for c in calls:
-        lid = c.get("lead_id")
-        ag = _agent_label(c.get("agent_name"))
-        if lid and ag:
-            lead_to_agent_fallback.setdefault(lid, ag)
+    # Pass 1: alerts with an explicit matching agent_name (fast, no lead lookup needed)
+    matched_alerts: list[dict] = []
+    need_lead_lookup: list[dict] = []
+    for a in all_alerts:
+        raw = _agent_label(a.get("agent_name"))
+        if raw and raw.lower() in ("unknown", "team", "n/a"):
+            raw = None
+        if raw == target:
+            matched_alerts.append(a)
+        elif raw is None:
+            need_lead_lookup.append(a)
+        # else: belongs to a different agent — skip
+
+    # Pass 2: for alerts without agent_name, fetch only their lead IDs
+    if need_lead_lookup:
+        lookup_lead_ids = list({a["lead_id"] for a in need_lead_lookup if a.get("lead_id")})
+        # Fetch only the leads we actually need
+        lookup_leads = _fetch_in_parallel(
+            "leads", "id,phone,name,assigned_agent", "id", lookup_lead_ids
+        )
+        lead_by_id_lk = {l["id"]: l for l in lookup_leads if l.get("id")}
+        lead_agent_map_lk = {l["id"]: _agent_label(l.get("assigned_agent")) for l in lookup_leads}
+        for a in need_lead_lookup:
+            lid = a.get("lead_id")
+            if lead_agent_map_lk.get(lid) == target:
+                matched_alerts.append(a)
+                # Attach lead details
+                a["_lead"] = lead_by_id_lk.get(lid, {})
+
+    # Also fetch lead details for directly-matched alerts
+    direct_lead_ids = list({a["lead_id"] for a in matched_alerts if a.get("lead_id") and "_lead" not in a})
+    if direct_lead_ids:
+        direct_leads = _fetch_in_parallel("leads", "id,phone,name,assigned_agent", "id", direct_lead_ids)
+        dl_map = {l["id"]: l for l in direct_leads if l.get("id")}
+        for a in matched_alerts:
+            if "_lead" not in a:
+                a["_lead"] = dl_map.get(a.get("lead_id"), {})
 
     rows = []
-    for alert in alerts:
-        lid = alert.get("lead_id")
-        raw_alert_agent = _agent_label(alert.get("agent_name"))
-        if raw_alert_agent and raw_alert_agent.lower() in ("unknown", "team", "n/a"):
-            raw_alert_agent = None
-        attributed_agent = _agent_label(
-            raw_alert_agent,
-            lead_agent_map.get(lid) if lid else None,
-            lead_to_agent_fallback.get(lid) if lid else None,
-        )
-        if attributed_agent != target:
-            continue
-        lead = lead_by_id.get(lid, {})
+    for a in matched_alerts:
+        lead = a.pop("_lead", {})
         rows.append({
-            "id": alert.get("id"),
-            "lead_id": lid,
+            "id": a.get("id"),
+            "lead_id": a.get("lead_id"),
             "lead_phone": lead.get("phone"),
             "lead_name": lead.get("name"),
-            "severity": alert.get("severity") or "MED",
-            "type": alert.get("type") or "alert",
-            "message": alert.get("message") or "",
-            "created_at": alert.get("created_at"),
+            "severity": a.get("severity") or "MED",
+            "type": a.get("type") or "alert",
+            "message": a.get("message") or "",
+            "created_at": a.get("created_at"),
         })
 
     return {"agent": target, "alerts": rows}
