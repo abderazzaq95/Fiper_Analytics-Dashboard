@@ -993,7 +993,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
             "answered": (c.get("duration_seconds") or 0) > 0,
             "called_at": c.get("called_at"),
         }
-        for c in agent_calls[:50]
+        for c in agent_calls
     ]
 
     by_lead_wa: dict[str, dict] = {}
@@ -1015,7 +1015,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         ts = m.get("sent_at")
         if ts and (not entry["last_message_at"] or ts > entry["last_message_at"]):
             entry["last_message_at"] = ts
-    wa_leads_out = sorted(by_lead_wa.values(), key=lambda x: x["last_message_at"] or "", reverse=True)[:50]
+    wa_leads_out = sorted(by_lead_wa.values(), key=lambda x: x["last_message_at"] or "", reverse=True)
 
     seen: set[str] = set()
     analyses_out = []

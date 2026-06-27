@@ -2522,9 +2522,8 @@ function _apRenderCalls(calls, stats) {
   const totalCalls    = stats.calls_total   || calls.length;
   const answeredCalls = stats.calls_handled || calls.filter(c => c.answered).length;
   const missedCalls   = totalCalls - answeredCalls;
-  const capped = totalCalls > calls.length ? ` <span style="font-size:10px;color:var(--text-light)">(showing last ${calls.length})</span>` : '';
   const summary  = `<div style="display:flex;gap:20px;padding:12px 16px;background:var(--bg);border-radius:8px;margin-bottom:12px;font-size:13px;flex-wrap:wrap">
-    <span>📞 <strong>${totalCalls}</strong> total${capped}</span>
+    <span>📞 <strong>${totalCalls}</strong> total</span>
     <span style="color:var(--green)">✅ <strong>${answeredCalls}</strong> answered</span>
     <span style="color:var(--red)">❌ <strong>${missedCalls}</strong> missed</span>
     ${stats.avg_call_duration_seconds ? `<span style="color:var(--text-light)">⏱ avg ${durSec(stats.avg_call_duration_seconds)}</span>` : ''}
@@ -2553,10 +2552,9 @@ function _apRenderWa(waLeads, stats) {
   // Use stats for totals — they cover all leads, not just the 50 returned
   const totalLeads = stats.wa_chats      || waLeads.length;
   const totalSent  = stats.messages_sent || waLeads.reduce((s,w) => s + (w.messages_sent||0), 0);
-  const capped = totalLeads > waLeads.length ? ` <span style="font-size:10px;color:var(--text-light)">(showing last ${waLeads.length})</span>` : '';
   const avgRt = stats.avg_response_time_min > 0 ? `${fmt(stats.avg_response_time_min,1)}m` : null;
   const summary = `<div style="display:flex;gap:20px;padding:12px 16px;background:var(--bg);border-radius:8px;margin-bottom:12px;font-size:13px;flex-wrap:wrap">
-    <span>💬 <strong>${totalLeads}</strong> leads contacted${capped}</span>
+    <span>💬 <strong>${totalLeads}</strong> leads contacted</span>
     <span style="color:var(--blue)">📤 <strong>${totalSent}</strong> messages sent</span>
     ${avgRt ? `<span style="color:var(--text-light)">⏱ avg reply ${avgRt}</span>` : ''}
   </div>`;
