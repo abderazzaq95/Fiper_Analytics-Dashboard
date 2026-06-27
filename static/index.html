@@ -626,8 +626,8 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   </div>
 
   <div class="tabs">
-    <button onclick="setRange('today')" data-en="Today" data-ar="اليوم">Today</button>
-    <button onclick="setRange('week')" class="active" data-en="This Week" data-ar="هذا الأسبوع">This Week</button>
+    <button onclick="setRange('today')" class="active" data-en="Today" data-ar="اليوم">Today</button>
+    <button onclick="setRange('week')" data-en="This Week" data-ar="هذا الأسبوع">This Week</button>
     <button onclick="setRange('month')" data-en="This Month" data-ar="هذا الشهر">This Month</button>
   </div>
 
@@ -1001,7 +1001,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 
 <script>
 const API = '';
-let range = 'week';
+let range = 'today';
 let lang  = localStorage.getItem('fiper_lang') || 'en';
 let charts = {};
 let allLeads = [];
