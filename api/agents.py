@@ -419,10 +419,9 @@ def _agents_inner(range: str, wa_line: str = "all"):
             lead_to_agent_fallback.setdefault(lid, ag)
 
     agent_msgs: dict[str, list] = defaultdict(list)
-    # Explicit-name dict: only attribute messages where agent_name is set on the
-    # message itself — this matches the detail endpoint's ilike attribution and
-    # avoids the lead_to_agent_fallback stealing a lead from the first sender.
-    agent_msgs_by_name: dict[str, list] = defaultdict(list)
+    # WA-only dict: attribute by explicit name OR assigned_agent — but NO
+    # lead_to_agent_fallback so one agent can't steal another's leads.
+    agent_wa_msgs: dict[str, list] = defaultdict(list)
     for m in messages:
         ag = _message_agent_name(
             m,
@@ -431,9 +430,9 @@ def _agents_inner(range: str, wa_line: str = "all"):
         )
         if ag:
             agent_msgs[ag].append(m)
-        explicit_ag = _agent_label(m.get("agent_name"))
-        if explicit_ag:
-            agent_msgs_by_name[explicit_ag].append(m)
+        wa_ag = _message_agent_name(m, lead_agent_map=lead_agent_map)
+        if wa_ag:
+            agent_wa_msgs[wa_ag].append(m)
 
     # Maqsam calls grouped by agent + their lead_ids
     agent_calls: dict[str, list] = defaultdict(list)
@@ -571,9 +570,9 @@ def _agents_inner(range: str, wa_line: str = "all"):
             key=lambda x: x["date"],
         )
 
-        # Use explicit-name messages for WA stats to match the detail endpoint
-        named_msgs    = agent_msgs_by_name.get(agent, [])
-        outbound_msgs = [m for m in named_msgs if m.get("direction") == "outbound"]
+        # Use WA-attributed messages (explicit name + assigned_agent, no fallback)
+        wa_msgs       = agent_wa_msgs.get(agent, [])
+        outbound_msgs = [m for m in wa_msgs if m.get("direction") == "outbound"]
         wa_chats      = len({m["lead_id"] for m in outbound_msgs if m.get("lead_id")})
         messages_sent = len(outbound_msgs)
 
