@@ -218,10 +218,11 @@ tr:hover td{background:#fafbff}
 .ap-sent-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .ap-sent-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;margin-top:10px}
 .ap-sent-pos{background:var(--green)}.ap-sent-neu{background:var(--blue)}.ap-sent-neg{background:var(--red)}
-.ap-trend-wrap{display:flex;align-items:flex-end;gap:3px;height:52px}
+.ap-trend-wrap{display:flex;align-items:flex-end;gap:4px;height:80px}
 .ap-trend-bar-col{display:flex;flex-direction:column;align-items:center;gap:2px;flex:1;height:100%;justify-content:flex-end}
-.ap-trend-bar{width:100%;border-radius:2px 2px 0 0;min-height:2px;background:var(--blue)}
-.ap-trend-lbl{font-size:9px;color:var(--text-light)}
+.ap-trend-bar{width:100%;border-radius:3px 3px 0 0;min-height:3px;background:var(--blue)}
+.ap-trend-lbl{font-size:9px;color:var(--text-light);white-space:nowrap}
+.ap-trend-score{font-size:10px;font-weight:700;color:var(--navy);line-height:1}
 .ap-table{width:100%;border-collapse:collapse;font-size:12px}
 .ap-table th{background:var(--bg);padding:7px 10px;font-weight:700;color:var(--text-light);font-size:11px;text-align:left;position:sticky;top:0;z-index:1}
 .ap-table td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
@@ -2359,20 +2360,26 @@ function _apRenderOverviewFromCache(a) {
   const nuPct = tot ? Math.round(s.neutral/tot*100) : 0;
   const nPct  = tot ? Math.round(s.negative/tot*100) : 0;
   const trend = a.quality_trend || [];
-  const maxScore = trend.length ? Math.max(...trend.map(t=>t.avg_score||0), 1) : 1;
   const bars = trend.map(t => {
-    const pct = Math.round((t.avg_score||0)/maxScore*100);
-    const col = t.avg_score >= 70 ? 'var(--green)' : t.avg_score >= 50 ? 'var(--blue)' : 'var(--red)';
-    return `<div class="ap-trend-bar-col"><div class="ap-trend-bar" style="height:${pct}%;background:${col}" title="${t.avg_score}"></div><div class="ap-trend-lbl">${(t.date||'').slice(5)}</div></div>`;
+    const score = Math.round(t.avg_score || 0);
+    const pct = Math.max(Math.round(score / 100 * 100), 4);
+    const col = score >= 70 ? 'var(--green)' : score >= 50 ? 'var(--blue)' : 'var(--red)';
+    return `<div class="ap-trend-bar-col"><div class="ap-trend-score" style="color:${col}">${score}</div><div class="ap-trend-bar" style="height:${pct}%;background:${col}"></div><div class="ap-trend-lbl">${(t.date||'').slice(5)}</div></div>`;
   }).join('');
   let html = '';
-  if (tot > 0) html += `<div class="ap-mini-card"><div class="ap-section-title">Sentiment</div>
-    <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--green)"></span> Positive</span><span style="font-weight:700;color:var(--green)">${s.positive}</span></div>
-    <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--blue)"></span> Neutral</span><span style="font-weight:700;color:var(--blue)">${s.neutral}</span></div>
-    <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--red)"></span> Negative</span><span style="font-weight:700;color:var(--red)">${s.negative}</span></div>
+  if (tot > 0) html += `<div class="ap-mini-card">
+    <div class="ap-section-title">Customer Sentiment</div>
+    <div style="font-size:11px;color:var(--text-light);margin-bottom:8px">How leads felt during conversations (from ${tot} analyzed)</div>
+    <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--green)"></span> Positive</span><span style="font-weight:700;color:var(--green)">${s.positive} <span style="font-size:10px;font-weight:400">(${pPct}%)</span></span></div>
+    <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--blue)"></span> Neutral</span><span style="font-weight:700;color:var(--blue)">${s.neutral} <span style="font-size:10px;font-weight:400">(${nuPct}%)</span></span></div>
+    <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--red)"></span> Negative</span><span style="font-weight:700;color:var(--red)">${s.negative} <span style="font-size:10px;font-weight:400">(${nPct}%)</span></span></div>
     <div class="ap-sent-bar"><div class="ap-sent-pos" style="width:${pPct}%"></div><div class="ap-sent-neu" style="width:${nuPct}%"></div><div class="ap-sent-neg" style="width:${nPct}%"></div></div>
   </div>`;
-  if (bars) html += `<div class="ap-mini-card"><div class="ap-section-title">7-Day Quality Trend</div><div class="ap-trend-wrap">${bars}</div></div>`;
+  if (bars) html += `<div class="ap-mini-card">
+    <div class="ap-section-title">Treatment Quality — Last 7 Days</div>
+    <div style="font-size:11px;color:var(--text-light);margin-bottom:8px">AI score for how well the agent handled each customer (0–100)</div>
+    <div class="ap-trend-wrap">${bars}</div>
+  </div>`;
   if (!html) html = `<div class="ap-empty" style="padding:16px">Loading full details…</div>`;
   el.innerHTML = `<div style="display:flex;flex-direction:column;gap:12px">${html}</div>`;
 }
@@ -2428,7 +2435,6 @@ function _apRenderOverview(stats, detail) {
   const sent = s.sentiment || {};
   const sentTot = (sent.positive||0)+(sent.neutral||0)+(sent.negative||0);
   const trend = s.quality_trend || [];
-  const maxScore = trend.length ? Math.max(...trend.map(t=>t.avg_score||0), 1) : 1;
 
   let parts = [];
 
@@ -2461,22 +2467,14 @@ function _apRenderOverview(stats, detail) {
     parts.push(`
       <div class="ap-mini-card">
         <div class="ap-section-title">Customer Sentiment</div>
-        <div style="display:flex;gap:16px;align-items:flex-start">
-          <div style="flex:1">
-            <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--green)"></span> Positive</span><span style="font-weight:700;color:var(--green)">${sent.positive}</span></div>
-            <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--blue)"></span> Neutral</span><span style="font-weight:700;color:var(--blue)">${sent.neutral}</span></div>
-            <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--red)"></span> Negative</span><span style="font-weight:700;color:var(--red)">${sent.negative}</span></div>
-          </div>
-          <div style="flex:1">
-            <div class="ap-sent-bar" style="height:8px;border-radius:4px">
-              <div class="ap-sent-pos" style="width:${pPct}%"></div>
-              <div class="ap-sent-neu" style="width:${nuPct}%"></div>
-              <div class="ap-sent-neg" style="width:${nPct}%"></div>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-light);margin-top:5px">
-              <span>${pPct}%</span><span>${nuPct}%</span><span>${nPct}%</span>
-            </div>
-          </div>
+        <div style="font-size:11px;color:var(--text-light);margin-bottom:8px">How leads felt during conversations (from ${sentTot} analyzed)</div>
+        <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--green)"></span> Positive</span><span style="font-weight:700;color:var(--green)">${sent.positive} <span style="font-size:10px;font-weight:400">(${pPct}%)</span></span></div>
+        <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--blue)"></span> Neutral</span><span style="font-weight:700;color:var(--blue)">${sent.neutral} <span style="font-size:10px;font-weight:400">(${nuPct}%)</span></span></div>
+        <div class="ap-sent-row"><span><span class="ap-sent-dot" style="background:var(--red)"></span> Negative</span><span style="font-weight:700;color:var(--red)">${sent.negative} <span style="font-size:10px;font-weight:400">(${nPct}%)</span></span></div>
+        <div class="ap-sent-bar" style="margin-top:10px">
+          <div class="ap-sent-pos" style="width:${pPct}%"></div>
+          <div class="ap-sent-neu" style="width:${nuPct}%"></div>
+          <div class="ap-sent-neg" style="width:${nPct}%"></div>
         </div>
       </div>`);
   }
@@ -2484,15 +2482,16 @@ function _apRenderOverview(stats, detail) {
   // ── Quality trend (only if data exists) ─────────────────────────────────
   if (trend.length) {
     const bars = trend.map(t => {
-      const pct = Math.round((t.avg_score||0)/maxScore*100);
-      const col = t.avg_score >= 70 ? 'var(--green)' : t.avg_score >= 50 ? 'var(--blue)' : 'var(--red)';
-      return `<div class="ap-trend-bar-col"><div class="ap-trend-bar" style="height:${pct}%;background:${col}" title="${t.avg_score}"></div><div class="ap-trend-lbl">${(t.date||'').slice(5)}</div></div>`;
+      const score = Math.round(t.avg_score || 0);
+      const pct = Math.max(Math.round(score / 100 * 100), 4);
+      const col = score >= 70 ? 'var(--green)' : score >= 50 ? 'var(--blue)' : 'var(--red)';
+      return `<div class="ap-trend-bar-col"><div class="ap-trend-score" style="color:${col}">${score}</div><div class="ap-trend-bar" style="height:${pct}%;background:${col}"></div><div class="ap-trend-lbl">${(t.date||'').slice(5)}</div></div>`;
     }).join('');
     parts.push(`
       <div class="ap-mini-card">
-        <div class="ap-section-title">7-Day Quality Trend</div>
+        <div class="ap-section-title">Treatment Quality — Last 7 Days</div>
+        <div style="font-size:11px;color:var(--text-light);margin-bottom:8px">AI score for how well the agent handled each customer (0–100)</div>
         <div class="ap-trend-wrap">${bars}</div>
-        <div style="font-size:11px;color:var(--text-light);margin-top:6px">Avg treatment score per day</div>
       </div>`);
   }
 
