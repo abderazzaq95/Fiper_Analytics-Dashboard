@@ -2335,7 +2335,7 @@ function _apRenderKpisFromCache(a) {
     return;
   }
   const kpis = [
-    { val: fmt(a.calls_handled  ?? a.leads ?? 0),   lbl: '📞 Calls' },
+    { val: fmt(a.calls_handled  ?? a.leads ?? 0),   lbl: '📞 Answered' },
     { val: fmt(a.wa_chats       ?? 0),               lbl: '💬 WA Chats' },
     { val: fmt(a.messages_sent  ?? 0),               lbl: 'Msgs Sent' },
     { val: fmt(a.leads          ?? 0),               lbl: '👥 Leads' },
@@ -2517,13 +2517,16 @@ function _apRenderOverview(stats, detail) {
 function _apRenderCalls(calls, stats) {
   const el = document.getElementById('apTabCalls');
   if (!el) return;
-  if (!calls.length) { el.innerHTML = `<div class="ap-empty">No calls in this period.</div>`; return; }
-  const answered = calls.filter(c => c.answered).length;
-  const missed   = calls.length - answered;
-  const summary  = `<div style="display:flex;gap:20px;padding:12px 16px;background:var(--bg);border-radius:8px;margin-bottom:12px;font-size:13px">
-    <span>📞 <strong>${calls.length}</strong> total</span>
-    <span style="color:var(--green)">✅ <strong>${answered}</strong> answered</span>
-    <span style="color:var(--red)">❌ <strong>${missed}</strong> missed</span>
+  if (!calls.length && !(stats.calls_total > 0)) { el.innerHTML = `<div class="ap-empty">No calls in this period.</div>`; return; }
+  // Use stats for totals — they cover all calls, not just the 50 returned
+  const totalCalls    = stats.calls_total   || calls.length;
+  const answeredCalls = stats.calls_handled || calls.filter(c => c.answered).length;
+  const missedCalls   = totalCalls - answeredCalls;
+  const capped = totalCalls > calls.length ? ` <span style="font-size:10px;color:var(--text-light)">(showing last ${calls.length})</span>` : '';
+  const summary  = `<div style="display:flex;gap:20px;padding:12px 16px;background:var(--bg);border-radius:8px;margin-bottom:12px;font-size:13px;flex-wrap:wrap">
+    <span>📞 <strong>${totalCalls}</strong> total${capped}</span>
+    <span style="color:var(--green)">✅ <strong>${answeredCalls}</strong> answered</span>
+    <span style="color:var(--red)">❌ <strong>${missedCalls}</strong> missed</span>
     ${stats.avg_call_duration_seconds ? `<span style="color:var(--text-light)">⏱ avg ${durSec(stats.avg_call_duration_seconds)}</span>` : ''}
   </div>`;
   const rows = calls.map(c => {
@@ -2546,11 +2549,14 @@ function _apRenderCalls(calls, stats) {
 function _apRenderWa(waLeads, stats) {
   const el = document.getElementById('apTabWa');
   if (!el) return;
-  if (!waLeads.length) { el.innerHTML = `<div class="ap-empty">No WA chats in this period.</div>`; return; }
-  const totalSent = waLeads.reduce((s,w) => s + (w.messages_sent||0), 0);
+  if (!waLeads.length && !(stats.wa_chats > 0)) { el.innerHTML = `<div class="ap-empty">No WA chats in this period.</div>`; return; }
+  // Use stats for totals — they cover all leads, not just the 50 returned
+  const totalLeads = stats.wa_chats      || waLeads.length;
+  const totalSent  = stats.messages_sent || waLeads.reduce((s,w) => s + (w.messages_sent||0), 0);
+  const capped = totalLeads > waLeads.length ? ` <span style="font-size:10px;color:var(--text-light)">(showing last ${waLeads.length})</span>` : '';
   const avgRt = stats.avg_response_time_min > 0 ? `${fmt(stats.avg_response_time_min,1)}m` : null;
-  const summary = `<div style="display:flex;gap:20px;padding:12px 16px;background:var(--bg);border-radius:8px;margin-bottom:12px;font-size:13px">
-    <span>💬 <strong>${waLeads.length}</strong> leads contacted</span>
+  const summary = `<div style="display:flex;gap:20px;padding:12px 16px;background:var(--bg);border-radius:8px;margin-bottom:12px;font-size:13px;flex-wrap:wrap">
+    <span>💬 <strong>${totalLeads}</strong> leads contacted${capped}</span>
     <span style="color:var(--blue)">📤 <strong>${totalSent}</strong> messages sent</span>
     ${avgRt ? `<span style="color:var(--text-light)">⏱ avg reply ${avgRt}</span>` : ''}
   </div>`;
