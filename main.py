@@ -52,6 +52,10 @@ _GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
 _GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash-8b")
 _GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{_GEMINI_MODEL}:generateContent"
 
+_GROQ_KEY   = os.getenv("GROQ_API_KEY", "")
+_GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+_GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions"
+
 _AI_SYSTEM_PROMPT = """You are a quality assurance analyst for Fiper, a trading broker in Arabic-speaking markets.
 Analyze the conversation(s) between Fiper agents and leads.
 
@@ -1621,40 +1625,47 @@ Write 3 short paragraphs:
 
 Rules: direct and professional, use actual numbers, English only, no bullet points inside paragraphs, under 200 words total."""
 
-    if not _GEMINI_KEY:
+    if not _GROQ_KEY and not _GEMINI_KEY:
         return {"agent": target, "report": "AI analysis not configured."}
 
     try:
-        payload = {
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 400},
-        }
         async with _httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{_GEMINI_URL}?key={_GEMINI_KEY}",
-                json=payload,
-            )
-            if not resp.is_success:
-                err = resp.text[:300]
-                log.warning(f"[perf-report] Gemini HTTP {resp.status_code} for {target}: {err}")
-                if resp.status_code == 429:
-                    return {"agent": target, "report": "Gemini API quota reached — the AI analysis will be available again once the quota resets (usually within an hour). Consider upgrading your Gemini API plan for higher limits."}
-                return {"agent": target, "report": f"AI analysis unavailable (HTTP {resp.status_code})."}
-            body = resp.json()
-            candidates = body.get("candidates") or []
-            if not candidates:
-                block = (body.get("promptFeedback") or {}).get("blockReason", "")
-                log.warning(f"[perf-report] Gemini no candidates for {target}: block={block} body={body}")
-                return {"agent": target, "report": f"AI analysis unavailable (no response{': ' + block if block else ''})."}
-            report = (
-                candidates[0]
-                .get("content", {})
-                .get("parts", [{}])[0]
-                .get("text", "")
-                .strip()
-            )
+            if _GROQ_KEY:
+                # Groq (primary) — OpenAI-compatible
+                resp = await client.post(
+                    _GROQ_URL,
+                    headers={"Authorization": f"Bearer {_GROQ_KEY}"},
+                    json={
+                        "model": _GROQ_MODEL,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 400,
+                        "temperature": 0.3,
+                    },
+                )
+                if not resp.is_success:
+                    log.warning(f"[perf-report] Groq HTTP {resp.status_code} for {target}: {resp.text[:200]}")
+                    return {"agent": target, "report": f"AI analysis unavailable (Groq {resp.status_code})."}
+                report = (resp.json().get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+            else:
+                # Gemini fallback
+                resp = await client.post(
+                    f"{_GEMINI_URL}?key={_GEMINI_KEY}",
+                    json={
+                        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 400},
+                    },
+                )
+                if not resp.is_success:
+                    log.warning(f"[perf-report] Gemini HTTP {resp.status_code} for {target}: {resp.text[:200]}")
+                    if resp.status_code == 429:
+                        return {"agent": target, "report": "AI quota reached — try again later."}
+                    return {"agent": target, "report": f"AI analysis unavailable (HTTP {resp.status_code})."}
+                candidates = (resp.json().get("candidates") or [])
+                if not candidates:
+                    return {"agent": target, "report": "AI analysis unavailable (no response)."}
+                report = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
     except Exception as e:
-        log.warning(f"[perf-report] Gemini exception for {target}: {type(e).__name__}: {e}")
+        log.warning(f"[perf-report] AI exception for {target}: {type(e).__name__}: {e}")
         return {"agent": target, "report": "AI analysis temporarily unavailable."}
 
     _PERF_CACHE[cache_key] = (_time.time(), report)
