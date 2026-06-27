@@ -2053,22 +2053,28 @@ function _syncAllAgentDetails(agentsList) {
   const toSync = agentsList.filter(a => a.agent && !a._wa_synced);
   if (!toSync.length) return;
   const currentRange = range;
-  toSync.forEach(agent => {
-    const url = `${API}/api/agents/detail?agent=${encodeURIComponent(agent.agent)}&range=${encodeURIComponent(currentRange)}&wa_line=all`;
-    fetch(url).then(r => r.ok ? r.json() : null).then(data => {
-      if (!data?.stats || !_cache?.[3]?.agents) return;
-      const s = data.stats;
-      const idx = _cache[3].agents.findIndex(a => a.agent === agent.agent);
-      if (idx < 0) return;
-      const a = _cache[3].agents[idx];
-      if (s.wa_chats      != null) a.wa_chats      = s.wa_chats;
-      if (s.messages_sent != null) a.messages_sent = s.messages_sent;
-      if (s.leads         != null) a.leads         = s.leads;
-      if (s.calls_handled != null) a.calls_handled = s.calls_handled;
-      if (s.calls_total   != null) a.calls_total   = s.calls_total;
-      a._wa_synced = true;
-      renderAgents(_cache[3]);
-    }).catch(() => {});
+  // Stagger requests 1.5 s apart — avoids flooding the backend when all agents
+  // sync simultaneously and competing with any open modal's own detail fetch.
+  toSync.forEach((agent, i) => {
+    setTimeout(() => {
+      // Skip if the modal is currently open for this agent — it fetches its own detail
+      if (agent.agent === _apCurrentAgent) return;
+      const url = `${API}/api/agents/detail?agent=${encodeURIComponent(agent.agent)}&range=${encodeURIComponent(currentRange)}&wa_line=all`;
+      fetch(url).then(r => r.ok ? r.json() : null).then(data => {
+        if (!data?.stats || !_cache?.[3]?.agents) return;
+        const s = data.stats;
+        const idx = _cache[3].agents.findIndex(a => a.agent === agent.agent);
+        if (idx < 0) return;
+        const a = _cache[3].agents[idx];
+        // Only update WA-specific fields — calls/leads are accurate from the
+        // agents cache and the modal; overwriting them with a possibly-degraded
+        // background response causes the intermittent "0 Calls" display bug.
+        if (s.wa_chats      != null) a.wa_chats      = s.wa_chats;
+        if (s.messages_sent != null) a.messages_sent = s.messages_sent;
+        a._wa_synced = true;
+        renderAgents(_cache[3]);
+      }).catch(() => {});
+    }, i * 1500);
   });
 }
 
