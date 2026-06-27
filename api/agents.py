@@ -1015,7 +1015,10 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         ts = m.get("sent_at")
         if ts and (not entry["last_message_at"] or ts > entry["last_message_at"]):
             entry["last_message_at"] = ts
-    wa_leads_out = sorted(by_lead_wa.values(), key=lambda x: x["last_message_at"] or "", reverse=True)
+    wa_leads_out = sorted(
+        (v for v in by_lead_wa.values() if v["messages_sent"] > 0),
+        key=lambda x: x["last_message_at"] or "", reverse=True
+    )
 
     seen: set[str] = set()
     analyses_out = []

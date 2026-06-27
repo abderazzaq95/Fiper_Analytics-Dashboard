@@ -2293,6 +2293,8 @@ async function openAgentProfile(agentName) {
     return r.json();
   }).then(data => {
     if (_apCurrentAgent !== agentName) return;
+    _apRenderKpis(data.stats || {});
+    _apRenderOverview(data.stats || {}, data);
     _apRenderCalls(data.calls || [], data.stats || {});
     _apRenderWa(data.wa_leads || [], data.stats || {});
     _apRenderProfileAlerts(data.alerts || []);
