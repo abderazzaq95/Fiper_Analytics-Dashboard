@@ -874,7 +874,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
     while idx < len(aid_list):
         analyses_raw.extend(
             supabase.table("ai_analysis")
-            .select("lead_id,sentiment,treatment_score,outcome,summary,summary_en,summary_ar,risk_flags,analyzed_at,source")
+            .select("lead_id,sentiment,treatment_score,outcome,summary,risk_flags,analyzed_at,source")
             .in_("lead_id", aid_list[idx:idx + BATCH_SIZE])
             .execute().data or []
         )
@@ -1045,8 +1045,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
             "sentiment":   a.get("sentiment"),
             "treatment_score": a.get("treatment_score"),
             "outcome":     a.get("outcome"),
-            "summary_en":  a.get("summary_en") or a.get("summary"),
-            "summary_ar":  a.get("summary_ar") or a.get("summary"),
+            "summary":     a.get("summary"),
             "risk_flags":  a.get("risk_flags") or [],
             "analyzed_at": a.get("analyzed_at"),
             "source":      a.get("source"),
