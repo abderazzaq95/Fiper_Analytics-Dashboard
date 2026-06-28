@@ -1018,6 +1018,7 @@ let _lastGoodTraffic = null;
 let _rangeCache = {};   // range → {status, data} — instant switching
 let _lastRenderedData = null;
 let _hasRenderedOnce = false;
+let _qualityAlertList = [];
 let _riskFlagDetails = {};
 
 // ── Persistent cache (survives page refresh) ──────────────────────────────────
@@ -1566,21 +1567,48 @@ const TOPIC_LABELS = {
 };
 
 function riskDetailsInlineHtml(flag, maxRows=3) {
-  const rows = ((_riskFlagDetails && _riskFlagDetails[flag]) || []).slice(0, maxRows);
+  let rows = ((_riskFlagDetails && _riskFlagDetails[flag]) || []).slice(0, maxRows);
+  if (!rows.length && Array.isArray(_qualityAlertList) && _qualityAlertList.length) {
+    const aliases = {
+      unanswered: ['no_reply', 'unanswered'],
+      slow_response: ['slow_response'],
+      beginner_risk: ['beginner_risk'],
+      stale_callback: ['stale_callback'],
+      negative_sentiment: ['negative_sentiment', 'poor_treatment'],
+    };
+    const wanted = aliases[flag] || [flag];
+    rows = _qualityAlertList
+      .filter(a => wanted.includes(String(a.type || '').trim().toLowerCase()))
+      .slice(0, maxRows)
+      .map(a => ({
+        lead_id: a.lead_id || null,
+        lead_phone: a.lead_phone || null,
+        lead_name: a.lead_name || null,
+        agent_name: a.agent_name || null,
+        source: 'alert',
+        analyzed_at: a.created_at || a.analyzed_at || null,
+        sentiment: null,
+        treatment_score: null,
+        summary: a.message || '',
+        message: a.last_message_body || '',
+        message_direction: null,
+        message_at: null,
+      }));
+  }
   if (!rows.length) {
-    return `<div class="risk-empty-detail">${lang==='ar'?'لا توجد ØªÙØ§ØµÙŠÙ„ Ù…Ø­ÙÙˆØ¸Ø© لهذا الخطر':'No saved detail rows for this risk flag yet'}</div>`;
+    return `<div class="risk-empty-detail">No saved detail rows for this risk flag yet</div>`;
   }
   return rows.map(item => {
-    const phone = item.lead_phone ? fmtPhone(item.lead_phone) : (lang==='ar'?'رقم غير Ù…Ø¹Ø±ÙˆÙ':'Unknown number');
-    const leadName = item.lead_name ? ` · ${esc(item.lead_name)}` : '';
-    const agent = item.agent_name || (lang==='ar'?'غير Ù…Ø¹Ø±ÙˆÙ':'unknown');
-    const when = item.analyzed_at ? new Date(item.analyzed_at).toLocaleString() : '—';
+    const phone = item.lead_phone ? fmtPhone(item.lead_phone) : 'Unknown number';
+    const leadName = item.lead_name ? ` - ${esc(item.lead_name)}` : '';
+    const agent = item.agent_name || 'unknown';
+    const when = item.analyzed_at ? new Date(item.analyzed_at).toLocaleString() : '-';
     const source = item.source || 'analysis';
-    const score = item.treatment_score != null ? ` · ${esc(String(item.treatment_score))}/100` : '';
+    const score = item.treatment_score != null ? ` - ${esc(String(item.treatment_score))}/100` : '';
     const msgLabel = item.message_direction === 'outbound' ? 'Agent' : 'Customer';
     return `<div class="risk-detail-line">
       <div><b>${esc(phone)}${leadName}</b></div>
-      <div class="risk-detail-meta">Agent: ${esc(agent)} · ${esc(source)} · ${esc(when)}${score}</div>
+      <div class="risk-detail-meta">Agent: ${esc(agent)} - ${esc(source)} - ${esc(when)}${score}</div>
       ${item.summary ? `<div style="margin-top:5px"><b>AI:</b> ${esc(item.summary)}</div>` : ''}
       ${item.message ? `<div style="margin-top:5px"><b>${esc(msgLabel)}:</b> ${esc(item.message)}</div>` : ''}
     </div>`;
@@ -1588,9 +1616,11 @@ function riskDetailsInlineHtml(flag, maxRows=3) {
 }
 
 function renderTopics(quality) {
+
   const topicsRaw  = quality?.top_topics || {};
   const topicTitles = quality?.topic_titles || {};
   const riskRaw    = quality?.top_risk_flags || {};
+  _qualityAlertList = quality?.alerts?.list || [];
   _riskFlagDetails = quality?.risk_flag_details || {};
   const topicsWrap = document.getElementById('topicsWrap');
   const tKeys      = Object.keys(topicsRaw).slice(0,6);
