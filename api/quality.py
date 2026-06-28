@@ -423,6 +423,7 @@ def _quality_inner(range: str, wa_line: str = "all"):
             })
 
     topic_examples: dict[str, list[dict]] = {}
+    seen_topic_examples: set[str] = set()
     for analysis in topic_example_rows:
         summary = (
             analysis.get("summary")
@@ -432,15 +433,22 @@ def _quality_inner(range: str, wa_line: str = "all"):
             continue
         if len(summary) > 260:
             summary = summary[:257].rstrip() + "..."
-        for topic in analysis.get("topics") or []:
-            if topic in excluded_topics:
-                continue
+        if summary in seen_topic_examples:
+            continue
+        candidate_topics = [t for t in (analysis.get("topics") or []) if t not in excluded_topics]
+        if not candidate_topics:
+            continue
+        candidate_topics = sorted(
+            candidate_topics,
+            key=lambda t: (len(topic_examples.get(t, [])), -topic_counter.get(t, 0), t),
+        )
+        for topic in candidate_topics:
             examples = topic_examples.setdefault(topic, [])
-            if len(examples) >= 3:
-                continue
-            if any(e.get("text") == summary for e in examples):
+            if len(examples) >= 5:
                 continue
             examples.append({"lead_id": analysis.get("lead_id"), "text": summary})
+            seen_topic_examples.add(summary)
+            break
 
     for spec in topic_specs:
         spec["examples"] = topic_examples.get(spec["key"], [])
