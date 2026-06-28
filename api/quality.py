@@ -205,6 +205,8 @@ def _quality_inner(range: str, wa_line: str = "all"):
     ) or []
 
     # Enrich alerts with lead phone/name and resolve missing agent_name
+    lead_map = {}
+    alert_msg_map = {}
     all_alert_lead_ids = list({a["lead_id"] for a in alerts if a.get("lead_id")})
     if all_alert_lead_ids:
         lead_rows = (
@@ -421,6 +423,45 @@ def _quality_inner(range: str, wa_line: str = "all"):
                 "message_direction": latest_msg.get("direction"),
                 "message_at": latest_msg.get("sent_at"),
             })
+
+    alert_flag_aliases = {
+        "no_reply": "unanswered",
+        "unanswered": "unanswered",
+        "slow_response": "slow_response",
+        "beginner_risk": "beginner_risk",
+        "negative_sentiment": "negative_sentiment",
+        "poor_treatment": "negative_sentiment",
+        "stale_callback": "stale_callback",
+    }
+    for a in alerts:
+        flag = alert_flag_aliases.get(str(a.get("type") or "").strip().lower())
+        if not flag:
+            continue
+        bucket = risk_flag_details.setdefault(flag, [])
+        if len(bucket) >= 3:
+            continue
+        lead_id = a.get("lead_id")
+        lead = lead_map.get(lead_id or "", {})
+        latest_msg = alert_msg_map.get(lead_id or "", {})
+        if any(
+            e.get("lead_id") == lead_id and e.get("message") == (a.get("message") or "").strip()
+            for e in bucket
+        ):
+            continue
+        bucket.append({
+            "lead_id": lead_id,
+            "lead_phone": _lead_phone(lead),
+            "lead_name": lead.get("name"),
+            "agent_name": a.get("agent_name") or _lead_agent_name(lead, latest_msg),
+            "source": "alert",
+            "analyzed_at": a.get("created_at"),
+            "sentiment": None,
+            "treatment_score": None,
+            "summary": (a.get("message") or "").strip(),
+            "message": (latest_msg.get("body") or "").strip(),
+            "message_direction": latest_msg.get("direction"),
+            "message_at": latest_msg.get("sent_at"),
+        })
 
     topic_examples: dict[str, list[dict]] = {}
     for analysis in topic_example_rows:
