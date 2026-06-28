@@ -108,7 +108,11 @@ def _topic_fallback_title(topic: str, examples: list[dict]) -> str:
         if len(cleaned) >= 4:
             break
     if cleaned:
-        return ' '.join(cleaned)
+        candidate = ' '.join(cleaned)
+        latin = sum(1 for ch in candidate if ch.isascii() and ch.isalpha())
+        nonlatin = sum(1 for ch in candidate if not ch.isascii() and ch.isalpha())
+        if latin >= nonlatin and len(candidate.split()) <= 4:
+            return candidate
     return topic.replace('_', ' ').title()
 
 
@@ -129,10 +133,10 @@ def _topic_titles_from_examples(topic_specs: list[dict]) -> dict[str, str]:
                         'parts': [{
                             'text': (
                                 'You are naming CRM topic groups for Fiper. '
-                                'For each group, create a concise topic title of 2-4 words based only on the examples. '
-                                'Keep the same language as the examples when possible. '
+                                'For each group, create a concise English topic title of 2-4 words based only on the examples. '
+                                'Do not copy the examples verbatim. '
                                 'Return JSON only as an array of objects with keys "key" and "title". '
-                                'Do not use fixed business labels unless the examples clearly support them.\n\n'
+                                'Avoid duplicates across titles and avoid fixed business labels unless the examples clearly support them.\n\n'
                                 + json.dumps(prompt_items, ensure_ascii=False)
                             )
                         }],
@@ -161,6 +165,10 @@ def _topic_titles_from_examples(topic_specs: list[dict]) -> dict[str, str]:
                     key = str((item or {}).get('key') or '').strip()
                     title = str((item or {}).get('title') or '').strip()
                     if key and title:
+                        latin = sum(1 for ch in title if ch.isascii() and ch.isalpha())
+                        nonlatin = sum(1 for ch in title if not ch.isascii() and ch.isalpha())
+                        if latin < nonlatin or len(title.split()) > 5:
+                            continue
                         titles[key] = title
         except Exception:
             titles = {}
