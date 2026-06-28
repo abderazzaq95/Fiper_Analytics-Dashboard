@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Query
 from supabase import create_client
 import os
+import json
 import requests
 import re
 from dotenv import load_dotenv
@@ -73,6 +74,101 @@ def _lead_agent_name(lead: dict | None, latest_msg: dict | None = None) -> str |
         if normalized and normalized.lower() not in ("unknown", "team", "n/a"):
             return normalized
     return None
+
+
+def _topic_fallback_title(topic: str, examples: list[dict]) -> str:
+    stop_en = {
+        'the','and','for','with','from','this','that','into','your','our','their','about','have','has','had',
+        'client','customer','lead','agent','message','messages','conversation','conversations','summary','summaries',
+        'business','topic','topics','info','information','details',
+    }
+    stop_ar = {
+        '??????','??????','????????','????????','????????','????????','?????','?????','????','??????','???????',
+        '???','???','???','???','???','??','??','???','???','??','??','??','????','????','?????','????',
+    }
+    texts = [str((e.get('text') or '')).strip() for e in examples if (e.get('text') or '').strip()]
+    if not texts:
+        return topic.replace('_', ' ').title()
+    best = texts[0]
+    best_score = -1
+    for txt in texts[:3]:
+        tokens = re.findall(r"[\w\u0600-\u06FF]+", txt.lower())
+        tokens = [tok for tok in tokens if tok not in stop_en and tok not in stop_ar and len(tok) > 1]
+        score = len(tokens)
+        if score > best_score:
+            best_score = score
+            best = txt
+    tokens = re.findall(r"[\w\u0600-\u06FF]+", best)
+    cleaned = []
+    for tok in tokens:
+        low = tok.lower()
+        if low in stop_en or low in stop_ar or len(low) <= 1:
+            continue
+        cleaned.append(tok)
+        if len(cleaned) >= 4:
+            break
+    if cleaned:
+        return ' '.join(cleaned)
+    return topic.replace('_', ' ').title()
+
+
+def _topic_titles_from_examples(topic_specs: list[dict]) -> dict[str, str]:
+    titles: dict[str, str] = {}
+    if GEMINI_API_KEY and topic_specs:
+        try:
+            prompt_items = []
+            for spec in topic_specs:
+                examples = [e.get('text', '') for e in (spec.get('examples') or [])[:3] if e.get('text')]
+                prompt_items.append({'key': spec['key'], 'examples': examples})
+            response = requests.post(
+                f"{GEMINI_URL}?key={GEMINI_API_KEY}",
+                headers={'content-type': 'application/json'},
+                json={
+                    'contents': [{
+                        'role': 'user',
+                        'parts': [{
+                            'text': (
+                                'You are naming CRM topic groups for Fiper. '
+                                'For each group, create a concise topic title of 2-4 words based only on the examples. '
+                                'Keep the same language as the examples when possible. '
+                                'Return JSON only as an array of objects with keys "key" and "title". '
+                                'Do not use fixed business labels unless the examples clearly support them.\n\n'
+                                + json.dumps(prompt_items, ensure_ascii=False)
+                            )
+                        }],
+                    }],
+                    'generationConfig': {'temperature': 0.2, 'maxOutputTokens': 300},
+                },
+                timeout=25,
+            )
+            response.raise_for_status()
+            raw_text = (
+                response.json()
+                .get('candidates', [{}])[0]
+                .get('content', {})
+                .get('parts', [{}])[0]
+                .get('text', '')
+                .strip()
+            )
+            raw_text = re.sub(r'^```json\s*', '', raw_text)
+            raw_text = re.sub(r'^```\s*', '', raw_text)
+            raw_text = re.sub(r'```$', '', raw_text).strip()
+            parsed = json.loads(raw_text)
+            if isinstance(parsed, dict):
+                parsed = parsed.get('topics') or parsed.get('items') or parsed.get('data') or []
+            if isinstance(parsed, list):
+                for item in parsed:
+                    key = str((item or {}).get('key') or '').strip()
+                    title = str((item or {}).get('title') or '').strip()
+                    if key and title:
+                        titles[key] = title
+        except Exception:
+            titles = {}
+
+    for spec in topic_specs:
+        key = spec['key']
+        titles.setdefault(key, _topic_fallback_title(key, spec.get('examples') or []))
+    return titles
 
 
 @router.get("/api/quality")
@@ -232,28 +328,9 @@ def _quality_inner(range: str, wa_line: str = "all"):
         key = (c.get("outcome") or "unknown").lower()
         call_outcomes[key] = call_outcomes.get(key, 0) + 1
 
-    # FAQ topics: structured list with Arabic labels
-    _TOPIC_LABELS: dict[str, dict] = {
-        "pricing":            {"en": "Pricing",             "ar": "التسعير"},
-        "product_fit":        {"en": "Product Fit",         "ar": "ملاءمة المنتج"},
-        "trading_education":  {"en": "Trading Education",   "ar": "تعليم التداول"},
-        "competitor":         {"en": "Competitor",          "ar": "منافس"},
-        "follow_up":          {"en": "Follow Up",           "ar": "متابعة"},
-        "not_decision_maker": {"en": "Not Decision Maker",  "ar": "ليس صاحب القرار"},
-        "account_info":       {"en": "Account Info",        "ar": "معلومات الحساب"},
-        "greetings":          {"en": "Greetings",           "ar": "تحيات"},
-        "profit_expectations":{"en": "Profit Expectations", "ar": "توقعات الربح"},
-        "technical":          {"en": "Technical",           "ar": "تقني"},
-    }
-    _TOPIC_LABELS.update({
-        "risk_management":    {"en": "Risk Management",     "ar": "Risk Management"},
-        "withdrawal":         {"en": "Withdrawal",          "ar": "Withdrawal"},
-        "objection_handling": {"en": "Objection Handling",  "ar": "Objection Handling"},
-        "deposit":            {"en": "Deposit",             "ar": "Deposit"},
-        "leverage":           {"en": "Leverage",            "ar": "Leverage"},
-    })
     topic_counter = Counter(all_topics)
     total_topic_count = sum(topic_counter.values())
+    topic_specs = [{"key": topic, "count": count, "examples": []} for topic, count in topic_counter.most_common(10)]
     analysis_lead_ids = list({a["lead_id"] for a in analyses if a.get("lead_id")})
     analysis_lead_map = {}
     if analysis_lead_ids:
@@ -357,13 +434,16 @@ def _quality_inner(range: str, wa_line: str = "all"):
                 continue
             examples.append({"lead_id": analysis.get("lead_id"), "text": summary})
 
+    for spec in topic_specs:
+        spec["examples"] = topic_examples.get(spec["key"], [])
+    topic_titles = _topic_titles_from_examples(topic_specs)
+
     faq_topics = [
         {
             "key":   topic,
+            "title": topic_titles.get(topic, topic.replace("_", " ").title()),
             "count": count,
             "pct":   round(count / total_topic_count * 100, 1) if total_topic_count else 0,
-            "en":    _TOPIC_LABELS.get(topic, {}).get("en", topic.replace("_", " ").title()),
-            "ar":    _TOPIC_LABELS.get(topic, {}).get("ar", topic),
             "examples": topic_examples.get(topic, []),
         }
         for topic, count in topic_counter.most_common(10)
@@ -387,6 +467,7 @@ def _quality_inner(range: str, wa_line: str = "all"):
             "negative": sentiments.count("negative"),
         },
         "top_topics": dict(topic_counter.most_common(10)),
+        "topic_titles": topic_titles,
         "top_risk_flags": dict(Counter(all_risk_flags).most_common(10)),
         "risk_flag_details": risk_flag_details,
         "faq_topics": faq_topics,

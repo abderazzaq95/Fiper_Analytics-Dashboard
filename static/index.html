@@ -1589,6 +1589,7 @@ function riskDetailsInlineHtml(flag, maxRows=3) {
 
 function renderTopics(quality) {
   const topicsRaw  = quality?.top_topics || {};
+  const topicTitles = quality?.topic_titles || {};
   const riskRaw    = quality?.top_risk_flags || {};
   _riskFlagDetails = quality?.risk_flag_details || {};
   const topicsWrap = document.getElementById('topicsWrap');
@@ -1598,25 +1599,24 @@ function renderTopics(quality) {
 
   topicsWrap.innerHTML = tKeys.length
     ? tKeys.map(k=>{
-        const lbl    = TOPIC_LABELS[k]?(lang==='ar'?TOPIC_LABELS[k].ar:TOPIC_LABELS[k].en):k;
-        const pctVal = total?Math.round(topicsRaw[k]/total*100):0;
-        const barW   = maxVal?Math.round(topicsRaw[k]/maxVal*100):0;
+        const lbl    = topicTitles[k] || k.replace(/_/g, ' ');
+        const pctVal = total ? Math.round(topicsRaw[k] / total * 100) : 0;
+        const barW   = maxVal ? Math.round(topicsRaw[k] / maxVal * 100) : 0;
         return `<div class="topic-bar-row">
-          <div class="topic-bar-meta"><span class="topic-bar-label">${lbl}</span><span class="topic-bar-pct">${pctVal}%</span></div>
+          <div class="topic-bar-meta"><span class="topic-bar-label">${esc(lbl)}</span><span class="topic-bar-pct">${pctVal}%</span></div>
           <div class="topic-bar-track"><div class="topic-bar-fill" style="width:${barW}%"></div></div>
         </div>`;
       }).join('')
-    : `<div style="text-align:center;padding:20px;color:var(--text-light);font-size:12px">${lang==='ar'?'لا توجد بيانات بعد':'No topic data yet'}</div>`;
+    : `<div style="text-align:center;padding:20px;color:var(--text-light);font-size:12px">No topic data yet</div>`;
 
   const riskKeys   = Object.keys(riskRaw).slice(0,5);
   const riskColors = {unanswered:'var(--blue)',profit_expectations:'var(--warn)',beginner_risk:'var(--red)',stale_callback:'var(--red)',negative_sentiment:'var(--red)',slow_response:'var(--warn)'};
-  const riskLabels = {unanswered:lang==='ar'?'لا إجابة':'Unanswered',profit_expectations:lang==='ar'?'توقعات Ù…ÙØ±Ø·Ø©':'Profit Expectations',beginner_risk:lang==='ar'?'خطر مبتدئ':'Beginner Risk',stale_callback:lang==='ar'?'معاودة متأخرة':'Stale Callback',negative_sentiment:lang==='ar'?'مشاعر سلبية':'Negative Sentiment',slow_response:lang==='ar'?'رد بطيء':'Slow Response'};
+  const riskLabels = {unanswered:'Unanswered',profit_expectations:'Profit Expectations',beginner_risk:'Beginner Risk',stale_callback:'Stale Callback',negative_sentiment:'Negative Sentiment',slow_response:'Slow Response'};
   document.getElementById('riskList').innerHTML = riskKeys.length
     ? riskKeys.map(k=>`<div class="risk-block"><div class="risk-item"><span class="risk-name">${riskLabels[k]||k}</span><span class="risk-count" style="color:${riskColors[k]||'var(--red)'}">${riskRaw[k]}</span></div>${riskDetailsInlineHtml(k,3)}</div>`).join('')
-    : `<div style="text-align:center;padding:16px;color:var(--text-light);font-size:12px">${lang==='ar'?'لم يتم رصد علامات خطر':'No risk flags detected'}</div>`;
+    : `<div style="text-align:center;padding:16px;color:var(--text-light);font-size:12px">No risk flags detected</div>`;
 }
 
-// ── Channel Traffic ───────────────────────────────────────────────────────────
 function renderTraffic(traffic) {
   const el = document.getElementById('trafficTable');
   if (!traffic) { el.innerHTML=''; return; }
@@ -1845,7 +1845,7 @@ function renderFAQ(quality) {
   document.getElementById('faqList').innerHTML = faq.map(t => `
     <div class="faq-bar-row">
       <div class="topic-bar-meta">
-        <span class="topic-bar-label">${lang === 'ar' ? t.ar : t.en}</span>
+        <span class="topic-bar-label">${esc(t.title || t.key || '')}</span>
         <span class="topic-bar-pct">${fmt(t.count)} · ${t.pct}%</span>
       </div>
       <div class="topic-bar-track"><div class="topic-bar-fill" style="width:${Math.round(t.count / maxCount * 100)}%"></div></div>
@@ -1863,7 +1863,7 @@ function renderFAQ(quality) {
     const examples = (t.examples || []).slice(0,2);
     return `<div class="faq-bar-row">
       <div class="topic-bar-meta">
-        <span class="topic-bar-label">${esc(lang === 'ar' ? t.ar : t.en)}</span>
+        <span class="topic-bar-label">${esc(t.title || t.key || '')}</span>
         <span class="topic-bar-pct">${fmt(t.count)} · ${t.pct}%</span>
       </div>
       <div class="topic-bar-track"><div class="topic-bar-fill" style="width:${Math.round((t.count || 0) / maxCount * 100)}%"></div></div>
