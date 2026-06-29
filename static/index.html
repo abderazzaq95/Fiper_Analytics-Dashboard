@@ -2170,7 +2170,7 @@ async function openAgentAlerts(agent) {
       alerts = cached;
     } else {
       // Direct fetch — avoid get() to prevent query-string issues
-      const url = `${API}/api/agents/alerts?agent=${encodeURIComponent(agent)}`;
+      const url = `${API}/api/agents/alerts?agent=${encodeURIComponent(agent)}&range=${encodeURIComponent(range || 'today')}`;
       const r = await fetch(url);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
