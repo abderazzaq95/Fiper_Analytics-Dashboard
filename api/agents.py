@@ -187,6 +187,7 @@ def _agents_lightweight(range: str, wa_line: str = "all"):
         supabase.table("alerts")
         .select("agent_name,lead_id,severity,type,message,resolved,created_at")
         .eq("resolved", False)
+        .gte("created_at", since)
         .execute().data or []
     )
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
@@ -355,6 +356,7 @@ def _agents_inner(range: str, wa_line: str = "all"):
         return (supabase.table("alerts")
             .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
             .eq("resolved", False)
+            .gte("created_at", since)
             .order("created_at", desc=True)
             .execute().data or [])
 

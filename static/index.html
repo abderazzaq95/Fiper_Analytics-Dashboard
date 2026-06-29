@@ -2928,8 +2928,12 @@ function normalizeOverview(ov, ch, leads, prev = null) {
   }
   fixed.leads.converted = fixed.leads.converted || 0;
   fixed.leads.conversion_rate = fixed.leads.conversion_rate || 0;
-  fixed.alerts.open = fixed.alerts.open || prev?.alerts?.open || 0;
-  fixed.alerts.high = fixed.alerts.high || prev?.alerts?.high || 0;
+  if (fixed.alerts.open == null && prev?.alerts?.open != null) {
+    fixed.alerts.open = prev.alerts.open;
+  }
+  if (fixed.alerts.high == null && prev?.alerts?.high != null) {
+    fixed.alerts.high = prev.alerts.high;
+  }
   fixed.hourly_distribution = fixed.hourly_distribution || Array.from({length:24}, (_, hour) => ({hour, calls:0}));
   return fixed;
 }
