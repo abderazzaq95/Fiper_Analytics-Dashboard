@@ -45,6 +45,7 @@ BUSINESS_NUMBERS = {
 }
 
 _WA_LINE_COLUMNS_AVAILABLE: bool | None = None
+_agent_cache_loaded = False
 
 
 def is_internal_whatsapp_number(phone: str | None) -> bool:
@@ -169,19 +170,46 @@ def _persist_users(users: list[dict]) -> None:
         SUPABASE.table("manycontacts_users").upsert(rows[idx:idx + 100], on_conflict="id").execute()
 
 
+def _prime_agent_cache(users: list[dict]) -> None:
+    global _agent_cache, _agent_cache_loaded
+    for user in users:
+        if not isinstance(user, dict):
+            continue
+        user_id = str(user.get("id") or "").strip()
+        name = str(user.get("name") or user.get("fullName") or "").strip()
+        if user_id and name:
+            _agent_cache[user_id] = name
+    _agent_cache_loaded = True
+
+
+def _fetch_users_sync() -> list[dict]:
+    global _agent_cache_loaded
+    resp = httpx.get(f"{BASE_URL}/users", headers=HEADERS, timeout=15)
+    resp.raise_for_status()
+    users = resp.json()
+    if isinstance(users, list):
+        _prime_agent_cache(users)
+        _persist_users(users)
+        return users
+    _agent_cache_loaded = True
+    return []
+
+
 async def fetch_users() -> list[dict]:
     """Return all ManyContacts users (agents)."""
-    global _agent_cache
     async with httpx.AsyncClient() as client:
         resp = await client.get(f"{BASE_URL}/users", headers=HEADERS, timeout=15)
         resp.raise_for_status()
         users = resp.json()
-        _agent_cache = {u["id"]: u["name"] for u in users if isinstance(u, dict)}
+        if isinstance(users, list):
+            _prime_agent_cache(users)
+            _persist_users(users)
         return users
 
 
 def resolve_agent_name(user_id: str | None) -> str | None:
     """Map a ManyContacts user_id to a human name using cache + durable DB fallback."""
+    global _agent_cache_loaded
     if not user_id:
         return None
     cached = _agent_cache.get(user_id)
@@ -204,6 +232,14 @@ def resolve_agent_name(user_id: str | None) -> str | None:
                     return name
         except Exception:
             pass
+    if not _agent_cache_loaded and HEADERS.get("apikey"):
+        try:
+            _fetch_users_sync()
+        except Exception:
+            _agent_cache_loaded = True
+        cached = _agent_cache.get(user_id)
+        if cached:
+            return cached
     return user_id
 
 
