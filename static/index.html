@@ -1897,7 +1897,11 @@ function renderFAQ(quality) {
         <span class="topic-bar-pct">${fmt(t.count)} · ${t.pct}%</span>
       </div>
       <div class="topic-bar-track"><div class="topic-bar-fill" style="width:${Math.round((t.count || 0) / maxCount * 100)}%"></div></div>
-      ${examples.length ? `<div class="topic-example-label">Examples</div><div class="topic-example-list">${examples.map(ex=>`<div class="topic-example">${esc(ex.text)}</div>`).join('')}</div>` : ''}
+      ${examples.length ? `<div class="topic-example-label">Examples</div><div class="topic-example-list">${examples.map(ex=>{
+        const leadLabel = esc(ex.lead_name || ex.lead_phone || 'Unknown lead');
+        const agentLabel = esc(ex.agent_name || 'Unknown agent');
+        return `<div class="topic-example"><div class="topic-example-meta"><strong>${leadLabel}</strong> | Agent: ${agentLabel}</div>${esc(ex.text)}</div>`;
+      }).join('')}</div>` : ''}
     </div>`;
   }).join('');
   wrap.innerHTML = `

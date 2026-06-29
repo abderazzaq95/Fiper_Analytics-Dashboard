@@ -474,6 +474,16 @@ def _quality_inner(range: str, wa_line: str = "all"):
             continue
         if len(summary) > 260:
             summary = summary[:257].rstrip() + "..."
+        lead_id = analysis.get("lead_id")
+        lead = analysis_lead_map.get(lead_id or "", {})
+        latest_msg = latest_message_map.get(lead_id or "", {})
+        example_payload = {
+            "lead_id": lead_id,
+            "lead_name": lead.get("name") or _lead_phone(lead),
+            "lead_phone": _lead_phone(lead),
+            "agent_name": _lead_agent_name(lead, latest_msg),
+            "text": summary,
+        }
         candidate_topics = [t for t in (analysis.get("topics") or []) if t not in excluded_topics]
         if not candidate_topics:
             continue
@@ -485,9 +495,9 @@ def _quality_inner(range: str, wa_line: str = "all"):
             examples = topic_examples.setdefault(topic, [])
             if len(examples) >= 4:
                 continue
-            if any(e.get("lead_id") == analysis.get("lead_id") and e.get("text") == summary for e in examples):
+            if any(e.get("lead_id") == lead_id and e.get("text") == summary for e in examples):
                 continue
-            examples.append({"lead_id": analysis.get("lead_id"), "text": summary})
+            examples.append(example_payload)
             break
 
     for spec in topic_specs:
