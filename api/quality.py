@@ -199,6 +199,7 @@ def _quality_inner(range: str, wa_line: str = "all"):
         supabase.table("alerts")
         .select("*")
         .gte("created_at", since)
+        .eq("resolved", False)
         .order("created_at", desc=True)
         .execute()
         .data

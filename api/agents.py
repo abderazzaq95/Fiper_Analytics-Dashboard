@@ -471,15 +471,21 @@ def _agents_inner(range: str, wa_line: str = "all"):
     agent_alerts: dict[str, list] = defaultdict(list)
     for a in alerts:
         lid = a.get("lead_id")
-        # 'unknown' / None agent names are meaningless — treat as missing so fallback fires
-        raw_alert_agent = _agent_label(a.get("agent_name"))
+        # Keep a stable fallback label so open alerts never disappear from the
+        # leaderboard just because ManyContacts only sent a UUID.
+        raw_alert_value = str(a.get("agent_name") or "").strip() or None
+        raw_alert_agent = _agent_label(raw_alert_value)
         if raw_alert_agent and raw_alert_agent.lower() in ("unknown", "team", "n/a"):
             raw_alert_agent = None
+        raw_lead_value = None
+        if lid and lead_by_id.get(lid):
+            raw_lead_value = str(lead_by_id[lid].get("assigned_agent") or "").strip() or None
+        lead_agent = _agent_label(raw_lead_value)
         agent = _agent_label(
             raw_alert_agent,
-            lead_agent_map.get(lid) if lid else None,
+            lead_agent,
             lead_to_agent_fallback.get(lid) if lid else None,
-        )
+        ) or raw_alert_agent or lead_agent or raw_alert_value or raw_lead_value
         if agent:
             lead = lead_by_id.get(lid, {})
             agent_alerts[agent].append({
@@ -918,14 +924,19 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
     alerts_out = []
     for a in alerts_raw:
         lid = a.get("lead_id")
-        raw_ag = _agent_label(a.get("agent_name"))
+        raw_alert_value = str(a.get("agent_name") or "").strip() or None
+        raw_ag = _agent_label(raw_alert_value)
         if raw_ag and raw_ag.lower() in ("unknown", "team", "n/a"):
             raw_ag = None
+        raw_lead_value = None
+        if lid and lead_by_id.get(lid):
+            raw_lead_value = str(lead_by_id[lid].get("assigned_agent") or "").strip() or None
+        lead_ag = _agent_label(raw_lead_value)
         attributed = _agent_label(
             raw_ag,
-            lead_agent_map.get(lid) if lid else None,
+            lead_ag,
             fb_full.get(lid) if lid else None,
-        )
+        ) or raw_ag or lead_ag or raw_alert_value or raw_lead_value
         if attributed != target:
             continue
         lead = lead_by_id.get(lid, {})
