@@ -640,24 +640,29 @@ def _agents_inner(range: str, wa_line: str = "all"):
 
 
 @router.get("/api/agents/alerts")
-def agent_alerts(agent: str = Query(...)):
+def agent_alerts(
+    agent: str = Query(...),
+    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+):
     """Return open alerts attributed to one normalized agent.
 
     Uses the same attribution rules as the leaderboard: explicit alert agent,
-    then lead assigned_agent, then all-time call/message fallback.
+    then lead assigned_agent, then time-bounded call/message fallback.
     """
     try:
-        return _agent_alerts_inner(agent)
+        return _agent_alerts_inner(agent, range)
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/agents/alerts error ({agent}): {e}", exc_info=True)
         return {"agent": _norm(agent) or agent, "alerts": []}
 
 
-def _agent_alerts_inner(agent: str):
+def _agent_alerts_inner(agent: str, range_: str):
     target = _norm(agent)
     if not target:
         return {"agent": agent, "alerts": []}
+
+    since = _since(range_)
 
     # All name spelling variants for DB matching
     target_spellings: set[str] = {target}
@@ -671,6 +676,7 @@ def _agent_alerts_inner(agent: str):
         supabase.table("alerts")
         .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
         .eq("resolved", False)
+        .gte("created_at", since)
         .order("created_at", desc=True)
         .execute().data or []
     )

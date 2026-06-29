@@ -2285,25 +2285,27 @@ async function apOpenAlertsTab(btn) {
 
 async function apLoadProfileAlerts(force = false) {
   const agentName = _apCurrentAgent;
+  const rangeKey = range || 'today';
   if (!agentName) return;
   const panel = document.getElementById('apTabAlerts');
   if (!panel) return;
 
-  if (!force && _apAlertsLoadedFor === agentName) return;
-  if (_apAlertsLoadingFor === agentName) return;
+  const cacheKey = `${agentName}::${rangeKey}`;
+  if (!force && _apAlertsLoadedFor === cacheKey) return;
+  if (_apAlertsLoadingFor === cacheKey) return;
 
-  _apAlertsLoadingFor = agentName;
+  _apAlertsLoadingFor = cacheKey;
   panel.innerHTML = `<div class="ap-empty">${_apt('loadingAlerts')}</div>`;
 
   try {
-    const url = `${API}/api/agents/alerts?agent=${encodeURIComponent(agentName)}`;
+    const url = `${API}/api/agents/alerts?agent=${encodeURIComponent(agentName)}&range=${encodeURIComponent(rangeKey)}`;
     const r = await fetch(url);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     if (_apCurrentAgent !== agentName) return;
     const alerts = Array.isArray(data?.alerts) ? data.alerts : [];
     _apRenderProfileAlerts(alerts);
-    _apAlertsLoadedFor = agentName;
+    _apAlertsLoadedFor = cacheKey;
 
     const alertBtn = document.getElementById('apTabBtn-alerts');
     if (alertBtn) alertBtn.textContent = alerts.length ? _apt('alertsBtnN',{n:alerts.length}) : _apt('alertsBtn');
@@ -2313,7 +2315,7 @@ async function apLoadProfileAlerts(force = false) {
       panel.innerHTML = `<div class="ap-empty" style="color:var(--red)">${_apt('failedAlerts')}</div>`;
     }
   } finally {
-    if (_apAlertsLoadingFor === agentName) _apAlertsLoadingFor = null;
+    if (_apAlertsLoadingFor === cacheKey) _apAlertsLoadingFor = null;
   }
 }
 
