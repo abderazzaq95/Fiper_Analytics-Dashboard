@@ -844,7 +844,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
     def _fetch_all_alerts():
         return supabase.table("alerts")\
             .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")\
-            .eq("resolved", False).order("created_at", desc=True).execute().data or []
+            .eq("resolved", False).gte("created_at", since).order("created_at", desc=True).execute().data or []
 
     raw_msgs:   list[dict] = list(msgs_name_parts)
     leads_raw:  list[dict] = list(assigned_lead_rows)
