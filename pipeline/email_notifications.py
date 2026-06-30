@@ -160,6 +160,45 @@ def _fmt_open_age(created_at: str | None, now: datetime | None = None) -> str:
     return " ".join(parts)
 
 
+def _fmt_relative_age(created_at: str | None, now: datetime | None = None) -> str:
+    if not created_at:
+        return "unknown"
+    try:
+        created = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+        now = now or datetime.now(timezone.utc)
+        total_min = max(0, int((now - created).total_seconds() // 60))
+    except Exception:
+        return "unknown"
+    if total_min < 60:
+        return f"{total_min}m ago"
+    total_hours = total_min // 60
+    if total_hours < 24:
+        return f"{total_hours}h ago"
+    total_days = total_hours // 24
+    return f"{total_days}d ago"
+
+
+def _clean_alert_message(message: str | None) -> str:
+    msg = (message or "").strip()
+    if not msg:
+        return ""
+    if re.search(r"unanswered for \d+ minutes", msg):
+        return "Inbound message unanswered."
+    if re.search(r"not contacted in \d+ hours", msg):
+        return "Callback lead not contacted."
+    if re.search(r"response time is \d+ minutes", msg):
+        return "Average response time above threshold."
+    if re.search(r"Low treatment score \(\d+/100\)", msg):
+        return "Low treatment score. Interaction quality needs review."
+    if "negative sentiment" in msg.lower():
+        return "AI analysis detected negative sentiment in this conversation."
+    if "beginner lead" in msg.lower():
+        return "Beginner lead needs trading education."
+    if "profit expectations" in msg.lower():
+        return "Lead raised unrealistic profit expectations."
+    return msg
+
+
 def _alert_type_title(value: str | None) -> str:
     return (value or "alert").replace("_", " ").title()
 
@@ -393,7 +432,7 @@ def send_supervisor_report(report_label: str = "") -> bool:
             _lead_agent_name(lead, latest_msg) if lead else None,
             latest_call.get("agent_name") if latest_call else None,
         ) or alert.get("agent_name")
-        alert["open_for"] = _fmt_open_age(alert.get("created_at"), now)
+        alert["open_for"] = _fmt_relative_age(alert.get("created_at"), now)
         last_body = (latest_msg.get("body") or "").strip()
         alert["last_message_body"] = last_body[:180] if last_body else ""
 
@@ -443,7 +482,7 @@ def send_supervisor_report(report_label: str = "") -> bool:
         lead_bits = [b for b in [alert.get("lead_phone"), alert.get("lead_name")] if b]
         lead_label = " | ".join(lead_bits) or "unknown lead"
         agent_label = alert.get("agent_name") or "unknown"
-        alert_message = alert.get("message") or ""
+        alert_message = _clean_alert_message(alert.get("message"))
         last_message = alert.get("last_message_body") or ""
         detail_rows.append(
             "<tr>"
