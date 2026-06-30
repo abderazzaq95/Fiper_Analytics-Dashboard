@@ -218,6 +218,31 @@ def _alert_type_title(value: str | None) -> str:
     return (value or "alert").replace("_", " ").title()
 
 
+def _severity_ar(value: str | None) -> str:
+    mapping = {
+        "high": "?????",
+        "medium": "?????",
+        "low": "?????",
+    }
+    return mapping.get(str(value or "").strip().lower(), str(value or "?????"))
+
+
+def _alert_type_ar(value: str | None) -> str:
+    slug = str(value or "").strip().lower().replace(" ", "_")
+    mapping = {
+        "no_reply": "??? ????",
+        "slow_response": "??? ????",
+        "beginner_risk": "????? ?????????",
+        "poor_treatment": "??? ???? ???????",
+        "negative_sentiment": "?????? ????",
+        "profit_expectations": "?????? ????? ??? ??????",
+        "weak_engagement": "??? ???????",
+        "stale_callback": "???? ????????",
+        "alert": "?????",
+    }
+    return mapping.get(slug, _alert_type_title(value))
+
+
 def _paginate(build_query) -> list:
     rows, offset = [], 0
     while True:
@@ -335,10 +360,15 @@ def send_test_notification(to: str, phone: str = "") -> bool:
     </ul>
     """
     wa_body = (
-        "Fiper Test Alert\n"
-        "Severity: HIGH\n"
-        "Type: test alert\n"
-        f"Requested phone: {phone or 'not provided'}"
+        "Hello Test Agent / ???????\n"
+        "You have a High Test Alert that needs action.\n"
+        "???? ????? ?????? ????? ?????? ??????.\n\n"
+        "Lead / ??????: Test Lead\n"
+        f"Phone / ?????: {phone or 'not provided'}\n"
+        "Last message / ??? ?????:\n"
+        '"This is a test notification from the Fiper Analytics Dashboard."\n\n'
+        "Please contact the lead and update the conversation now.\n"
+        "???? ??????? ?? ?????? ?????? ???????? ????."
     )
     email_sent = _send_email(to, "Fiper test alert notification", html_body)
     whatsapp_sent = _send_whatsapp(phone, wa_body) if phone else False
@@ -384,6 +414,7 @@ def notify_agent_alert(alert: dict) -> bool:
         return False
 
     severity = alert.get("severity") or "Alert"
+    lead = None
     alert_type = (alert.get("type") or "alert").replace("_", " ").title()
     message = alert.get("message") or ""
     lead_id = alert.get("lead_id") or ""
@@ -412,13 +443,32 @@ def notify_agent_alert(alert: dict) -> bool:
     <p><b>Message:</b> {html.escape(message)}</p>
     <p><b>Lead ID:</b> {html.escape(str(lead_id))}</p>
     """
+    latest_customer_message = (alert.get("last_customer_message") or "").strip()
+    if not latest_customer_message and lead_id and lead_id != "test":
+        try:
+            msg_rows = _paginate(
+                lambda: supabase.table("messages")
+                .select("direction,body,sent_at")
+                .eq("lead_id", lead_id)
+                .eq("direction", "inbound")
+                .order("sent_at", desc=True)
+                .limit(1)
+            )
+            if msg_rows:
+                latest_customer_message = (msg_rows[0].get("body") or "").strip()
+        except Exception:
+            pass
+    latest_customer_message = latest_customer_message or "No customer message saved."
     wa_body = (
-        f"Fiper Alert\n"
-        f"Agent: {agent}\n"
-        f"Severity: {severity}\n"
-        f"Type: {alert_type}\n"
-        f"Lead: {lead_label}\n"
-        f"Alert: {message}"
+        f"Hello {agent} / مرحباً {agent}،\n"
+        f"You have a {severity} {alert_type} alert that needs action.\n"
+        f"لديك تنبيه {_severity_ar(severity)} من نوع {_alert_type_ar(alert.get('type') or alert_type)} ويحتاج متابعة.\n\n"
+        f"Lead / العميل: {lead_label}\n"
+        f"Phone / الرقم: {_lead_phone(lead) or ''}\n"
+        "Last message / آخر رسالة:\n"
+        f'"{latest_customer_message}"\n\n'
+        "Please contact the lead and update the conversation now.\n"
+        "يرجى التواصل مع العميل وتحديث المحادثة الآن."
     )
     email_sent = _send_email(recipient, f"Fiper Alert - {severity} - {alert_type}", html_body) if recipient else False
     whatsapp_sent = _send_whatsapp(whatsapp_phone, wa_body) if whatsapp_phone else False
