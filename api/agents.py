@@ -849,8 +849,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         query = supabase.table("alerts")\
             .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")\
             .eq("resolved", False).order("created_at", desc=True)
-        if range_ != "today":
-            query = query.gte("created_at", since)
+        query = query.gte("created_at", since)
         return query.execute().data or []
 
     raw_msgs:   list[dict] = list(msgs_name_parts)
