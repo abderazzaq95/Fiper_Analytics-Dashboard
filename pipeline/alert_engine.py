@@ -10,6 +10,8 @@ supabase = create_client(
     os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY")
 )
 
+MAX_OPERATIONAL_ALERT_MINUTES = 24 * 60
+
 
 def _fmt_duration(minutes: float) -> str:
     m = int(minutes)
@@ -180,7 +182,7 @@ def check_no_reply():
         if last_inbound:
             sent = datetime.fromisoformat(last_inbound["sent_at"].replace("Z", "+00:00"))
             gap_min = (now - sent).total_seconds() / 60
-            if gap_min > 60:
+            if 60 < gap_min <= MAX_OPERATIONAL_ALERT_MINUTES:
                 still_unanswered_phones.add(phone)
                 lead_rows = phone_leads.get(phone, [])
                 lead_rows = sorted(
@@ -268,6 +270,8 @@ def check_slow_response():
     for m in messages:
         by_lead.setdefault(m["lead_id"], []).append(m)
 
+    qualifying_leads: set[str] = set()
+
     for lead_id, msgs in by_lead.items():
         sorted_msgs = sorted(msgs, key=lambda x: x["sent_at"])
         gaps = []
@@ -278,16 +282,33 @@ def check_slow_response():
             elif m["direction"] == "outbound" and last_inbound_time:
                 outbound_time = datetime.fromisoformat(m["sent_at"].replace("Z", "+00:00"))
                 gap = (outbound_time - last_inbound_time).total_seconds() / 60
-                if gap > 0:
+                if 0 < gap <= MAX_OPERATIONAL_ALERT_MINUTES:
                     gaps.append(gap)
                 last_inbound_time = None
 
         if gaps and (sum(gaps) / len(gaps)) > 15:
             agent = sorted_msgs[-1].get("agent_name", "unknown")
+            qualifying_leads.add(lead_id)
             _upsert_alert(
                 lead_id, agent, "MED", "slow_response",
                 f"Average response time is {_fmt_duration(sum(gaps)/len(gaps))} (threshold: 15 min)."
             )
+
+    open_alerts = (
+        supabase.table("alerts")
+        .select("id,lead_id")
+        .eq("type", "slow_response")
+        .eq("resolved", False)
+        .execute()
+        .data or []
+    )
+    resolved_ids = [
+        alert["id"]
+        for alert in open_alerts
+        if alert.get("lead_id") not in qualifying_leads
+    ]
+    if resolved_ids:
+        supabase.table("alerts").update({"resolved": True}).in_("id", resolved_ids).execute()
 
 
 def check_profit_expectations(leads_with_msgs: set):
