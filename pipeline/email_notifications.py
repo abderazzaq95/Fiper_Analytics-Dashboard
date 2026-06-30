@@ -332,6 +332,7 @@ def send_supervisor_report(report_label: str = "") -> bool:
     alerts = (
         supabase.table("alerts")
         .select("severity,type,agent_name,message,created_at,resolved,lead_id")
+        .gte("created_at", today)
         .eq("resolved", False)
         .order("created_at", desc=True)
         .execute()
@@ -468,7 +469,7 @@ def send_supervisor_report(report_label: str = "") -> bool:
         "</tr></thead><tbody>"
         + "".join(detail_rows)
         + "</tbody></table>"
-    ) if detail_rows else "<p>No open alerts right now.</p>"
+    ) if detail_rows else "<p>No alerts today.</p>"
 
     html_body = f"""
     <h2>Fiper Sales Report {html.escape(report_label)}</h2>
@@ -482,7 +483,7 @@ def send_supervisor_report(report_label: str = "") -> bool:
       <li>Stored WhatsApp messages: {len(messages)}</li>
       <li>Inbound / outbound messages: {sum(1 for m in messages if m.get('direction') == 'inbound')} / {sum(1 for m in messages if m.get('direction') == 'outbound')}</li>
     </ul>
-    <h3>Open alerts right now</h3>
+    <h3>Alerts today</h3>
     <ul>
       <li>Open alerts: {len(open_alerts)}</li>
       <li>High: {severity_counts.get('HIGH', 0)}</li>
@@ -493,7 +494,7 @@ def send_supervisor_report(report_label: str = "") -> bool:
     <ul>{type_rows or '<li>No alerts</li>'}</ul>
     <h3>Agents with alerts</h3>
     <ul>{agent_rows or '<li>No agent alerts</li>'}</ul>
-    <h3>Open alert details</h3>
+    <h3>Alert details today</h3>
     {alert_details_html}
     """
     return _send_email(
