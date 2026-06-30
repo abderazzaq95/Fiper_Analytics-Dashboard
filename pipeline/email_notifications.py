@@ -139,6 +139,31 @@ def _lead_phone(lead: dict | None) -> str | None:
     return (lead.get("wa_contact_id") or "").strip() or None
 
 
+def _fmt_open_age(created_at: str | None, now: datetime | None = None) -> str:
+    if not created_at:
+        return "unknown"
+    try:
+        created = datetime.fromisoformat(str(created_at).replace("Z", "+00:00"))
+        now = now or datetime.now(timezone.utc)
+        total_min = max(0, int((now - created).total_seconds() // 60))
+    except Exception:
+        return "unknown"
+    days, rem = divmod(total_min, 1440)
+    hours, mins = divmod(rem, 60)
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if mins or not parts:
+        parts.append(f"{mins}m")
+    return " ".join(parts)
+
+
+def _alert_type_title(value: str | None) -> str:
+    return (value or "alert").replace("_", " ").title()
+
+
 def _paginate(build_query) -> list:
     rows, offset = [], 0
     while True:
@@ -307,11 +332,12 @@ def send_supervisor_report(report_label: str = "") -> bool:
     alerts = (
         supabase.table("alerts")
         .select("severity,type,agent_name,message,created_at,resolved,lead_id")
-        .gte("created_at", today)
+        .eq("resolved", False)
+        .order("created_at", desc=True)
         .execute()
         .data
     ) or []
-    open_alerts = [a for a in alerts if not a.get("resolved")]
+    open_alerts = list(alerts)
 
     alert_lead_ids = list({a.get("lead_id") for a in open_alerts if a.get("lead_id")})
     lead_map: dict[str, dict] = {}
@@ -366,6 +392,9 @@ def send_supervisor_report(report_label: str = "") -> bool:
             _lead_agent_name(lead, latest_msg) if lead else None,
             latest_call.get("agent_name") if latest_call else None,
         ) or alert.get("agent_name")
+        alert["open_for"] = _fmt_open_age(alert.get("created_at"), now)
+        last_body = (latest_msg.get("body") or "").strip()
+        alert["last_message_body"] = last_body[:180] if last_body else ""
 
     calls = _paginate(
         lambda: supabase.table("calls")
@@ -404,9 +433,42 @@ def send_supervisor_report(report_label: str = "") -> bool:
         for agent, items in sorted(by_agent.items(), key=lambda kv: len(kv[1]), reverse=True)[:10]
     )
     type_rows = "".join(
-        f"<li>{html.escape(k.replace('_', ' ').title())}: {v}</li>"
+        f"<li>{html.escape(_alert_type_title(k))}: {v}</li>"
         for k, v in type_counts.most_common(10)
     )
+    severity_rank = {"HIGH": 0, "MED": 1, "LOW": 2}
+    detail_rows = []
+    for alert in sorted(open_alerts, key=lambda a: (severity_rank.get(a.get("severity") or "", 9), a.get("created_at") or ""))[:20]:
+        lead_bits = [b for b in [alert.get("lead_phone"), alert.get("lead_name")] if b]
+        lead_label = " | ".join(lead_bits) or "unknown lead"
+        agent_label = alert.get("agent_name") or "unknown"
+        alert_message = alert.get("message") or ""
+        last_message = alert.get("last_message_body") or ""
+        detail_rows.append(
+            "<tr>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'><b>{html.escape(alert.get('severity') or 'MED')}</b></td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(_alert_type_title(alert.get('type')))}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(alert.get('open_for') or 'unknown')}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(lead_label)}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(agent_label)}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(alert_message)}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(last_message or '-')}</td>"
+            "</tr>"
+        )
+    alert_details_html = (
+        "<table style='border-collapse:collapse;width:100%;font-size:13px'>"
+        "<thead><tr>"
+        "<th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Severity</th>"
+        "<th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Type</th>"
+        "<th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Open for</th>"
+        "<th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Lead</th>"
+        "<th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Agent</th>"
+        "<th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Alert</th>"
+        "<th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Latest customer message</th>"
+        "</tr></thead><tbody>"
+        + "".join(detail_rows)
+        + "</tbody></table>"
+    ) if detail_rows else "<p>No open alerts right now.</p>"
 
     html_body = f"""
     <h2>Fiper Sales Report {html.escape(report_label)}</h2>
@@ -420,7 +482,7 @@ def send_supervisor_report(report_label: str = "") -> bool:
       <li>Stored WhatsApp messages: {len(messages)}</li>
       <li>Inbound / outbound messages: {sum(1 for m in messages if m.get('direction') == 'inbound')} / {sum(1 for m in messages if m.get('direction') == 'outbound')}</li>
     </ul>
-    <h3>Alerts today</h3>
+    <h3>Open alerts right now</h3>
     <ul>
       <li>Open alerts: {len(open_alerts)}</li>
       <li>High: {severity_counts.get('HIGH', 0)}</li>
@@ -431,6 +493,8 @@ def send_supervisor_report(report_label: str = "") -> bool:
     <ul>{type_rows or '<li>No alerts</li>'}</ul>
     <h3>Agents with alerts</h3>
     <ul>{agent_rows or '<li>No agent alerts</li>'}</ul>
+    <h3>Open alert details</h3>
+    {alert_details_html}
     """
     return _send_email(
         SALES_SUPERVISOR_EMAIL,
