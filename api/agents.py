@@ -353,13 +353,15 @@ def _agents_inner(range: str, wa_line: str = "all"):
             .gte("called_at", since))
 
     def _fetch_alerts():
-        query = (supabase.table("alerts")
+        return (
+            supabase.table("alerts")
             .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
             .eq("resolved", False)
-            .order("created_at", desc=True))
-        if range != "today":
-            query = query.gte("created_at", since)
-        return query.execute().data or []
+            .gte("created_at", since)
+            .order("created_at", desc=True)
+            .execute()
+            .data
+        ) or []
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         f_msgs   = executor.submit(_fetch_messages)
@@ -685,11 +687,11 @@ def _agent_alerts_inner(agent: str, range_: str):
         supabase.table("alerts")
         .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
         .eq("resolved", False)
+        .gte("created_at", since)
         .order("created_at", desc=True)
-    )
-    if range_ != "today":
-        all_alerts = all_alerts.gte("created_at", since)
-    all_alerts = all_alerts.execute().data or []
+        .execute()
+        .data
+    ) or []
 
     # Pass 1: alerts with an explicit matching agent_name (fast, no lead lookup needed)
     matched_alerts: list[dict] = []
