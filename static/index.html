@@ -2133,28 +2133,55 @@ function _alertSevLabel(sev) {
   if (lang !== 'ar') return sev;
   return _ALERT_SEV_AR[sev] || sev;
 }
-function _alertMsgAr(msg) {
+function _formatAlertDuration(totalMinutes, locale='en') {
+  const minutes = Math.max(0, Number(totalMinutes) || 0);
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  if (locale === 'ar') {
+    const parts = [];
+    if (days) parts.push(`${days} يوم`);
+    if (hours) parts.push(`${hours} ساعة`);
+    if (mins || !parts.length) parts.push(`${mins} دقيقة`);
+    return parts.join(' ');
+  }
+  const parts = [];
+  if (days) parts.push(`${days}d`);
+  if (hours) parts.push(`${hours}h`);
+  if (mins || !parts.length) parts.push(`${mins}m`);
+  return parts.join(' ');
+}
+function _alertMsgEn(msg) {
   if (!msg) return '';
-  // Dynamic patterns — extract numbers and re-build in Arabic
   let m;
   if ((m = msg.match(/unanswered for (\d+) minutes/)))
-    return `رسالة واردة لم يتم الرد عليها منذ ${m[1]} دقيقة.`;
-  if ((m = msg.match(/not contacted in (\d+) hours/)))
-    return `لم يتم التواصل مع العميل منذ ${m[1]} ساعة.`;
+    return msg.replace(/unanswered for (\d+) minutes/, `unanswered for ${_formatAlertDuration(m[1], 'en')}`);
   if ((m = msg.match(/response time is (\d+) minutes/)))
-    return `متوسط وقت الاستجابة ${m[1]} دقيقة (الحد: 15 دقيقة).`;
+    return msg.replace(/response time is (\d+) minutes/, `response time is ${_formatAlertDuration(m[1], 'en')}`);
+  return msg;
+}
+function _alertMsgAr(msg) {
+  if (!msg) return '';
+  // Dynamic patterns - extract numbers and rebuild in Arabic.
+  let m;
+  if ((m = msg.match(/unanswered for (\d+) minutes/)))
+    return `\u0631\u0633\u0627\u0644\u0629 \u0648\u0627\u0631\u062f\u0629 \u0644\u0645 \u064a\u062a\u0645 \u0627\u0644\u0631\u062f \u0639\u0644\u064a\u0647\u0627 \u0645\u0646\u0630 ${_formatAlertDuration(m[1], 'ar')}.`;
+  if ((m = msg.match(/not contacted in (\d+) hours/)))
+    return `\u0644\u0645 \u064a\u062a\u0645 \u0627\u0644\u062a\u0648\u0627\u0635\u0644 \u0645\u0639 \u0627\u0644\u0639\u0645\u064a\u0644 \u0645\u0646\u0630 ${m[1]} \u0633\u0627\u0639\u0629.`;
+  if ((m = msg.match(/response time is (\d+) minutes/)))
+    return `\u0645\u062a\u0648\u0633\u0637 \u0648\u0642\u062a \u0627\u0644\u0627\u0633\u062a\u062c\u0627\u0628\u0629 ${_formatAlertDuration(m[1], 'ar')} (\u0627\u0644\u062d\u062f: 15 \u062f\u0642\u064a\u0642\u0629).`;
   if ((m = msg.match(/Low treatment score \((\d+)\/100\)/)))
-    return `درجة المعالجة Ù…Ù†Ø®ÙØ¶Ø© (${m[1]}/100). جودة Ø§Ù„ØªÙØ§Ø¹Ù„ تحتاج مراجعة.`;
+    return `\u062f\u0631\u062c\u0629 \u0627\u0644\u0645\u0639\u0627\u0644\u062c\u0629 \u0645\u0646\u062e\u0641\u0636\u0629 (${m[1]}/100). \u062c\u0648\u062f\u0629 \u0627\u0644\u062a\u0641\u0627\u0639\u0644 \u062a\u062d\u062a\u0627\u062c \u0645\u0631\u0627\u062c\u0639\u0629.`;
   if (msg.includes('negative sentiment'))
-    return 'Ø§ÙƒØªØ´Ù الذكاء الاصطناعي مشاعر سلبية ÙÙŠ هذه المحادثة.';
+    return '\u0627\u0643\u062a\u0634\u0641 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0645\u0634\u0627\u0639\u0631 \u0633\u0644\u0628\u064a\u0629 \u0641\u064a \u0647\u0630\u0647 \u0627\u0644\u0645\u062d\u0627\u062f\u062b\u0629.';
   if (msg.includes('Beginner lead'))
-    return 'عميل مبتدئ لم ÙŠÙÙ‚Ø¯ÙŽÙ‘Ù… له تعليم ÙÙŠ التداول.';
+    return '\u0639\u0645\u064a\u0644 \u0645\u0628\u062a\u062f\u0626 \u0644\u0645 \u064a\u064f\u0642\u062f\u064e\u0651\u0645 \u0644\u0647 \u062a\u0639\u0644\u064a\u0645 \u0641\u064a \u0627\u0644\u062a\u062f\u0627\u0648\u0644.';
   if (msg.includes('profit expectations'))
-    return 'العميل لديه توقعات أرباح غير واقعية. يلزم تدريب.';
+    return '\u0627\u0644\u0639\u0645\u064a\u0644 \u0644\u062f\u064a\u0647 \u062a\u0648\u0642\u0639\u0627\u062a \u0623\u0631\u0628\u0627\u062d \u063a\u064a\u0631 \u0648\u0627\u0642\u0639\u064a\u0629. \u064a\u0644\u0632\u0645 \u062a\u062f\u0631\u064a\u0628.';
   return msg; // fallback: keep original
 }
 
-// ── Agent alert popup ─────────────────────────────────────────────────────────
+// Agent alert popup
 async function openAgentAlerts(agent) {
   const modal = document.getElementById('agentAlertsModal');
   const title = document.getElementById('agentAlertsTitle');
@@ -2199,7 +2226,7 @@ async function openAgentAlerts(agent) {
       try { created = a.created_at ? new Date(a.created_at).toLocaleString() : '—'; } catch(_){}
       const typeLabel = _alertTypeLabel(a.type);
       const sevLabel  = _alertSevLabel(sev);
-      const msgText   = lang==='ar' ? _alertMsgAr(a.message) : (a.message || '');
+      const msgText   = lang==='ar' ? _alertMsgAr(a.message) : _alertMsgEn(a.message || '');
       return `<div class="agent-alert-card">
         <div class="agent-alert-top">
           <span class="pill ${sevCls}">${esc(sevLabel)}</span>
@@ -2812,7 +2839,7 @@ function _apRenderProfileAlerts(alerts) {
     try { created = a.created_at ? new Date(a.created_at).toLocaleString() : '—'; } catch(_){}
     return `<div class="agent-alert-card">
       <div class="agent-alert-top"><span class="pill ${sevCls}">${esc(_alertSevLabel(sev))}</span><span class="agent-alert-title">${esc(_alertTypeLabel(a.type))}</span></div>
-      <div class="agent-alert-msg">${esc(a.message||'')}</div>
+      <div class="agent-alert-msg">${esc(lang==='ar' ? _alertMsgAr(a.message || '') : _alertMsgEn(a.message || ''))}</div>
       <div class="alert-meta">👤 ${esc(phone)}${name} · ${esc(created)}</div>
     </div>`;
   }).join('');
@@ -2839,7 +2866,7 @@ function renderAlerts(quality) {
     <div class="alert-item ${(a.severity||'').toLowerCase()}">
       <span class="pill ${a.severity==='HIGH'?'pill-red':a.severity==='MED'?'pill-warn':'pill-blue'}" style="flex-shrink:0;margin-top:1px">${a.severity}</span>
       <div class="alert-body">
-        <div class="alert-msg">${typeLabels[a.type]||a.type} — ${a.message||''}</div>
+        <div class="alert-msg">${esc(typeLabels[a.type]||a.type)} — ${esc(lang==='ar' ? _alertMsgAr(a.message || '') : _alertMsgEn(a.message || ''))}</div>
         ${a.last_message_body?`<div class="alert-last-msg">💬 "${esc(a.last_message_body)}"</div>`:''}
         <div class="alert-meta">
           ${leadPhone?`<span style="font-weight:700;color:var(--navy)">📱 ${esc(leadPhone)}</span>`:''}
