@@ -1609,7 +1609,7 @@ function riskDetailsInlineHtml(flag, maxRows=3) {
     return `<div class="risk-detail-line">
       <div><b>${esc(phone)}${leadName}</b></div>
       <div class="risk-detail-meta">Agent: ${esc(agent)} - ${esc(source)} - ${esc(when)}${score}</div>
-      ${item.summary ? `<div style="margin-top:5px"><b>AI:</b> ${esc(item.summary)}</div>` : ''}
+      ${item.summary ? `<div style="margin-top:5px"><b>AI:</b> ${esc(lang==='ar' ? _alertMsgAr(item.summary) : _alertMsgEn(item.summary))}</div>` : ''}
       ${item.message ? `<div style="margin-top:5px"><b>${esc(msgLabel)}:</b> ${esc(item.message)}</div>` : ''}
     </div>`;
   }).join('');
