@@ -23,6 +23,7 @@ supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 EMAIL_FROM = os.getenv("EMAIL_FROM", "Fiper Alerts <onboarding@resend.dev>")
 SALES_SUPERVISOR_EMAIL = os.getenv("SALES_SUPERVISOR_EMAIL", "")
+SALES_SUPERVISOR_EMAILS = os.getenv("SALES_SUPERVISOR_EMAILS", "")
 AGENT_CONTACTS_CSV_URL = os.getenv(
     "AGENT_CONTACTS_CSV_URL",
     "https://docs.google.com/spreadsheets/d/"
@@ -217,6 +218,26 @@ def _paginate(build_query) -> list:
     return rows
 
 
+def _split_recipients(value: str | None) -> list[str]:
+    if not value:
+        return []
+    parts = re.split(r"[;,\n]+", value)
+    return [p.strip() for p in parts if p and p.strip()]
+
+
+def _supervisor_recipients() -> list[str]:
+    recipients = []
+    seen = set()
+    for raw in [SALES_SUPERVISOR_EMAILS, SALES_SUPERVISOR_EMAIL]:
+        for email in _split_recipients(raw):
+            key = email.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            recipients.append(email)
+    return recipients
+
+
 def _agent_email(agent_name: str | None) -> str:
     env_email = os.getenv(_agent_env_key(agent_name), "")
     if env_email:
@@ -237,8 +258,10 @@ def resolve_agent_contact(agent_name: str | None) -> dict:
     }
 
 
-def _send_email(to: str, subject: str, html_body: str) -> bool:
-    if not (RESEND_API_KEY and to):
+def _send_email(to: str | list[str], subject: str, html_body: str) -> bool:
+    recipients = [to] if isinstance(to, str) else list(to or [])
+    recipients = [email.strip() for email in recipients if email and email.strip()]
+    if not (RESEND_API_KEY and recipients):
         return False
     response = requests.post(
         "https://api.resend.com/emails",
@@ -248,7 +271,7 @@ def _send_email(to: str, subject: str, html_body: str) -> bool:
         },
         json={
             "from": EMAIL_FROM,
-            "to": [to],
+            "to": recipients,
             "subject": subject,
             "html": html_body,
         },
@@ -321,7 +344,8 @@ def notify_agent_alert(alert: dict) -> bool:
 
 
 def send_webhook_health_alert(details: dict) -> bool:
-    if not SALES_SUPERVISOR_EMAIL:
+    recipients = _supervisor_recipients()
+    if not recipients:
         return False
 
     lag_min = details.get("lag_min")
@@ -358,14 +382,15 @@ def send_webhook_health_alert(details: dict) -> bool:
     </p>
     """
     return _send_email(
-        SALES_SUPERVISOR_EMAIL,
+        recipients,
         "Fiper Alert - WhatsApp webhook may be disabled",
         html_body,
     )
 
 
 def send_supervisor_report(report_label: str = "") -> bool:
-    if not SALES_SUPERVISOR_EMAIL:
+    recipients = _supervisor_recipients()
+    if not recipients:
         return False
 
     report_tz = ZoneInfo(REPORT_TIMEZONE)
@@ -541,7 +566,7 @@ def send_supervisor_report(report_label: str = "") -> bool:
     {alert_details_html}
     """
     return _send_email(
-        SALES_SUPERVISOR_EMAIL,
+        recipients,
         f"Fiper Sales Report {report_label}".strip(),
         html_body,
     )
