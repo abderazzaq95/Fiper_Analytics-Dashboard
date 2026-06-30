@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 import csv
 import html
 import io
@@ -29,6 +30,8 @@ AGENT_CONTACTS_CSV_URL = os.getenv(
     "gviz/tq?tqx=out:csv&gid=0",
 )
 CONTACT_CACHE_SECONDS = int(os.getenv("AGENT_CONTACT_CACHE_SECONDS", "600"))
+REPORT_TIMEZONE = os.getenv("REPORT_TIMEZONE", "Asia/Riyadh")
+REPORT_TIMEZONE_LABEL = os.getenv("REPORT_TIMEZONE_LABEL", "UTC+3")
 _contacts_cache: dict = {"loaded_at": 0.0, "contacts": {}}
 
 
@@ -365,8 +368,9 @@ def send_supervisor_report(report_label: str = "") -> bool:
     if not SALES_SUPERVISOR_EMAIL:
         return False
 
-    now = datetime.now(timezone.utc)
-    today = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    report_tz = ZoneInfo(REPORT_TIMEZONE)
+    now = datetime.now(report_tz)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).isoformat()
 
     alerts = (
         supabase.table("alerts")
@@ -512,7 +516,7 @@ def send_supervisor_report(report_label: str = "") -> bool:
 
     html_body = f"""
     <h2>Fiper Sales Report {html.escape(report_label)}</h2>
-    <p><b>UTC time:</b> {now.strftime('%Y-%m-%d %H:%M')}</p>
+    <p><b>Report time ({REPORT_TIMEZONE_LABEL}):</b> {now.strftime('%Y-%m-%d %H:%M')}</p>
     <h3>Work today</h3>
     <ul>
       <li>New leads: {len(leads)}</li>
