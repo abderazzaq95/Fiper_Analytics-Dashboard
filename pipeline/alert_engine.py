@@ -26,13 +26,17 @@ def _fmt_duration(minutes: float) -> str:
 def _upsert_alert(lead_id, agent_name, severity, alert_type, message):
     existing = (
         supabase.table("alerts")
-        .select("id")
+        .select("id,message")
         .eq("lead_id", lead_id)
         .eq("type", alert_type)
         .eq("resolved", False)
         .execute()
     )
     if existing.data:
+        # Update the message in place so it always reflects the latest duration
+        existing_id = existing.data[0]["id"]
+        if existing.data[0].get("message") != message:
+            supabase.table("alerts").update({"message": message, "agent_name": agent_name}).eq("id", existing_id).execute()
         return
     alert = {
         "lead_id": lead_id,
