@@ -185,11 +185,11 @@ def _clean_alert_message(message: str | None) -> str:
     msg = (message or "").strip()
     if not msg:
         return ""
-    if re.search(r"unanswered for \d+ minutes", msg):
+    if re.search(r"unanswered for .+", msg, re.IGNORECASE):
         return "Inbound message unanswered."
-    if re.search(r"not contacted in \d+ hours", msg):
+    if re.search(r"not contacted in .+", msg, re.IGNORECASE):
         return "Callback lead not contacted."
-    if re.search(r"response time is \d+ minutes", msg):
+    if re.search(r"response time is .+", msg, re.IGNORECASE):
         return "Average response time above threshold."
     if re.search(r"Low treatment score \(\d+/100\)", msg):
         return "Low treatment score. Interaction quality needs review."
