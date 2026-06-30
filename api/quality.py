@@ -195,15 +195,15 @@ def quality(
 def _quality_inner(range: str, wa_line: str = "all"):
     since = _since(range)
 
-    alerts = (
+    alert_query = (
         supabase.table("alerts")
         .select("*")
-        .gte("created_at", since)
         .eq("resolved", False)
         .order("created_at", desc=True)
-        .execute()
-        .data
-    ) or []
+    )
+    if range != "today":
+        alert_query = alert_query.gte("created_at", since)
+    alerts = (alert_query.execute().data) or []
 
     # Enrich alerts with lead phone/name and resolve missing agent_name
     lead_map = {}

@@ -353,12 +353,13 @@ def _agents_inner(range: str, wa_line: str = "all"):
             .gte("called_at", since))
 
     def _fetch_alerts():
-        return (supabase.table("alerts")
+        query = (supabase.table("alerts")
             .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
             .eq("resolved", False)
-            .gte("created_at", since)
-            .order("created_at", desc=True)
-            .execute().data or [])
+            .order("created_at", desc=True))
+        if range != "today":
+            query = query.gte("created_at", since)
+        return query.execute().data or []
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         f_msgs   = executor.submit(_fetch_messages)
@@ -684,10 +685,11 @@ def _agent_alerts_inner(agent: str, range_: str):
         supabase.table("alerts")
         .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
         .eq("resolved", False)
-        .gte("created_at", since)
         .order("created_at", desc=True)
-        .execute().data or []
     )
+    if range_ != "today":
+        all_alerts = all_alerts.gte("created_at", since)
+    all_alerts = all_alerts.execute().data or []
 
     # Pass 1: alerts with an explicit matching agent_name (fast, no lead lookup needed)
     matched_alerts: list[dict] = []
@@ -842,9 +844,12 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
             .in_("id", chunk).execute().data or []
 
     def _fetch_all_alerts():
-        return supabase.table("alerts")\
+        query = supabase.table("alerts")\
             .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")\
-            .eq("resolved", False).gte("created_at", since).order("created_at", desc=True).execute().data or []
+            .eq("resolved", False).order("created_at", desc=True)
+        if range_ != "today":
+            query = query.gte("created_at", since)
+        return query.execute().data or []
 
     raw_msgs:   list[dict] = list(msgs_name_parts)
     leads_raw:  list[dict] = list(assigned_lead_rows)

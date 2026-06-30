@@ -105,12 +105,20 @@ def _overview_count_fallback(range: str, wa_line: str = "all") -> dict:
     avg_call_duration = round(
         sum(c.get("duration_seconds") or 0 for c in call_rows) / len(call_rows), 1
     ) if call_rows else 0
-    open_alerts = _safe_count(
-        lambda: supabase.table("alerts").select("id", count="exact").gte("created_at", since).eq("resolved", False).limit(1)
-    )
-    high_alerts = _safe_count(
-        lambda: supabase.table("alerts").select("id", count="exact").gte("created_at", since).eq("resolved", False).eq("severity", "HIGH").limit(1)
-    )
+    if range == "today":
+        open_alerts = _safe_count(
+            lambda: supabase.table("alerts").select("id", count="exact").eq("resolved", False).limit(1)
+        )
+        high_alerts = _safe_count(
+            lambda: supabase.table("alerts").select("id", count="exact").eq("resolved", False).eq("severity", "HIGH").limit(1)
+        )
+    else:
+        open_alerts = _safe_count(
+            lambda: supabase.table("alerts").select("id", count="exact").gte("created_at", since).eq("resolved", False).limit(1)
+        )
+        high_alerts = _safe_count(
+            lambda: supabase.table("alerts").select("id", count="exact").gte("created_at", since).eq("resolved", False).eq("severity", "HIGH").limit(1)
+        )
     return {
         "range": range,
         "leads": {"total": unique_leads, "converted": 0, "conversion_rate": 0, "avg_score": 0},
@@ -256,10 +264,10 @@ def _overview_inner(range: str, wa_line: str = "all"):
         leads = [l for l in leads if matches_business_line(l, wa_line)]
 
     # Alerts: small dataset
-    alerts = (
-        supabase.table("alerts").select("id,lead_id,severity,resolved,created_at")
-        .gte("created_at", since).execute().data or []
-    )
+    alert_query = supabase.table("alerts").select("id,lead_id,severity,resolved,created_at")
+    if range != "today":
+        alert_query = alert_query.gte("created_at", since)
+    alerts = alert_query.execute().data or []
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         # Build lead_map from the alert lead IDs directly, not from active_lead_ids,
         # so alerts for leads that weren't active today are still attributed correctly.
