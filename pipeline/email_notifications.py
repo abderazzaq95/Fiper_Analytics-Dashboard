@@ -33,11 +33,19 @@ AGENT_CONTACTS_CSV_URL = os.getenv(
 CONTACT_CACHE_SECONDS = int(os.getenv("AGENT_CONTACT_CACHE_SECONDS", "600"))
 REPORT_TIMEZONE = os.getenv("REPORT_TIMEZONE", "Asia/Riyadh")
 REPORT_TIMEZONE_LABEL = os.getenv("REPORT_TIMEZONE_LABEL", "UTC+3")
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "")
 _contacts_cache: dict = {"loaded_at": 0.0, "contacts": {}}
 
 
+def _agent_phone_env_key(agent_name: str | None) -> str:
+    slug = re.sub(r"[^A-Z0-9]+", "_", _normalize_name(agent_name).upper()).strip("_")
+    return f"AGENT_WHATSAPP_{slug}" if slug else ""
+
+
 def _agent_env_key(agent_name: str | None) -> str:
-    slug = re.sub(r"[^A-Z0-9]+", "_", (agent_name or "").upper()).strip("_")
+    slug = re.sub(r"[^A-Z0-9]+", "_", _normalize_name(agent_name).upper()).strip("_")
     return f"AGENT_EMAIL_{slug}" if slug else ""
 
 
@@ -46,8 +54,11 @@ def _normalize_name(name: str | None) -> str:
     value = "".join(ch for ch in value if not unicodedata.combining(ch))
     value = re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
     value = re.sub(r"\s+", " ", value)
-    # Fiper data contains both Jehad and Jihad spellings for the same agent.
+    # Common spelling variants in Fiper data.
     value = value.replace("jihad", "jehad")
+    value = value.replace("mohamad", "mohamed")
+    value = value.replace("husein", "hussein")
+    value = value.replace("basher", "bashir")
     return value
 
 
@@ -248,13 +259,14 @@ def _agent_email(agent_name: str | None) -> str:
 
 def resolve_agent_contact(agent_name: str | None) -> dict:
     env_email = os.getenv(_agent_env_key(agent_name), "").strip()
+    env_phone = os.getenv(_agent_phone_env_key(agent_name), "").strip()
     contact = _agent_contact(agent_name) or {}
     return {
         "agent": agent_name or "",
         "name": contact.get("name") or agent_name or "",
         "email": env_email or contact.get("email") or "",
-        "phone": contact.get("phone") or "",
-        "source": "env" if env_email else ("sheet" if contact else "none"),
+        "phone": env_phone or contact.get("phone") or "",
+        "source": "env" if (env_email or env_phone) else ("sheet" if contact else "none"),
     }
 
 
@@ -281,6 +293,37 @@ def _send_email(to: str | list[str], subject: str, html_body: str) -> bool:
     return True
 
 
+
+
+def _normalize_whatsapp_target(phone: str | None) -> str:
+    digits = re.sub(r"\D+", "", phone or "")
+    if not digits:
+        return ""
+    if phone and str(phone).strip().startswith("+"):
+        return f"whatsapp:{str(phone).strip()}"
+    return f"whatsapp:+{digits}"
+
+
+def _send_whatsapp(phone: str | None, body: str) -> bool:
+    target = _normalize_whatsapp_target(phone)
+    sender = (TWILIO_WHATSAPP_FROM or "").strip()
+    if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and sender and target and body.strip()):
+        return False
+    sender = sender if sender.startswith("whatsapp:") else f"whatsapp:{sender}"
+    response = requests.post(
+        f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json",
+        auth=(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
+        data={
+            "From": sender,
+            "To": target,
+            "Body": body.strip(),
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    return True
+
+
 def send_test_notification(to: str, phone: str = "") -> bool:
     html_body = f"""
     <h2>Fiper Test Alert</h2>
@@ -291,12 +334,22 @@ def send_test_notification(to: str, phone: str = "") -> bool:
       <li><b>Requested phone:</b> {html.escape(phone or "not provided")}</li>
     </ul>
     """
-    return _send_email(to, "Fiper test alert notification", html_body)
+    wa_body = (
+        "Fiper Test Alert\n"
+        "Severity: HIGH\n"
+        "Type: test alert\n"
+        f"Requested phone: {phone or 'not provided'}"
+    )
+    email_sent = _send_email(to, "Fiper test alert notification", html_body)
+    whatsapp_sent = _send_whatsapp(phone, wa_body) if phone else False
+    return email_sent or whatsapp_sent
 
 
 def notify_agent_alert(alert: dict) -> bool:
     agent = _display_agent_name(alert.get("agent_name")) or "unknown"
-    recipient = _agent_email(agent)
+    contact = resolve_agent_contact(agent)
+    recipient = (contact.get("email") or "").strip()
+    whatsapp_phone = (contact.get("phone") or "").strip()
     if not recipient:
         lead_id = alert.get("lead_id")
         if lead_id:
@@ -322,25 +375,54 @@ def notify_agent_alert(alert: dict) -> bool:
                 )
                 if resolved:
                     agent = resolved
-                    recipient = _agent_email(resolved)
+                    contact = resolve_agent_contact(resolved)
+                    recipient = (contact.get("email") or "").strip()
+                    whatsapp_phone = (contact.get("phone") or "").strip()
             except Exception:
                 pass
-    if not recipient:
+    if not recipient and not whatsapp_phone:
         return False
 
     severity = alert.get("severity") or "Alert"
     alert_type = (alert.get("type") or "alert").replace("_", " ").title()
     message = alert.get("message") or ""
     lead_id = alert.get("lead_id") or ""
+    lead_label = str(lead_id)
+    if lead_id and lead_id != "test":
+        try:
+            lead_rows = _paginate(
+                lambda: supabase.table("leads")
+                .select("id,phone,name")
+                .eq("id", lead_id)
+                .limit(1)
+            )
+            if lead_rows:
+                lead = lead_rows[0]
+                bits = [b for b in [lead.get("phone"), lead.get("name")] if b]
+                if bits:
+                    lead_label = " | ".join(bits)
+        except Exception:
+            pass
     html_body = f"""
     <h2>New Fiper Alert</h2>
     <p><b>Agent:</b> {html.escape(agent)}</p>
     <p><b>Severity:</b> {html.escape(severity)}</p>
     <p><b>Type:</b> {html.escape(alert_type)}</p>
+    <p><b>Lead:</b> {html.escape(lead_label)}</p>
     <p><b>Message:</b> {html.escape(message)}</p>
     <p><b>Lead ID:</b> {html.escape(str(lead_id))}</p>
     """
-    return _send_email(recipient, f"Fiper Alert - {severity} - {alert_type}", html_body)
+    wa_body = (
+        f"Fiper Alert\n"
+        f"Agent: {agent}\n"
+        f"Severity: {severity}\n"
+        f"Type: {alert_type}\n"
+        f"Lead: {lead_label}\n"
+        f"Alert: {message}"
+    )
+    email_sent = _send_email(recipient, f"Fiper Alert - {severity} - {alert_type}", html_body) if recipient else False
+    whatsapp_sent = _send_whatsapp(whatsapp_phone, wa_body) if whatsapp_phone else False
+    return email_sent or whatsapp_sent
 
 
 def send_webhook_health_alert(details: dict) -> bool:
