@@ -11,6 +11,18 @@ supabase = create_client(
 )
 
 
+def _fmt_duration(minutes: float) -> str:
+    m = int(minutes)
+    if m < 60:
+        return f"{m} min"
+    if m < 1440:
+        h, rem = divmod(m, 60)
+        return f"{h}h {rem}m" if rem else f"{h}h"
+    days = m // 1440
+    h = (m % 1440) // 60
+    return f"{days}d {h}h" if h else f"{days}d"
+
+
 def _upsert_alert(lead_id, agent_name, severity, alert_type, message):
     existing = (
         supabase.table("alerts")
@@ -178,7 +190,7 @@ def check_no_reply():
                     continue
                 _upsert_alert(
                     lead_id, agent, "HIGH", "no_reply",
-                    f"Inbound message unanswered for {int(gap_min)} minutes."
+                    f"Inbound message unanswered for {_fmt_duration(gap_min)}."
                 )
 
     # Auto-resolve alerts for leads that have now been answered
@@ -270,7 +282,7 @@ def check_slow_response():
             agent = sorted_msgs[-1].get("agent_name", "unknown")
             _upsert_alert(
                 lead_id, agent, "MED", "slow_response",
-                f"Average response time is {int(sum(gaps)/len(gaps))} minutes (threshold: 15 min)."
+                f"Average response time is {_fmt_duration(sum(gaps)/len(gaps))} (threshold: 15 min)."
             )
 
 
