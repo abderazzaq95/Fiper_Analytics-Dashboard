@@ -105,12 +105,38 @@ def _overview_count_fallback(range: str, wa_line: str = "all") -> dict:
     avg_call_duration = round(
         sum(c.get("duration_seconds") or 0 for c in call_rows) / len(call_rows), 1
     ) if call_rows else 0
-    open_alerts = _safe_count(
-        lambda: supabase.table("alerts").select("id", count="exact").gte("created_at", since).eq("resolved", False).limit(1)
-    )
-    high_alerts = _safe_count(
-        lambda: supabase.table("alerts").select("id", count="exact").gte("created_at", since).eq("resolved", False).eq("severity", "HIGH").limit(1)
-    )
+    try:
+        alert_rows = (
+            supabase.table("alerts")
+            .select("id,lead_id,severity,resolved,created_at")
+            .gte("created_at", since)
+            .eq("resolved", False)
+            .order("created_at", desc=True)
+            .execute()
+            .data
+        ) or []
+        if wa_line and wa_line.lower() not in ("all", "*", "any"):
+            alert_lead_ids = list({a.get("lead_id") for a in alert_rows if a.get("lead_id")})
+            alert_lead_map = {}
+            if alert_lead_ids:
+                alert_leads = (
+                    supabase.table("leads")
+                    .select("id,whatsapp_business_number")
+                    .in_("id", alert_lead_ids)
+                    .execute()
+                    .data
+                ) or []
+                alert_lead_map = {lead["id"]: lead for lead in alert_leads if lead.get("id")}
+            alert_rows = [a for a in alert_rows if matches_business_line(alert_lead_map.get(a.get("lead_id")), wa_line)]
+        open_alerts = len(alert_rows)
+        high_alerts = sum(1 for a in alert_rows if a.get("severity") == "HIGH")
+    except Exception:
+        open_alerts = _safe_count(
+            lambda: supabase.table("alerts").select("id", count="exact").gte("created_at", since).eq("resolved", False).limit(1)
+        )
+        high_alerts = _safe_count(
+            lambda: supabase.table("alerts").select("id", count="exact").gte("created_at", since).eq("resolved", False).eq("severity", "HIGH").limit(1)
+        )
     return {
         "range": range,
         "leads": {"total": unique_leads, "converted": 0, "conversion_rate": 0, "avg_score": 0},
