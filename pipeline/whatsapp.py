@@ -151,6 +151,16 @@ def matches_business_line(row: dict | None, selected_line: str | None) -> bool:
 _agent_cache: dict[str, str] = {}
 
 
+def _manycontacts_api_keys() -> list[str]:
+    """Return configured ManyContacts API keys, preserving order and deduping."""
+    keys: list[str] = []
+    for env_name in ("MC_API_KEY", "MC_API_KEY_TURKEY"):
+        key = os.getenv(env_name, "").strip()
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
+
 def _persist_users(users: list[dict]) -> None:
     """Persist the ManyContacts user directory so other workers can resolve IDs."""
     if not SUPABASE:
@@ -184,27 +194,41 @@ def _prime_agent_cache(users: list[dict]) -> None:
 
 def _fetch_users_sync() -> list[dict]:
     global _agent_cache_loaded
-    resp = httpx.get(f"{BASE_URL}/users", headers=HEADERS, timeout=15)
-    resp.raise_for_status()
-    users = resp.json()
-    if isinstance(users, list):
-        _prime_agent_cache(users)
-        _persist_users(users)
-        return users
+    all_users: list[dict] = []
+    for api_key in _manycontacts_api_keys():
+        try:
+            resp = httpx.get(f"{BASE_URL}/users", headers={"apikey": api_key}, timeout=15)
+            resp.raise_for_status()
+            users = resp.json()
+        except Exception:
+            continue
+        if isinstance(users, list):
+            all_users.extend(users)
+    if all_users:
+        _prime_agent_cache(all_users)
+        _persist_users(all_users)
+        return all_users
     _agent_cache_loaded = True
     return []
 
 
 async def fetch_users() -> list[dict]:
-    """Return all ManyContacts users (agents)."""
+    """Return all ManyContacts users (agents) from every configured account."""
+    all_users: list[dict] = []
     async with httpx.AsyncClient() as client:
-        resp = await client.get(f"{BASE_URL}/users", headers=HEADERS, timeout=15)
-        resp.raise_for_status()
-        users = resp.json()
-        if isinstance(users, list):
-            _prime_agent_cache(users)
-            _persist_users(users)
-        return users
+        for api_key in _manycontacts_api_keys():
+            try:
+                resp = await client.get(f"{BASE_URL}/users", headers={"apikey": api_key}, timeout=15)
+                resp.raise_for_status()
+                users = resp.json()
+            except Exception:
+                continue
+            if isinstance(users, list):
+                all_users.extend(users)
+    if all_users:
+        _prime_agent_cache(all_users)
+        _persist_users(all_users)
+    return all_users
 
 
 def resolve_agent_name(user_id: str | None) -> str | None:
@@ -232,7 +256,7 @@ def resolve_agent_name(user_id: str | None) -> str | None:
                     return name
         except Exception:
             pass
-    if not _agent_cache_loaded and HEADERS.get("apikey"):
+    if not _agent_cache_loaded and _manycontacts_api_keys():
         try:
             _fetch_users_sync()
         except Exception:
