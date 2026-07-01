@@ -485,7 +485,7 @@ def notify_agent_alert(alert: dict) -> bool:
 
 
 def send_webhook_health_alert(details: dict) -> bool:
-    recipients = _supervisor_recipients()
+    recipients = _split_recipients(SALES_SUPERVISOR_EMAIL)
     if not recipients:
         return False
 
