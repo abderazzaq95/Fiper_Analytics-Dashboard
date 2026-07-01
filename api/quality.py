@@ -240,9 +240,10 @@ def _quality_inner(range: str, wa_line: str = "all"):
         for a in alerts:
             lead = lead_map.get(a.get("lead_id") or "")
             latest_msg = alert_msg_map.get(a.get("lead_id") or "", {})
+            current_agent = _lead_agent_name({"assigned_agent": a.get("agent_name")}, latest_msg)
+            fallback_agent = _lead_agent_name(lead, latest_msg) if lead else None
+            a["agent_name"] = current_agent or fallback_agent or a.get("agent_name")
             if lead:
-                if not a.get("agent_name"):
-                    a["agent_name"] = _lead_agent_name(lead, latest_msg)
                 a["lead_phone"] = _lead_phone(lead)
                 a["lead_name"]  = lead.get("name")
 
