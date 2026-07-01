@@ -1196,8 +1196,10 @@ function mergeOv(fresh, prev) {
     ...fresh,
     alerts: {
       ...fresh.alerts,
-      open: fresh.alerts?.open || prev.alerts?.open || 0,
-      high: fresh.alerts?.high || prev.alerts?.high || 0,
+      // Alert counts are exact per selected range/line. Preserve 0 instead of
+      // carrying stale non-zero values from another WhatsApp line.
+      open: fresh.alerts?.open ?? prev.alerts?.open ?? 0,
+      high: fresh.alerts?.high ?? prev.alerts?.high ?? 0,
     },
     messages: {
       ...fresh.messages,
@@ -3868,5 +3870,3 @@ if (_checkAuth()) {
 </script>
 </body>
 </html>
-
-
