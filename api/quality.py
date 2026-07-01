@@ -247,17 +247,45 @@ def _quality_inner(range: str, wa_line: str = "all"):
                 a["lead_phone"] = _lead_phone(lead)
                 a["lead_name"]  = lead.get("name")
 
-    # For open no_reply alerts, fetch the last unanswered inbound message body
+    # For open no_reply alerts, fetch the latest unanswered inbound by phone.
+    # Some ManyContacts contacts exist as duplicate lead rows, so the alert may be
+    # attached to one lead_id while the newest inbound message is stored on another
+    # row with the same phone. Use all same-phone lead IDs for the detail display.
     no_reply_open = [a for a in alerts if a.get("type") == "no_reply" and not a.get("resolved")]
+    duplicate_leads_by_phone: dict[str, list[str]] = {}
+    alert_phones = sorted({
+        _lead_phone(lead_map.get(a.get("lead_id") or "") or {})
+        for a in no_reply_open
+        if lead_map.get(a.get("lead_id") or "")
+    })
+    if alert_phones:
+        try:
+            duplicate_rows = (
+                supabase.table("leads")
+                .select("id,phone,wa_contact_id")
+                .in_("phone", alert_phones)
+                .execute()
+                .data
+            ) or []
+            for row in duplicate_rows:
+                phone = _lead_phone(row)
+                if phone and row.get("id"):
+                    duplicate_leads_by_phone.setdefault(phone, []).append(row["id"])
+        except Exception:
+            duplicate_leads_by_phone = {}
+
     for a in no_reply_open:
         lead_id = a.get("lead_id")
         if not lead_id:
             continue
+        lead = lead_map.get(lead_id) or {}
+        phone = _lead_phone(lead) if lead else None
+        candidate_ids = duplicate_leads_by_phone.get(phone or "") or [lead_id]
         try:
             msg = (
                 supabase.table("messages")
                 .select("body,sent_at")
-                .eq("lead_id", lead_id)
+                .in_("lead_id", candidate_ids)
                 .eq("direction", "inbound")
                 .order("sent_at", desc=True)
                 .limit(1)

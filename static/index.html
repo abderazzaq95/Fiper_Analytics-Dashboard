@@ -2863,6 +2863,7 @@ function durSec(s) {
 function renderAlerts(quality) {
   const list = (quality?.alerts?.list||[]).filter(a=>!a.resolved);
   const el = document.getElementById('alertsList');
+  const wasExpanded = document.getElementById('alertsRest')?.style.display === 'block';
   if (!list.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text" data-en="All clear — no open alerts" data-ar="لا توجد تنبيهات Ù…ÙØªÙˆØ­Ø©">${lang==='ar'?'لا توجد تنبيهات Ù…ÙØªÙˆØ­Ø©':'All clear — no open alerts'}</div><div class="empty-sub" data-en="System is operating normally" data-ar="النظام يعمل بشكل طبيعي">${lang==='ar'?'النظام يعمل بشكل طبيعي':'System is operating normally'}</div></div>`;
     return;
@@ -2890,12 +2891,12 @@ function renderAlerts(quality) {
   const visible = list.slice(0, ALERT_LIMIT);
   const hidden  = list.slice(ALERT_LIMIT);
   el.innerHTML = visible.map(mkAlert).join('') +
-    (hidden.length ? `<div id="alertsRest" style="display:none">${hidden.map(mkAlert).join('')}</div>
+    (hidden.length ? `<div id="alertsRest" style="display:${wasExpanded?'block':'none'}">${hidden.map(mkAlert).join('')}</div>
       <div style="padding:10px 20px;border-top:1px solid var(--border)">
         <button id="alertsToggleBtn" data-total="${list.length}"
           onclick="toggleAlerts(this)"
           style="background:none;border:none;color:var(--blue);font-size:12px;font-weight:700;cursor:pointer;padding:0">
-          ${lang==='ar'?`اعرض كل ${list.length} تنبيه â†`:`Show all ${list.length} alerts →`}
+          ${wasExpanded ? 'Show less' : `Show all ${list.length} alerts`}
         </button>
       </div>` : '');
 }
@@ -3297,8 +3298,8 @@ function toggleAlerts(btn) {
   rest.style.display = isOpen ? 'none' : 'block';
   const total = btn.dataset.total;
   btn.textContent = isOpen
-    ? (lang==='ar' ? `اعرض كل ${total} تنبيه â†` : `Show all ${total} alerts →`)
-    : (lang==='ar' ? '↑ أقل' : '↑ Show less');
+    ? `Show all ${total} alerts`
+    : 'Show less';
 }
 
 async function triggerRefresh() {
