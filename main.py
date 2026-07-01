@@ -30,6 +30,7 @@ _last_pipeline_run: datetime | None = None
 _last_maqsam_sync: datetime | None = None
 _last_webhook_health_alert: datetime | None = None
 _last_score_backfill: dict | None = None
+_last_sales_report: dict | None = None
 _last_webhook_payloads: list[dict] = []  # ring buffer — last 5 raw webhook bodies
 
 # SSE client queues — one per connected dashboard tab
@@ -1303,11 +1304,45 @@ def _ping_self():
 
 
 def send_sales_report(report_label: str):
+    global _last_sales_report
     try:
         sent = email_notifications.send_supervisor_report(report_label)
+        _last_sales_report = {
+            "label": report_label,
+            "sent": bool(sent),
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
         log.info(f"Sales report {report_label} sent={sent}")
     except Exception as e:
+        _last_sales_report = {
+            "label": report_label,
+            "sent": False,
+            "at": datetime.now(timezone.utc).isoformat(),
+            "error": _safe_error_message(e),
+        }
         log.error(f"Sales report {report_label} failed: {e}", exc_info=True)
+
+
+def _report_timezone_now() -> datetime:
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo(email_notifications.REPORT_TIMEZONE))
+    except Exception:
+        return datetime.now(timezone.utc)
+
+
+def catch_up_sales_report():
+    """Send a report if Render starts shortly after a scheduled report time."""
+    now = _report_timezone_now()
+    for hour in (13, 19):
+        scheduled = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+        age_seconds = (now - scheduled).total_seconds()
+        if 0 <= age_seconds <= int(os.getenv("SALES_REPORT_CATCHUP_SECONDS", "900")):
+            label = f"{hour:02d}:00 {email_notifications.REPORT_TIMEZONE_LABEL} catch-up"
+            if _last_sales_report and _last_sales_report.get("label") == label:
+                return
+            send_sales_report(label)
+            return
 
 
 def _parse_iso_dt(value: str | None) -> datetime | None:
@@ -1507,6 +1542,7 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
         max_instances=1,
         coalesce=True,
+        misfire_grace_time=3600,
     )
     scheduler.add_job(
         send_sales_report,
@@ -1519,11 +1555,20 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
         max_instances=1,
         coalesce=True,
+        misfire_grace_time=3600,
+    )
+    scheduler.add_job(
+        catch_up_sales_report,
+        "date",
+        run_date=datetime.now(timezone.utc) + timedelta(seconds=30),
+        id="sales_report_catchup",
+        replace_existing=True,
+        max_instances=1,
     )
     scheduler.start()
     log.info(
         "Scheduler started — Maqsam every 2 min, WA activity every 2 min, "
-        "WA messages every 5 min, AI every 15 min, full pipeline every 2 h"
+        "WA messages every 5 min, AI every 15 min, sales reports 13:00/19:00 UTC+3, full pipeline every 2 h"
     )
 
     yield
@@ -2619,6 +2664,8 @@ def pipeline_status():
     whatsapp_job  = scheduler.get_job("whatsapp_activity")
     webhook_health_job = scheduler.get_job("whatsapp_webhook_health")
     score_backfill_job = scheduler.get_job("score_backfill")
+    report_13_job = scheduler.get_job("sales_report_13")
+    report_19_job = scheduler.get_job("sales_report_19")
     ai_job        = scheduler.get_job("ai_analysis")
     base_url      = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8000").rstrip("/")
     return {
@@ -2649,6 +2696,15 @@ def pipeline_status():
             score_backfill_job.next_run_time.isoformat()
             if score_backfill_job and score_backfill_job.next_run_time else None
         ),
+        "next_sales_report_13": (
+            report_13_job.next_run_time.isoformat()
+            if report_13_job and report_13_job.next_run_time else None
+        ),
+        "next_sales_report_19": (
+            report_19_job.next_run_time.isoformat()
+            if report_19_job and report_19_job.next_run_time else None
+        ),
+        "last_sales_report": _last_sales_report,
         "next_ai_analysis": (
             ai_job.next_run_time.isoformat()
             if ai_job and ai_job.next_run_time else None

@@ -220,25 +220,25 @@ def _alert_type_title(value: str | None) -> str:
 
 def _severity_ar(value: str | None) -> str:
     mapping = {
-        "high": "?????",
-        "medium": "?????",
-        "low": "?????",
+        "high": "مرتفع",
+        "medium": "متوسط",
+        "low": "منخفض",
     }
-    return mapping.get(str(value or "").strip().lower(), str(value or "?????"))
+    return mapping.get(str(value or "").strip().lower(), str(value or "تنبيه"))
 
 
 def _alert_type_ar(value: str | None) -> str:
     slug = str(value or "").strip().lower().replace(" ", "_")
     mapping = {
-        "no_reply": "??? ????",
-        "slow_response": "??? ????",
-        "beginner_risk": "????? ?????????",
-        "poor_treatment": "??? ???? ???????",
-        "negative_sentiment": "?????? ????",
-        "profit_expectations": "?????? ????? ??? ??????",
-        "weak_engagement": "??? ???????",
-        "stale_callback": "???? ????????",
-        "alert": "?????",
+        "no_reply": "عدم الرد",
+        "slow_response": "بطء الرد",
+        "beginner_risk": "مخاطر للمبتدئين",
+        "poor_treatment": "ضعف جودة التعامل",
+        "negative_sentiment": "انطباع سلبي",
+        "profit_expectations": "توقعات أرباح غير واقعية",
+        "weak_engagement": "ضعف التفاعل",
+        "stale_callback": "تأخر المتابعة",
+        "alert": "تنبيه",
     }
     return mapping.get(slug, _alert_type_title(value))
 
