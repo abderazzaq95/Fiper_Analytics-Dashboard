@@ -13,6 +13,18 @@ supabase = create_client(
 MAX_OPERATIONAL_ALERT_MINUTES = 24 * 60
 
 
+def _paginate(build_query) -> list:
+    rows: list = []
+    offset = 0
+    while True:
+        batch = build_query().range(offset, offset + 999).execute().data or []
+        rows.extend(batch)
+        if len(batch) < 1000:
+            break
+        offset += 1000
+    return rows
+
+
 def _fmt_duration(minutes: float) -> str:
     m = int(minutes)
     if m < 60:
@@ -140,15 +152,19 @@ def check_no_reply():
     """HIGH: inbound message older than 60 min with no subsequent outbound reply.
     Also auto-resolves existing alerts for leads that have since been answered."""
     now = datetime.now(timezone.utc)
-    messages = supabase.table("messages").select("lead_id,sent_at,direction").execute().data
+    cutoff = now.timestamp() - (MAX_OPERATIONAL_ALERT_MINUTES * 60)
+    cutoff_iso = datetime.fromtimestamp(cutoff, timezone.utc).isoformat()
+    messages = _paginate(
+        lambda: supabase.table("messages")
+        .select("lead_id,sent_at,direction")
+        .gte("sent_at", cutoff_iso)
+        .order("sent_at", desc=False)
+    )
 
-    leads = (
-        supabase.table("leads")
+    leads = _paginate(
+        lambda: supabase.table("leads")
         .select("id,phone,wa_contact_id,assigned_agent,updated_at")
         .eq("channel", "whatsapp")
-        .execute()
-        .data
-        or []
     )
 
     lead_phone_map: dict[str, str] = {}
@@ -200,13 +216,11 @@ def check_no_reply():
                 )
 
     # Auto-resolve alerts for leads that have now been answered
-    open_alerts = (
-        supabase.table("alerts")
+    open_alerts = _paginate(
+        lambda: supabase.table("alerts")
         .select("id,lead_id")
         .eq("type", "no_reply")
         .eq("resolved", False)
-        .execute()
-        .data or []
     )
     resolved_ids = []
     for alert in open_alerts:
