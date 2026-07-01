@@ -31,6 +31,12 @@ AGENT_CONTACTS_CSV_URL = os.getenv(
     "gviz/tq?tqx=out:csv&gid=0",
 )
 CONTACT_CACHE_SECONDS = int(os.getenv("AGENT_CONTACT_CACHE_SECONDS", "600"))
+AGENT_CONTACTS_FALLBACK_ENABLED = os.getenv("AGENT_CONTACTS_FALLBACK_ENABLED", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 REPORT_TIMEZONE = os.getenv("REPORT_TIMEZONE", "Asia/Riyadh")
 REPORT_TIMEZONE_LABEL = os.getenv("REPORT_TIMEZONE_LABEL", "UTC+3")
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
@@ -278,6 +284,8 @@ def _agent_email(agent_name: str | None) -> str:
     env_email = os.getenv(_agent_env_key(agent_name), "")
     if env_email:
         return env_email.strip()
+    if not AGENT_CONTACTS_FALLBACK_ENABLED:
+        return ""
     contact = _agent_contact(agent_name)
     return (contact or {}).get("email", "").strip()
 
@@ -285,7 +293,8 @@ def _agent_email(agent_name: str | None) -> str:
 def resolve_agent_contact(agent_name: str | None) -> dict:
     env_email = os.getenv(_agent_env_key(agent_name), "").strip()
     env_phone = os.getenv(_agent_phone_env_key(agent_name), "").strip()
-    contact = _agent_contact(agent_name) or {}
+    contact = _agent_contact(agent_name) if AGENT_CONTACTS_FALLBACK_ENABLED else None
+    contact = contact or {}
     return {
         "agent": agent_name or "",
         "name": contact.get("name") or agent_name or "",
