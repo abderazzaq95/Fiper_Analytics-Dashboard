@@ -29,6 +29,7 @@ scheduler = AsyncIOScheduler()
 _last_pipeline_run: datetime | None = None
 _last_maqsam_sync: datetime | None = None
 _last_webhook_health_alert: datetime | None = None
+_last_webhook_health_alert_by_line: dict[str, datetime] = {}
 _last_score_backfill: dict | None = None
 _last_sales_report: dict | None = None
 _last_webhook_payloads: list[dict] = []  # ring buffer — last 5 raw webhook bodies
@@ -1355,91 +1356,109 @@ def _parse_iso_dt(value: str | None) -> datetime | None:
 
 
 def check_whatsapp_webhook_health():
-    """Email supervisor when ManyContacts activity moves but webhooks stall."""
+    """Email supervisors when a ManyContacts line has activity but message webhooks stall."""
     global _last_webhook_health_alert
 
-    threshold_min = int(os.getenv("WEBHOOK_STALE_MINUTES", "20"))
+    threshold_min = int(os.getenv("WEBHOOK_STALE_MINUTES", "10"))
     cooldown_min = int(os.getenv("WEBHOOK_ALERT_COOLDOWN_MINUTES", "60"))
+    activity_window_min = int(os.getenv("WEBHOOK_ACTIVITY_WINDOW_MINUTES", "90"))
     now = datetime.now(timezone.utc)
 
-    if _last_webhook_health_alert:
-        since_alert = (now - _last_webhook_health_alert).total_seconds() / 60
-        if since_alert < cooldown_min:
-            return
+    def _latest_dt(rows: list[dict], field: str) -> datetime | None:
+        for row in rows:
+            parsed = _parse_iso_dt(row.get(field))
+            if parsed:
+                return parsed
+        return None
+
+    def _line_in_cooldown(line: str) -> bool:
+        last = _last_webhook_health_alert_by_line.get(line)
+        return bool(last and (now - last).total_seconds() / 60 < cooldown_min)
 
     try:
-        activity_rows = (
-            supabase.table("leads")
-            .select("id,phone,last_message_at")
-            .eq("channel", "whatsapp")
-            .order("last_message_at", desc=True)
-            .limit(50)
-            .execute().data or []
-        )
-        latest_activity_raw = next(
-            (r.get("last_message_at") for r in activity_rows if r.get("last_message_at")),
-            None,
-        )
-        latest_activity = _parse_iso_dt(latest_activity_raw)
-        if not latest_activity:
-            return
-
-        recent_activity_count = sum(
-            1 for r in activity_rows
-            if (
-                _parse_iso_dt(r.get("last_message_at"))
-                and (now - _parse_iso_dt(r.get("last_message_at"))).total_seconds() <= 3600
-            )
-        )
-        if recent_activity_count == 0:
-            return
-
-        line_rows = (
-            supabase.table("leads")
-            .select("wa_contact_id,last_message_at")
-            .in_("wa_contact_id", [f"whatsapp_health_{n}" for n in sorted(whatsapp.BUSINESS_NUMBERS)])
-            .execute().data or []
-        )
-        line_last_seen = {
-            str(row.get("wa_contact_id") or ""): _parse_iso_dt(row.get("last_message_at"))
-            for row in line_rows
-            if row.get("wa_contact_id")
-        }
         stale_lines = []
+        newest_activity: datetime | None = None
+        newest_stored: datetime | None = None
+        active_chats = 0
+
         for business_number in sorted(whatsapp.BUSINESS_NUMBERS):
-            key = f"whatsapp_health_{business_number}"
-            last_seen = line_last_seen.get(key)
-            if not last_seen:
+            activity_rows = (
+                supabase.table("leads")
+                .select("id,phone,wa_contact_id,last_message_at")
+                .eq("channel", "whatsapp")
+                .eq("whatsapp_business_number", business_number)
+                .order("last_message_at", desc=True)
+                .limit(50)
+                .execute().data or []
+            )
+            activity_rows = [
+                row for row in activity_rows
+                if not str(row.get("wa_contact_id") or "").startswith("whatsapp_health_")
+            ]
+            latest_activity = _latest_dt(activity_rows, "last_message_at")
+            if latest_activity and (newest_activity is None or latest_activity > newest_activity):
+                newest_activity = latest_activity
+
+            recent_activity_count = sum(
+                1 for row in activity_rows
+                if (
+                    _parse_iso_dt(row.get("last_message_at"))
+                    and (now - _parse_iso_dt(row.get("last_message_at"))).total_seconds() <= activity_window_min * 60
+                )
+            )
+            active_chats += recent_activity_count
+            if not latest_activity or recent_activity_count == 0:
                 continue
-            lag_min = (now - last_seen).total_seconds() / 60
-            if lag_min > threshold_min:
-                stale_lines.append({
-                    "number": business_number,
-                    "last_seen": last_seen.isoformat(),
-                    "lag_min": round(lag_min, 1),
-                    "reason": "stale heartbeat",
-                })
+
+            msg_rows = (
+                supabase.table("messages")
+                .select("id,sent_at,direction")
+                .eq("whatsapp_business_number", business_number)
+                .order("sent_at", desc=True)
+                .limit(1)
+                .execute().data or []
+            )
+            latest_stored = _latest_dt(msg_rows, "sent_at")
+            if latest_stored and (newest_stored is None or latest_stored > newest_stored):
+                newest_stored = latest_stored
+
+            if latest_stored:
+                lag_min = (latest_activity - latest_stored).total_seconds() / 60
+            else:
+                lag_min = (now - latest_activity).total_seconds() / 60
+
+            if lag_min <= threshold_min:
+                continue
+            if _line_in_cooldown(business_number):
+                continue
+
+            stale_lines.append({
+                "number": business_number,
+                "last_seen": latest_stored.isoformat() if latest_stored else "none",
+                "latest_activity": latest_activity.isoformat(),
+                "lag_min": round(lag_min, 1),
+                "reason": "ManyContacts activity newer than stored webhook messages",
+            })
 
         if not stale_lines:
             return
 
-        latest_stored_raw = next(
-            (r.get("last_message_at") for r in line_rows if r.get("last_message_at")),
-            None,
-        )
         sent = email_notifications.send_webhook_health_alert({
-            "lag_min": max((item.get("lag_min") or 0) for item in stale_lines) if stale_lines else None,
-            "latest_activity_at": latest_activity_raw,
-            "latest_stored_at": latest_stored_raw,
-            "active_chats": recent_activity_count,
+            "lag_min": max((item.get("lag_min") or 0) for item in stale_lines),
+            "latest_activity_at": newest_activity.isoformat() if newest_activity else "unknown",
+            "latest_stored_at": newest_stored.isoformat() if newest_stored else "none",
+            "active_chats": active_chats,
             "stale_lines": stale_lines,
         })
         if sent:
             _last_webhook_health_alert = now
+            for item in stale_lines:
+                number = str(item.get("number") or "")
+                if number:
+                    _last_webhook_health_alert_by_line[number] = now
             log.warning(f"WhatsApp webhook health alert sent; stale_lines={stale_lines}")
     except Exception as e:
         log.error(f"WhatsApp webhook health check failed: {e}", exc_info=True)
-
 
 def _require_email_debug_token(token: str):
     expected = os.getenv("EMAIL_DEBUG_TOKEN", "")

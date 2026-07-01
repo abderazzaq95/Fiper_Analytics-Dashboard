@@ -489,7 +489,8 @@ def send_webhook_health_alert(details: dict) -> bool:
         "<li>"
         f"<b>Line:</b> {html.escape(str(item.get('number') or 'unknown'))}"
         f" | <b>Reason:</b> {html.escape(str(item.get('reason') or 'stale'))}"
-        f" | <b>Last seen:</b> {html.escape(str(item.get('last_seen') or 'none'))}"
+        f" | <b>Latest ManyContacts activity:</b> {html.escape(str(item.get('latest_activity') or 'unknown'))}"
+        f" | <b>Latest stored message:</b> {html.escape(str(item.get('last_seen') or 'none'))}"
         f" | <b>Lag:</b> {html.escape(str(item.get('lag_min') if item.get('lag_min') is not None else 'n/a'))} minutes"
         "</li>"
         for item in stale_lines
