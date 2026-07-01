@@ -91,13 +91,10 @@ def _overview_count_fallback(range: str, wa_line: str = "all") -> dict:
     )
     call_rows = []
     try:
-        call_rows = (
-            supabase.table("calls")
-            .select("lead_id,duration_seconds")
+        call_rows = _paginate(
+            lambda: supabase.table("calls")
+            .select("lead_id,duration_seconds,called_at")
             .gte("called_at", since)
-            .range(0, 999)
-            .execute()
-            .data or []
         )
     except Exception:
         call_rows = []
@@ -105,6 +102,17 @@ def _overview_count_fallback(range: str, wa_line: str = "all") -> dict:
     avg_call_duration = round(
         sum(c.get("duration_seconds") or 0 for c in call_rows) / len(call_rows), 1
     ) if call_rows else 0
+    hourly_counts = [0] * 24
+    for c in call_rows:
+        ts = c.get("called_at")
+        if not ts:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            hourly_counts[dt.hour] += 1
+        except (ValueError, TypeError):
+            pass
+    hourly_distribution = [{"hour": h, "calls": count} for h, count in enumerate(hourly_counts)]
     try:
         alert_rows = (
             supabase.table("alerts")
@@ -150,7 +158,7 @@ def _overview_count_fallback(range: str, wa_line: str = "all") -> dict:
         },
         "calls": {"total": total_calls, "avg_duration_seconds": avg_call_duration},
         "alerts": {"open": open_alerts, "high": high_alerts},
-        "hourly_distribution": _EMPTY_HOURLY,
+        "hourly_distribution": hourly_distribution,
         "fallback": "count",
     }
 
