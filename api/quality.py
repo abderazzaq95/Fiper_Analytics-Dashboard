@@ -256,7 +256,7 @@ def _quality_inner(range: str, wa_line: str = "all"):
         try:
             msg = (
                 supabase.table("messages")
-                .select("body")
+                .select("body,sent_at")
                 .eq("lead_id", lead_id)
                 .eq("direction", "inbound")
                 .order("sent_at", desc=True)
@@ -267,6 +267,7 @@ def _quality_inner(range: str, wa_line: str = "all"):
             if msg:
                 body = (msg[0].get("body") or "").strip()
                 a["last_message_body"] = body[:200] if body else None
+                a["message_at"] = msg[0].get("sent_at")
         except Exception:
             pass
 

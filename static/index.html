@@ -2882,7 +2882,7 @@ function renderAlerts(quality) {
           ${leadPhone?`<span style="font-weight:700;color:var(--navy)">📱 ${esc(leadPhone)}</span>`:''}
           ${leadName?`<span>${esc(leadName)}</span>`:''}
           ${a.agent_name?`<span>👤 ${esc(a.agent_name)}</span>`:''}
-          ${a.created_at?`<span>🕐 ${ago(a.created_at)}</span>`:''}
+          ${a.created_at?`<span>🕐 ${ago(a.message_at || a.created_at)}</span>`:''}
         </div>
       </div>
     </div>`;
