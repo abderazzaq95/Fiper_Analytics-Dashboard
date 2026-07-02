@@ -695,7 +695,7 @@ def send_supervisor_report(report_label: str = "") -> bool:
     )
     severity_rank = {"HIGH": 0, "MED": 1, "LOW": 2}
     detail_rows = []
-    for alert in sorted(open_alerts, key=lambda a: (severity_rank.get(a.get("severity") or "", 9), a.get("created_at") or ""))[:20]:
+    for alert in sorted(open_alerts, key=lambda a: (severity_rank.get(a.get("severity") or "", 9), a.get("created_at") or "")):
         lead_bits = [b for b in [alert.get("lead_phone"), alert.get("lead_name")] if b]
         lead_label = " | ".join(lead_bits) or "unknown lead"
         agent_label = alert.get("agent_name") or "unknown"
