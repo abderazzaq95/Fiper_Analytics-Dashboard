@@ -553,6 +553,8 @@ def send_supervisor_report(report_label: str = "") -> bool:
     alert_lead_ids = list({a.get("lead_id") for a in open_alerts if a.get("lead_id")})
     lead_map: dict[str, dict] = {}
     latest_msg_map: dict[str, dict] = {}
+    latest_msg_by_phone: dict[str, dict] = {}
+    alert_phone_values: set[str] = set()
     latest_call_map: dict[str, dict] = {}
     if alert_lead_ids:
         try:
@@ -562,6 +564,12 @@ def send_supervisor_report(report_label: str = "") -> bool:
                 .in_("id", alert_lead_ids)
             )
             lead_map = {r["id"]: r for r in lead_rows if r.get("id")}
+            alert_phone_values = {
+                phone
+                for r in lead_rows
+                for phone in [r.get("phone"), r.get("wa_contact_id")]
+                if phone
+            }
         except Exception:
             lead_map = {}
         try:
@@ -577,6 +585,39 @@ def send_supervisor_report(report_label: str = "") -> bool:
                     latest_msg_map[lead_id] = msg
         except Exception:
             latest_msg_map = {}
+        try:
+            if alert_phone_values:
+                duplicate_leads = _paginate(
+                    lambda: supabase.table("leads")
+                    .select("id,phone,wa_contact_id")
+                    .or_(",".join([
+                        f"phone.eq.{phone},wa_contact_id.eq.{phone}"
+                        for phone in alert_phone_values
+                    ]))
+                )
+                duplicate_lead_ids = [r["id"] for r in duplicate_leads if r.get("id")]
+                lead_phone_map = {}
+                for r in duplicate_leads:
+                    for phone in [r.get("phone"), r.get("wa_contact_id")]:
+                        if phone:
+                            lead_phone_map[r.get("id")] = phone
+                            break
+                if duplicate_lead_ids:
+                    duplicate_msgs = _paginate(
+                        lambda: supabase.table("messages")
+                        .select("lead_id,direction,body,agent_name,sent_at")
+                        .in_("lead_id", duplicate_lead_ids)
+                        .eq("direction", "inbound")
+                        .order("sent_at", desc=True)
+                    )
+                    for msg in duplicate_msgs:
+                        phone = lead_phone_map.get(msg.get("lead_id"))
+                        body = (msg.get("body") or "").strip()
+                        if phone and body and phone not in latest_msg_by_phone:
+                            latest_msg_by_phone[phone] = msg
+        except Exception:
+            latest_msg_by_phone = {}
+
         try:
             call_rows = _paginate(
                 lambda: supabase.table("calls")
@@ -594,6 +635,11 @@ def send_supervisor_report(report_label: str = "") -> bool:
     for alert in open_alerts:
         lead = lead_map.get(alert.get("lead_id") or "")
         latest_msg = latest_msg_map.get(alert.get("lead_id") or "", {})
+        if not (latest_msg.get("body") or "").strip() and lead:
+            for phone in [lead.get("phone"), lead.get("wa_contact_id")]:
+                if phone and latest_msg_by_phone.get(phone):
+                    latest_msg = latest_msg_by_phone[phone]
+                    break
         latest_call = latest_call_map.get(alert.get("lead_id") or "", {})
         if lead:
             alert["lead_phone"] = _lead_phone(lead)
