@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import csv
 import html
@@ -224,6 +224,21 @@ def _alert_type_title(value: str | None) -> str:
     return (value or "alert").replace("_", " ").title()
 
 
+
+def _topic_title(value: str | None) -> str:
+    return (value or "topic").replace("_", " ").title()
+
+
+def _short_text(value: str | None, limit: int = 220) -> str:
+    text = re.sub(r"\s+", " ", (value or "").strip())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3].rstrip() + "..."
+
+
+def _pct(part: int, total: int) -> str:
+    return f"{round((part / total) * 100, 1)}%" if total else "0%"
+
 def _severity_ar(value: str | None) -> str:
     mapping = {
         "high": "مرتفع",
@@ -231,7 +246,6 @@ def _severity_ar(value: str | None) -> str:
         "low": "منخفض",
     }
     return mapping.get(str(value or "").strip().lower(), str(value or "تنبيه"))
-
 
 def _alert_type_ar(value: str | None) -> str:
     slug = str(value or "").strip().lower().replace(" ", "_")
@@ -247,7 +261,6 @@ def _alert_type_ar(value: str | None) -> str:
         "alert": "تنبيه",
     }
     return mapping.get(slug, _alert_type_title(value))
-
 
 def _paginate(build_query) -> list:
     rows, offset = [], 0
@@ -374,7 +387,7 @@ def send_test_notification(to: str, phone: str = "") -> bool:
         "???? ????? ?????? ????? ?????? ??????.\n\n"
         "Lead / ??????: Test Lead\n"
         f"Phone / ?????: {phone or 'not provided'}\n"
-        "Last message / ??? ?????:\n"
+        "Last message / آخر رسالة:\n"
         '"This is a test notification from the Fiper Analytics Dashboard."\n\n'
         "Please contact the lead and update the conversation now.\n"
         "???? ??????? ?? ?????? ?????? ???????? ????."
@@ -756,5 +769,288 @@ def send_supervisor_report(report_label: str = "") -> bool:
     return _send_email(
         recipients,
         f"Fiper Sales Report {report_label}".strip(),
+        html_body,
+    )
+
+
+
+def send_weekly_intelligence_report(report_label: str = "Weekly Intelligence Report") -> bool:
+    """Send a weekly management report without changing the daily report path."""
+    recipients = _supervisor_recipients()
+    if not recipients:
+        return False
+
+    report_tz = ZoneInfo(REPORT_TIMEZONE)
+    now_local = datetime.now(report_tz)
+    end_utc = now_local.astimezone(timezone.utc)
+    start_local = (now_local - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_utc = start_local.astimezone(timezone.utc)
+    prev_start_utc = (start_local - timedelta(days=7)).astimezone(timezone.utc)
+
+    since = start_utc.isoformat()
+    previous_since = prev_start_utc.isoformat()
+    previous_until = start_utc.isoformat()
+
+    leads = _paginate(
+        lambda: supabase.table("leads")
+        .select("id,phone,wa_contact_id,name,channel,status,score,assigned_agent,created_at,last_message_at")
+        .gte("created_at", since)
+    )
+    prev_leads = _paginate(
+        lambda: supabase.table("leads")
+        .select("id")
+        .gte("created_at", previous_since)
+        .lt("created_at", previous_until)
+    )
+    calls = _paginate(
+        lambda: supabase.table("calls")
+        .select("id,lead_id,agent_name,duration_seconds,outcome,called_at")
+        .gte("called_at", since)
+    )
+    prev_calls = _paginate(
+        lambda: supabase.table("calls")
+        .select("id")
+        .gte("called_at", previous_since)
+        .lt("called_at", previous_until)
+    )
+    messages = _paginate(
+        lambda: supabase.table("messages")
+        .select("id,lead_id,direction,body,agent_name,sent_at")
+        .gte("sent_at", since)
+    )
+    alerts = _paginate(
+        lambda: supabase.table("alerts")
+        .select("id,lead_id,agent_name,severity,type,message,resolved,created_at")
+        .gte("created_at", since)
+    )
+    analyses = _paginate(
+        lambda: supabase.table("ai_analysis")
+        .select("lead_id,sentiment,topics,risk_flags,treatment_score,outcome,summary,summary_en,summary_ar,source,analyzed_at")
+        .gte("analyzed_at", since)
+    )
+
+    lead_ids = list({row.get("id") for row in leads if row.get("id")})
+    analysis_lead_ids = list({row.get("lead_id") for row in analyses if row.get("lead_id")})
+    alert_lead_ids = list({row.get("lead_id") for row in alerts if row.get("lead_id")})
+    all_lead_ids = list({*lead_ids, *analysis_lead_ids, *alert_lead_ids})
+
+    lead_map: dict[str, dict] = {row["id"]: row for row in leads if row.get("id")}
+    if all_lead_ids:
+        try:
+            extra_leads = _paginate(
+                lambda: supabase.table("leads")
+                .select("id,phone,wa_contact_id,name,channel,status,score,assigned_agent,created_at,last_message_at")
+                .in_("id", all_lead_ids)
+            )
+            for row in extra_leads:
+                if row.get("id"):
+                    lead_map[row["id"]] = row
+        except Exception:
+            pass
+
+    latest_message_map: dict[str, dict] = {}
+    if all_lead_ids:
+        try:
+            msg_rows = _paginate(
+                lambda: supabase.table("messages")
+                .select("lead_id,direction,body,agent_name,sent_at")
+                .in_("lead_id", all_lead_ids)
+                .order("sent_at", desc=True)
+            )
+            for msg in msg_rows:
+                lead_id = msg.get("lead_id")
+                if lead_id and lead_id not in latest_message_map:
+                    latest_message_map[lead_id] = msg
+        except Exception:
+            pass
+
+    completed = sum(1 for c in calls if (c.get("outcome") or "").lower() == "completed")
+    no_answer = sum(1 for c in calls if (c.get("outcome") or "").lower() == "no_answer")
+    busy = sum(1 for c in calls if (c.get("outcome") or "").lower() == "busy")
+    pickup_base = completed + no_answer + busy
+    pickup_rate = round(completed / pickup_base * 100, 1) if pickup_base else 0
+    avg_duration = round(sum(c.get("duration_seconds") or 0 for c in calls) / len(calls), 1) if calls else 0
+    inbound_count = sum(1 for m in messages if m.get("direction") == "inbound")
+    outbound_count = sum(1 for m in messages if m.get("direction") == "outbound")
+
+    open_alerts = [a for a in alerts if not a.get("resolved")]
+    severity_counts = Counter(a.get("severity") or "UNKNOWN" for a in open_alerts)
+    type_counts = Counter(a.get("type") or "unknown" for a in open_alerts)
+
+    agent_stats: dict[str, dict] = defaultdict(lambda: {
+        "alerts": 0, "open": 0, "resolved": 0, "high": 0, "no_reply": 0,
+        "calls": 0, "wa_msgs": 0, "treatment_scores": [], "risk_leads": set(),
+    })
+    for call in calls:
+        agent = _display_agent_name(call.get("agent_name")) or "unknown"
+        agent_stats[agent]["calls"] += 1
+    for msg in messages:
+        agent = _display_agent_name(msg.get("agent_name"))
+        if agent:
+            agent_stats[agent]["wa_msgs"] += 1
+    for alert in alerts:
+        lead = lead_map.get(alert.get("lead_id") or "", {})
+        latest_msg = latest_message_map.get(alert.get("lead_id") or "", {})
+        agent = _display_agent_name(alert.get("agent_name"), _lead_agent_name(lead, latest_msg)) or "unknown"
+        stats = agent_stats[agent]
+        stats["alerts"] += 1
+        if alert.get("resolved"):
+            stats["resolved"] += 1
+        else:
+            stats["open"] += 1
+        if alert.get("severity") == "HIGH":
+            stats["high"] += 1
+        if alert.get("type") == "no_reply":
+            stats["no_reply"] += 1
+        if alert.get("lead_id"):
+            stats["risk_leads"].add(alert.get("lead_id"))
+    for analysis in analyses:
+        lead = lead_map.get(analysis.get("lead_id") or "", {})
+        agent = _display_agent_name(_lead_agent_name(lead, latest_message_map.get(analysis.get("lead_id") or "", {})))
+        if agent and analysis.get("treatment_score") is not None and not (analysis.get("source") == "maqsam" and analysis.get("treatment_score") == 0):
+            agent_stats[agent]["treatment_scores"].append(analysis.get("treatment_score"))
+
+    agent_rows = []
+    for agent, stats in sorted(agent_stats.items(), key=lambda kv: (kv[1]["open"], kv[1]["alerts"]), reverse=True):
+        total = stats["alerts"]
+        resolved = stats["resolved"]
+        treatment_scores = stats["treatment_scores"]
+        avg_treatment = round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else "-"
+        agent_rows.append(
+            "<tr>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(agent)}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{total}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{resolved}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{stats['open']}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{_pct(resolved, total)}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{stats['high']}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{stats['no_reply']}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{len(stats['risk_leads'])}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{stats['calls']}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{stats['wa_msgs']}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{avg_treatment}</td>"
+            "</tr>"
+        )
+
+    excluded_topics = {"greetings", "no_answer"}
+    topic_counter = Counter(
+        t for a in analyses for t in (a.get("topics") or []) if t and t not in excluded_topics
+    )
+    risk_counter = Counter(f for a in analyses for f in (a.get("risk_flags") or []) if f)
+    total_topics = sum(topic_counter.values())
+    topic_examples: dict[str, list[dict]] = defaultdict(list)
+    for analysis in sorted(analyses, key=lambda a: a.get("analyzed_at") or "", reverse=True):
+        summary = _short_text(analysis.get("summary_ar") or analysis.get("summary") or analysis.get("summary_en"), 260)
+        if not summary:
+            continue
+        lead = lead_map.get(analysis.get("lead_id") or "", {})
+        latest_msg = latest_message_map.get(analysis.get("lead_id") or "", {})
+        agent = _display_agent_name(_lead_agent_name(lead, latest_msg)) or "unknown"
+        lead_label = " | ".join([x for x in [_lead_phone(lead), lead.get("name")] if x]) or "unknown lead"
+        for topic in [t for t in (analysis.get("topics") or []) if t and t not in excluded_topics]:
+            bucket = topic_examples[topic]
+            if len(bucket) >= 2:
+                continue
+            if any(e.get("lead") == lead_label and e.get("text") == summary for e in bucket):
+                continue
+            bucket.append({"lead": lead_label, "agent": agent, "text": summary})
+            break
+
+    topic_blocks = []
+    for topic, count in topic_counter.most_common(10):
+        examples = "".join(
+            "<li>"
+            f"<b>Lead:</b> {html.escape(ex.get('lead') or 'unknown')} | "
+            f"<b>Agent:</b> {html.escape(ex.get('agent') or 'unknown')}<br>"
+            f"{html.escape(ex.get('text') or '')}"
+            "</li>"
+            for ex in topic_examples.get(topic, [])
+        )
+        topic_blocks.append(
+            f"<h4>{html.escape(_topic_title(topic))} — {count} ({_pct(count, total_topics)})</h4>"
+            f"<ul>{examples or '<li>No examples saved yet.</li>'}</ul>"
+        )
+
+    sentiment_values = []
+    treatment_scores = []
+    for analysis in analyses:
+        sentiment = (analysis.get("sentiment") or "").lower()
+        if sentiment in ("positive", "neutral", "negative"):
+            sentiment_values.append(sentiment)
+        score = analysis.get("treatment_score")
+        if score is not None and not (analysis.get("source") == "maqsam" and score == 0):
+            treatment_scores.append(score)
+    avg_treatment = round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else 0
+
+    recommendations = []
+    if type_counts.get("no_reply", 0) >= 5:
+        recommendations.append("No Reply is high this week. Review follow-up discipline and make supervisors check unresolved WhatsApp conversations daily.")
+    if risk_counter.get("beginner_risk", 0) >= 3:
+        recommendations.append("Beginner-risk conversations are frequent. Prepare a short education script for new traders before discussing deposits.")
+    if risk_counter.get("profit_expectations", 0) >= 2:
+        recommendations.append("Profit-expectation risk appeared repeatedly. Reinforce risk disclaimer and realistic return language in agent scripts.")
+    if topic_counter.get("account_info", 0) >= 5:
+        recommendations.append("Account and setup questions are common. Add a standard FAQ reply for account opening, verification, deposits, and withdrawals.")
+    if avg_treatment and avg_treatment < 60:
+        recommendations.append("Average treatment score is low. Review weak conversations and coach agents on clarity, empathy, and next-step ownership.")
+    if not recommendations:
+        recommendations.append("Keep monitoring alert response discipline and review the top topics with the sales team in the weekly meeting.")
+
+    def _delta(current: int, previous: int) -> str:
+        diff = current - previous
+        sign = "+" if diff >= 0 else ""
+        return f"{sign}{diff} vs previous week"
+
+    html_body = f"""
+    <h2>Fiper Weekly Intelligence Report</h2>
+    <p><b>Report time ({REPORT_TIMEZONE_LABEL}):</b> {now_local.strftime('%Y-%m-%d %H:%M')}</p>
+    <p><b>Period:</b> {start_local.strftime('%Y-%m-%d')} to {now_local.strftime('%Y-%m-%d')}</p>
+
+    <h3>Executive summary</h3>
+    <ul>
+      <li>New leads: {len(leads)} ({html.escape(_delta(len(leads), len(prev_leads)))})</li>
+      <li>Total calls: {len(calls)} ({html.escape(_delta(len(calls), len(prev_calls)))})</li>
+      <li>Pickup rate: {pickup_rate}%</li>
+      <li>Avg call duration: {avg_duration}s</li>
+      <li>WhatsApp messages: {len(messages)} ({inbound_count} inbound / {outbound_count} outbound)</li>
+      <li>Open alerts created this week: {len(open_alerts)} | High: {severity_counts.get('HIGH', 0)} | Medium: {severity_counts.get('MED', 0)} | Low: {severity_counts.get('LOW', 0)}</li>
+      <li>Avg treatment score: {avg_treatment}/100</li>
+      <li>Sentiment: positive {sentiment_values.count('positive')}, neutral {sentiment_values.count('neutral')}, negative {sentiment_values.count('negative')}</li>
+    </ul>
+
+    <h3>Agent alert accountability</h3>
+    <table style='border-collapse:collapse;width:100%;font-size:13px'>
+      <thead><tr>
+        <th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Agent</th>
+        <th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Alerts</th>
+        <th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Resolved</th>
+        <th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Open</th>
+        <th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Resolved %</th>
+        <th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>High</th>
+        <th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>No Reply</th>
+        <th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Risk leads</th>
+        <th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Calls</th>
+        <th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>WA msgs</th>
+        <th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Treatment</th>
+      </tr></thead>
+      <tbody>{''.join(agent_rows) or '<tr><td colspan="11" style="padding:8px;border:1px solid #e6eaf2">No agent alert data this week.</td></tr>'}</tbody>
+    </table>
+
+    <h3>Top business topics</h3>
+    {''.join(topic_blocks) or '<p>No analyzed topic data this week.</p>'}
+
+    <h3>Risk flags</h3>
+    <ul>{''.join(f'<li>{html.escape(_alert_type_title(k))}: {v}</li>' for k, v in risk_counter.most_common(10)) or '<li>No AI risk flags this week.</li>'}</ul>
+
+    <h3>Open alert types</h3>
+    <ul>{''.join(f'<li>{html.escape(_alert_type_title(k))}: {v}</li>' for k, v in type_counts.most_common(10)) or '<li>No open alerts created this week.</li>'}</ul>
+
+    <h3>Recommended management actions</h3>
+    <ol>{''.join(f'<li>{html.escape(item)}</li>' for item in recommendations)}</ol>
+    """
+
+    return _send_email(
+        recipients,
+        f"Fiper Weekly Intelligence Report {report_label}".strip(),
         html_body,
     )
