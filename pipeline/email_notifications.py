@@ -825,7 +825,7 @@ def send_weekly_intelligence_report(report_label: str = "Weekly Intelligence Rep
     )
     analyses = _paginate(
         lambda: supabase.table("ai_analysis")
-        .select("lead_id,sentiment,topics,risk_flags,treatment_score,outcome,summary,summary_en,summary_ar,source,analyzed_at")
+        .select("lead_id,sentiment,topics,risk_flags,treatment_score,outcome,summary,source,analyzed_at")
         .gte("analyzed_at", since)
     )
 
@@ -940,7 +940,7 @@ def send_weekly_intelligence_report(report_label: str = "Weekly Intelligence Rep
     total_topics = sum(topic_counter.values())
     topic_examples: dict[str, list[dict]] = defaultdict(list)
     for analysis in sorted(analyses, key=lambda a: a.get("analyzed_at") or "", reverse=True):
-        summary = _short_text(analysis.get("summary_ar") or analysis.get("summary") or analysis.get("summary_en"), 260)
+        summary = _short_text(analysis.get("summary"), 260)
         if not summary:
             continue
         lead = lead_map.get(analysis.get("lead_id") or "", {})
