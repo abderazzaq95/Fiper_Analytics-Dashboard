@@ -100,6 +100,32 @@ def _display_agent_name(*values: str | None) -> str | None:
     return None
 
 
+def _clean_report_text(value: str | None) -> str:
+    text = str(value or "")
+    if not text.strip():
+        return ""
+    # Repair common mojibake where UTF-8 Arabic was decoded as latin-1/cp1252.
+    # Do this before strip(): mojibake bytes can appear as whitespace controls.
+    if any(marker in text for marker in ("\u00d8", "\u00d9", "\u00f0\u0178", "\u00e2\u20ac")):
+        for source_encoding in ("latin1", "cp1252"):
+            try:
+                repaired = text.encode(source_encoding).decode("utf-8")
+            except Exception:
+                continue
+            if repaired and repaired != text:
+                text = repaired
+                break
+    return text.strip()
+
+
+def _agent_report_label(value: str | None) -> str:
+    normalized = _display_agent_name(value)
+    if not normalized:
+        return "unknown"
+    contact = _agent_contact(normalized)
+    return _clean_report_text((contact or {}).get("name") or normalized)
+
+
 def _load_agent_contacts() -> dict[str, dict]:
     now = time.time()
     if now - (_contacts_cache.get("loaded_at") or 0) < CONTACT_CACHE_SECONDS:
@@ -723,15 +749,15 @@ def send_supervisor_report(report_label: str = "") -> bool:
                     break
         latest_call = latest_call_map.get(alert.get("lead_id") or "", {})
         if lead:
-            alert["lead_phone"] = lead_phone
-            alert["lead_name"] = lead.get("name")
+            alert["lead_phone"] = _clean_report_text(lead_phone)
+            alert["lead_name"] = _clean_report_text(lead.get("name"))
         alert["agent_name"] = _display_agent_name(
             alert.get("agent_name"),
             _lead_agent_name(lead, latest_msg) if lead else None,
             latest_call.get("agent_name") if latest_call else None,
         ) or alert.get("agent_name")
         alert["open_for"] = _fmt_relative_age(alert.get("created_at"), now)
-        last_body = (latest_msg.get("body") or "").strip()
+        last_body = _clean_report_text(latest_msg.get("body"))
         alert["last_message_body"] = last_body[:180] if last_body else ""
         alert["last_message_time"] = _fmt_report_message_time(latest_msg.get("sent_at"), report_tz) if latest_msg else "-"
         validated_alerts.append(alert)
@@ -757,7 +783,7 @@ def send_supervisor_report(report_label: str = "") -> bool:
     type_counts = Counter(a.get("type") or "unknown" for a in open_alerts)
     by_agent: dict[str, list] = defaultdict(list)
     for alert in open_alerts:
-        agent = _display_agent_name(alert.get("agent_name")) or "unknown"
+        agent = _agent_report_label(alert.get("agent_name"))
         by_agent[agent].append(alert)
 
     completed = sum(1 for c in calls if (c.get("outcome") or "").lower() == "completed")
@@ -769,9 +795,14 @@ def send_supervisor_report(report_label: str = "") -> bool:
         sum(c.get("duration_seconds") or 0 for c in calls) / len(calls), 1
     ) if calls else 0
 
+    sorted_agents = sorted(by_agent.items(), key=lambda kv: len(kv[1]), reverse=True)
+    attention_rows = "".join(
+        f"<li><b>{html.escape(agent)}</b>: {len(items)} open alerts</li>"
+        for agent, items in sorted_agents[:5]
+    )
     agent_rows = "".join(
         f"<li>{html.escape(agent)}: {len(items)} open alerts</li>"
-        for agent, items in sorted(by_agent.items(), key=lambda kv: len(kv[1]), reverse=True)[:10]
+        for agent, items in sorted_agents[:10]
     )
     type_rows = "".join(
         f"<li>{html.escape(_alert_type_title(k))}: {v}</li>"
@@ -780,11 +811,11 @@ def send_supervisor_report(report_label: str = "") -> bool:
     severity_rank = {"HIGH": 0, "MED": 1, "LOW": 2}
     detail_rows = []
     for alert in sorted(open_alerts, key=lambda a: (severity_rank.get(a.get("severity") or "", 9), a.get("created_at") or "")):
-        lead_bits = [b for b in [alert.get("lead_phone"), alert.get("lead_name")] if b]
+        lead_bits = [_clean_report_text(b) for b in [alert.get("lead_phone"), alert.get("lead_name")] if b]
         lead_label = " | ".join(lead_bits) or "unknown lead"
-        agent_label = alert.get("agent_name") or "unknown"
-        alert_message = _clean_alert_message(alert.get("message"))
-        last_message = alert.get("last_message_body") or ""
+        agent_label = _agent_report_label(alert.get("agent_name"))
+        alert_message = _clean_report_text(_clean_alert_message(alert.get("message")))
+        last_message = _clean_report_text(alert.get("last_message_body"))
         message_time = alert.get("last_message_time") or "-"
         detail_rows.append(
             "<tr>"
@@ -835,6 +866,8 @@ def send_supervisor_report(report_label: str = "") -> bool:
     </ul>
     <h3>Alert types</h3>
     <ul>{type_rows or '<li>No alerts</li>'}</ul>
+    <h3>Agents needing attention</h3>
+    <ol>{attention_rows or '<li>No agent alerts</li>'}</ol>
     <h3>Agents with alerts</h3>
     <ul>{agent_rows or '<li>No agent alerts</li>'}</ul>
     <h3>Alert details today</h3>
