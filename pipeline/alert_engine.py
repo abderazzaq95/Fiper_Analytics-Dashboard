@@ -36,7 +36,48 @@ def _fmt_duration(minutes: float) -> str:
     h = (m % 1440) // 60
     return f"{days}d {h}h" if h else f"{days}d"
 
+_BANAL_NO_REPLY_MESSAGES = {
+    "ok",
+    "okay",
+    "yes",
+    "no",
+    "thanks",
+    "thank you",
+    "done",
+    "\u062a\u0645\u0627\u0645",  # تمام
+    "\u062a\u0645",  # تم
+    "\u0646\u0639\u0645",  # نعم
+    "\u0627\u064a",  # اي
+    "\u0625\u064a",  # إي
+    "\u0627\u064a\u0648\u0647",  # ايوه
+    "\u0623\u064a\u0648\u0647",  # أيوه
+    "\u0627\u0648\u0643\u064a",  # اوكي
+    "\u0623\u0648\u0643\u064a",  # أوكي
+    "\u0627\u0648\u0643",  # اوك
+    "\u0623\u0648\u0643",  # أوك
+    "\u0634\u0643\u0631\u0627",  # شكرا
+    "\u0634\u0643\u0631\u0627\u064b",  # شكراً
+    "\u0645\u0634\u0643\u0648\u0631",  # مشكور
+    "\u0645\u0634\u0643\u0648\u0631\u0647",  # مشكوره
+    "\u062d\u0633\u0646\u0627",  # حسنا
+}
 
+
+def _is_banal_no_reply_message(body: str | None) -> bool:
+    text = (body or "").strip()
+    if not text:
+        return True
+
+    normalized = " ".join(text.lower().replace("\u0640", "").split())
+    normalized = normalized.strip(" .,!\u061f?\u061b;:()[]{}\"'`~|/\\")
+
+    if normalized in {"[reaction]", "[sticker]", "[image]", "[audio]", "[video]"}:
+        return True
+    if normalized in _BANAL_NO_REPLY_MESSAGES:
+        return True
+    if len(normalized) <= 4 and not any(ch.isalnum() for ch in normalized):
+        return True
+    return False
 def _upsert_alert(lead_id, agent_name, severity, alert_type, message):
     existing = (
         supabase.table("alerts")
@@ -156,7 +197,7 @@ def check_no_reply():
     cutoff_iso = datetime.fromtimestamp(cutoff, timezone.utc).isoformat()
     messages = _paginate(
         lambda: supabase.table("messages")
-        .select("lead_id,sent_at,direction")
+        .select("lead_id,sent_at,direction,body")
         .gte("sent_at", cutoff_iso)
         .order("sent_at", desc=False)
     )
@@ -191,6 +232,8 @@ def check_no_reply():
         last_inbound = None
         for m in sorted_msgs:
             if m["direction"] == "inbound":
+                if _is_banal_no_reply_message(m.get("body")):
+                    continue
                 last_inbound = m
             elif m["direction"] == "outbound" and last_inbound:
                 last_inbound = None

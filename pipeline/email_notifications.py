@@ -199,6 +199,15 @@ def _fmt_relative_age(created_at: str | None, now: datetime | None = None) -> st
     return f"{total_days}d ago"
 
 
+
+def _fmt_report_message_time(value: str | None, report_tz: ZoneInfo) -> str:
+    if not value:
+        return "-"
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return dt.astimezone(report_tz).strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return "-"
 def _clean_alert_message(message: str | None) -> str:
     msg = (message or "").strip()
     if not msg:
@@ -665,6 +674,7 @@ def send_supervisor_report(report_label: str = "") -> bool:
         alert["open_for"] = _fmt_relative_age(alert.get("created_at"), now)
         last_body = (latest_msg.get("body") or "").strip()
         alert["last_message_body"] = last_body[:180] if last_body else ""
+        alert["last_message_time"] = _fmt_report_message_time(latest_msg.get("sent_at"), report_tz) if latest_msg else "-"
 
     calls = _paginate(
         lambda: supabase.table("calls")
@@ -714,11 +724,13 @@ def send_supervisor_report(report_label: str = "") -> bool:
         agent_label = alert.get("agent_name") or "unknown"
         alert_message = _clean_alert_message(alert.get("message"))
         last_message = alert.get("last_message_body") or ""
+        message_time = alert.get("last_message_time") or "-"
         detail_rows.append(
             "<tr>"
             f"<td style='padding:8px;border:1px solid #e6eaf2'><b>{html.escape(alert.get('severity') or 'MED')}</b></td>"
             f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(_alert_type_title(alert.get('type')))}</td>"
             f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(alert.get('open_for') or 'unknown')}</td>"
+            f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(message_time)}</td>"
             f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(lead_label)}</td>"
             f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(agent_label)}</td>"
             f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(alert_message)}</td>"
@@ -731,6 +743,7 @@ def send_supervisor_report(report_label: str = "") -> bool:
         "<th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Severity</th>"
         "<th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Type</th>"
         "<th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Open for</th>"
+        f"<th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Message time ({html.escape(REPORT_TIMEZONE_LABEL)})</th>"
         "<th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Lead</th>"
         "<th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Agent</th>"
         "<th style='text-align:left;padding:8px;border:1px solid #e6eaf2'>Alert</th>"
