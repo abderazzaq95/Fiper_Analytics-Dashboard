@@ -34,6 +34,7 @@ _last_score_backfill: dict | None = None
 _last_sales_report: dict | None = None
 _last_weekly_report: dict | None = None
 _last_webhook_payloads: list[dict] = []  # ring buffer — last 5 raw webhook bodies
+_last_webhook_processing_errors: list[dict] = []  # ring buffer - internal webhook processing failures
 
 # SSE client queues — one per connected dashboard tab
 _sse_clients: set[asyncio.Queue] = set()
@@ -2621,6 +2622,50 @@ async def _handle_mc_outbound(body: dict, now_iso: str, url_line_number: str | N
         log.warning(f"[webhook/mc] response_time calc failed: {e}")
 
 
+
+async def _process_manycontacts_webhook(body: dict, now_iso: str, path: str, url_line: str | None) -> None:
+    """Process a webhook after the HTTP receiver has already acknowledged it.
+
+    ManyContacts disables forwarding after 100 errored requests in an hour. This
+    worker is deliberately best-effort: processing errors are logged internally
+    but never bubble back to the HTTP request.
+    """
+    try:
+        _record_whatsapp_line_heartbeat(body, now_iso)
+
+        if "entry" in body:
+            # Meta WhatsApp Cloud API - inbound messages + delivery statuses
+            await _handle_meta_format(body, now_iso)
+        elif body.get("event") == "contact_created":
+            # ManyContacts native: new contact/lead notification
+            await _handle_mc_contact_created(body, now_iso)
+        elif body.get("event") == "message_new":
+            # ManyContacts native: full message event, including outbound if enabled.
+            await _handle_mc_message_new(body, now_iso, url_line)
+        elif body.get("event") == "message_sent":
+            # ManyContacts native: outbound agent reply with body/user/timestamp.
+            await _handle_mc_outbound(body, now_iso, url_line)
+        elif _is_outbound_mc(body):
+            # ManyContacts native outbound (agent reply) - if ever enabled
+            await _handle_mc_outbound(body, now_iso, url_line)
+        else:
+            log.info(
+                f"[webhook/mc] unrecognised format - event={body.get('event')!r} "
+                f"keys={list(body.keys())} preview={str(body)[:200]}"
+            )
+
+        asyncio.create_task(_broadcast("data_updated", {"source": "webhook"}))
+    except Exception as e:
+        log.error(f"[webhook/mc] background handler error: {e}", exc_info=True)
+        _last_webhook_processing_errors.append({
+            "at": datetime.now(timezone.utc).isoformat(),
+            "path": path,
+            "event": body.get("event"),
+            "error": f"{type(e).__name__}: {e}",
+            "preview": str(body)[:500],
+        })
+        if len(_last_webhook_processing_errors) > 10:
+            _last_webhook_processing_errors.pop(0)
 @app.post("/webhook/manycontacts")
 @app.post("/webhook/whatsapp")
 @app.post("/webhook/manycontacts")
@@ -2666,34 +2711,8 @@ async def webhook_manycontacts(request: Request):
         _last_webhook_payloads.pop(0)
 
     now_iso = datetime.now(timezone.utc).isoformat()
-    _record_whatsapp_line_heartbeat(body, now_iso)
-
-    try:
-        if "entry" in body:
-            # Meta WhatsApp Cloud API — inbound messages + delivery statuses
-            await _handle_meta_format(body, now_iso)
-        elif body.get("event") == "contact_created":
-            # ManyContacts native: new contact/lead notification
-            await _handle_mc_contact_created(body, now_iso)
-        elif body.get("event") == "message_new":
-            # ManyContacts native: full message event, including outbound if enabled.
-            await _handle_mc_message_new(body, now_iso, _url_line)
-        elif body.get("event") == "message_sent":
-            # ManyContacts native: outbound agent reply with body/user/timestamp.
-            await _handle_mc_outbound(body, now_iso, _url_line)
-        elif _is_outbound_mc(body):
-            # ManyContacts native outbound (agent reply) — if ever enabled
-            await _handle_mc_outbound(body, now_iso, _url_line)
-        else:
-            log.info(
-                f"[webhook/mc] unrecognised format — event={body.get('event')!r} "
-                f"keys={list(body.keys())} preview={str(body)[:200]}"
-            )
-    except Exception as e:
-        log.error(f"[webhook/mc] handler error: {e}", exc_info=True)
-
-    asyncio.create_task(_broadcast("data_updated", {"source": "webhook"}))
-    return {"status": "ok"}
+    asyncio.create_task(_process_manycontacts_webhook(body, now_iso, request.url.path, _url_line))
+    return {"status": "accepted"}
 
 
 # ---------------------------------------------------------------------------
@@ -2783,8 +2802,12 @@ def pipeline_status():
 
 @app.get("/api/debug/webhooks")
 def debug_webhooks():
-    """Return the last 5 raw webhook payloads received — use to diagnose format issues."""
-    return {"count": len(_last_webhook_payloads), "payloads": _last_webhook_payloads}
+    """Return the last 5 raw webhook payloads received - use to diagnose format issues."""
+    return {
+        "count": len(_last_webhook_payloads),
+        "payloads": _last_webhook_payloads,
+        "processing_errors": _last_webhook_processing_errors,
+    }
 
 
 @app.get("/api/debug/webhooks/analyze")
