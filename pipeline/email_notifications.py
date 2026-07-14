@@ -229,6 +229,51 @@ def _clean_alert_message(message: str | None) -> str:
     return msg
 
 
+
+def _is_banal_report_message(body: str | None) -> bool:
+    text = (body or "").strip()
+    if not text:
+        return True
+    normalized = " ".join(text.lower().replace("\u0640", "").split())
+    normalized = normalized.strip(" .,!\u061f?\u061b;:()[]{}\"'`~|/\\")
+    if normalized in {"[reaction]", "[sticker]", "[image]", "[video]", "reaction", "sticker", "image", "video"}:
+        return True
+    if re.fullmatch(r"[\d\u0660-\u0669]+", normalized):
+        return True
+    if len(normalized) <= 4 and not any(ch.isalnum() for ch in normalized):
+        return True
+    compact = re.sub(r"[\W_]+", " ", normalized, flags=re.UNICODE).strip()
+    banal = {
+        "ok", "okay", "yes", "no", "done", "thanks", "thank you",
+        "\u062a\u0645", "\u062a\u0645\u0627\u0645", "\u0646\u0639\u0645", "\u0627\u064a", "\u0625\u064a",
+        "\u0627\u064a\u0648\u0647", "\u0623\u064a\u0648\u0647", "\u0627\u0648\u0643\u064a", "\u0623\u0648\u0643\u064a",
+        "\u0634\u0643\u0631\u0627", "\u0634\u0643\u0631\u0627\u064b", "\u0645\u0634\u0643\u0648\u0631",
+        "\u0645\u0634\u0643\u0648\u0631\u0647", "\u062a\u0633\u0644\u0645", "\u062d\u0633\u0646\u0627",
+    }
+    return len(compact) <= 24 and any(compact == item or compact.startswith(item + " ") for item in banal)
+
+
+def _latest_unanswered_inbound(rows: list[dict], now: datetime) -> dict | None:
+    last_inbound = None
+    for msg in sorted(rows, key=lambda row: row.get("sent_at") or ""):
+        direction = (msg.get("direction") or "").lower()
+        if direction == "inbound":
+            if _is_banal_report_message(msg.get("body")):
+                continue
+            last_inbound = msg
+        elif direction == "outbound" and last_inbound:
+            last_inbound = None
+    if not last_inbound:
+        return None
+    try:
+        sent = datetime.fromisoformat(str(last_inbound.get("sent_at")).replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if (now.astimezone(timezone.utc) - sent).total_seconds() < 60 * 60:
+        return None
+    return last_inbound
+
+
 def _alert_type_title(value: str | None) -> str:
     return (value or "alert").replace("_", " ").title()
 
@@ -576,6 +621,7 @@ def send_supervisor_report(report_label: str = "") -> bool:
     lead_map: dict[str, dict] = {}
     latest_msg_map: dict[str, dict] = {}
     latest_msg_by_phone: dict[str, dict] = {}
+    conversation_msg_by_phone: dict[str, list[dict]] = defaultdict(list)
     alert_phone_values: set[str] = set()
     latest_call_map: dict[str, dict] = {}
     if alert_lead_ids:
@@ -605,6 +651,10 @@ def send_supervisor_report(report_label: str = "") -> bool:
                 lead_id = msg.get("lead_id")
                 if lead_id and lead_id not in latest_msg_map:
                     latest_msg_map[lead_id] = msg
+                lead = lead_map.get(lead_id or "")
+                phone = _lead_phone(lead) if lead else None
+                if phone and (msg.get("sent_at") or "") >= today:
+                    conversation_msg_by_phone[phone].append(msg)
         except Exception:
             latest_msg_map = {}
         try:
@@ -629,13 +679,15 @@ def send_supervisor_report(report_label: str = "") -> bool:
                         lambda: supabase.table("messages")
                         .select("lead_id,direction,body,agent_name,sent_at")
                         .in_("lead_id", duplicate_lead_ids)
-                        .eq("direction", "inbound")
-                        .order("sent_at", desc=True)
+                        .gte("sent_at", today)
+                        .order("sent_at", desc=False)
                     )
                     for msg in duplicate_msgs:
                         phone = lead_phone_map.get(msg.get("lead_id"))
                         body = (msg.get("body") or "").strip()
-                        if phone and body and phone not in latest_msg_by_phone:
+                        if phone:
+                            conversation_msg_by_phone[phone].append(msg)
+                        if phone and body and (msg.get("direction") or "").lower() == "inbound":
                             latest_msg_by_phone[phone] = msg
         except Exception:
             latest_msg_by_phone = {}
@@ -654,17 +706,24 @@ def send_supervisor_report(report_label: str = "") -> bool:
         except Exception:
             latest_call_map = {}
 
+    validated_alerts = []
     for alert in open_alerts:
         lead = lead_map.get(alert.get("lead_id") or "")
         latest_msg = latest_msg_map.get(alert.get("lead_id") or "", {})
-        if not (latest_msg.get("body") or "").strip() and lead:
+        lead_phone = _lead_phone(lead) if lead else None
+        if (alert.get("type") or "").lower() == "no_reply":
+            unanswered_msg = _latest_unanswered_inbound(conversation_msg_by_phone.get(lead_phone or "", []), now)
+            if not unanswered_msg:
+                continue
+            latest_msg = unanswered_msg
+        elif not (latest_msg.get("body") or "").strip() and lead:
             for phone in [lead.get("phone"), lead.get("wa_contact_id")]:
                 if phone and latest_msg_by_phone.get(phone):
                     latest_msg = latest_msg_by_phone[phone]
                     break
         latest_call = latest_call_map.get(alert.get("lead_id") or "", {})
         if lead:
-            alert["lead_phone"] = _lead_phone(lead)
+            alert["lead_phone"] = lead_phone
             alert["lead_name"] = lead.get("name")
         alert["agent_name"] = _display_agent_name(
             alert.get("agent_name"),
@@ -675,6 +734,8 @@ def send_supervisor_report(report_label: str = "") -> bool:
         last_body = (latest_msg.get("body") or "").strip()
         alert["last_message_body"] = last_body[:180] if last_body else ""
         alert["last_message_time"] = _fmt_report_message_time(latest_msg.get("sent_at"), report_tz) if latest_msg else "-"
+        validated_alerts.append(alert)
+    open_alerts = validated_alerts
 
     calls = _paginate(
         lambda: supabase.table("calls")

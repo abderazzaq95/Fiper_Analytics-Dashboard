@@ -72,7 +72,7 @@ def _is_banal_no_reply_message(body: str | None) -> bool:
     normalized = " ".join(text.lower().replace("\u0640", "").split())
     normalized = normalized.strip(" .,!\u061f?\u061b;:()[]{}\"'`~|/\\")
 
-    if normalized in {"[reaction]", "[sticker]", "[image]", "[audio]", "[video]", "reaction", "sticker", "image", "audio", "video"}:
+    if normalized in {"[reaction]", "[sticker]", "[image]", "[video]", "reaction", "sticker", "image", "video"}:
         return True
     if normalized in _BANAL_NO_REPLY_MESSAGES:
         return True
