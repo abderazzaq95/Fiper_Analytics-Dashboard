@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from supabase import create_client
 import os
+import re
 from dotenv import load_dotenv
 from pipeline import email_notifications
 
@@ -71,11 +72,24 @@ def _is_banal_no_reply_message(body: str | None) -> bool:
     normalized = " ".join(text.lower().replace("\u0640", "").split())
     normalized = normalized.strip(" .,!\u061f?\u061b;:()[]{}\"'`~|/\\")
 
-    if normalized in {"[reaction]", "[sticker]", "[image]", "[audio]", "[video]"}:
+    if normalized in {"[reaction]", "[sticker]", "[image]", "[audio]", "[video]", "reaction", "sticker", "image", "audio", "video"}:
         return True
     if normalized in _BANAL_NO_REPLY_MESSAGES:
         return True
+    if re.fullmatch(r"[\d\u0660-\u0669]+", normalized):
+        return True
     if len(normalized) <= 4 and not any(ch.isalnum() for ch in normalized):
+        return True
+
+    compact = re.sub(r"[\W_]+", " ", normalized, flags=re.UNICODE).strip()
+    banal_prefixes = (
+        "ok", "okay", "thanks", "thank you", "done", "yes", "no",
+        "\u062a\u0645", "\u062a\u0645\u0627\u0645", "\u0646\u0639\u0645", "\u0627\u064a", "\u0625\u064a",
+        "\u0627\u064a\u0648\u0647", "\u0623\u064a\u0648\u0647", "\u0627\u0648\u0643\u064a", "\u0623\u0648\u0643\u064a",
+        "\u0634\u0643\u0631\u0627", "\u0634\u0643\u0631\u0627\u064b", "\u0634\u0643\u0631\u0627 \u0627\u0633\u062a\u0627\u0630",
+        "\u0645\u0634\u0643\u0648\u0631", "\u0645\u0634\u0643\u0648\u0631\u0647", "\u062a\u0633\u0644\u0645", "\u062d\u0633\u0646\u0627",
+    )
+    if len(compact) <= 24 and any(compact == p or compact.startswith(p + " ") for p in banal_prefixes):
         return True
     return False
 def _upsert_alert(lead_id, agent_name, severity, alert_type, message):

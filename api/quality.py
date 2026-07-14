@@ -6,6 +6,7 @@ import requests
 import re
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
+from pipeline.time_ranges import since_iso
 from collections import Counter
 from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line, resolve_agent_name
 
@@ -29,16 +30,7 @@ def _paginate(build_query) -> list:
 
 
 def _since(range_: str) -> str:
-    now = datetime.now(timezone.utc)
-    if range_ == "today":
-        return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    if range_ in ("week", "7d"):
-        start = now - timedelta(days=now.weekday())
-        return start.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    if range_ in ("month", "30d"):
-        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-    start = now - timedelta(days=now.weekday())
-    return start.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    return since_iso(range_)
 
 
 def _digits_only(value: str | None) -> str:

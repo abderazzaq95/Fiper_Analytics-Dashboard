@@ -3,6 +3,7 @@ from supabase import create_client
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
+from pipeline.time_ranges import since_iso, period_start_utc
 from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
 load_dotenv()
 router = APIRouter()
@@ -11,16 +12,7 @@ BATCH_SIZE = 100
 
 
 def _since(range_: str) -> str:
-    now = datetime.now(timezone.utc)
-    if range_ == "today":
-        return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    if range_ in ("week", "7d"):
-        start = now - timedelta(days=now.weekday())
-        return start.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    if range_ in ("month", "30d"):
-        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-    start = now - timedelta(days=now.weekday())
-    return start.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    return since_iso(range_)
 
 
 def _paginate(build_query) -> list:
@@ -217,10 +209,9 @@ def channels_traffic(wa_line: str = Query("all")):
 
 
 def _channels_traffic_inner(wa_line: str = "all"):
-    now = datetime.now(timezone.utc)
-    start_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    start_week = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
-    start_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    start_today = period_start_utc("today")
+    start_week = period_start_utc("week")
+    start_month = period_start_utc("month")
 
     result: dict = {}
     for label, cutoff_dt in [("today", start_today), ("week", start_week), ("month", start_month)]:
