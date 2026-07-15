@@ -223,13 +223,16 @@ def check_no_reply():
     )
 
     lead_phone_map: dict[str, str] = {}
-    phone_leads: dict[str, list[dict]] = {}
+    lead_by_id: dict[str, dict] = {}
     for lead in leads:
         phone = lead.get("phone") or lead.get("wa_contact_id")
         if not phone:
             continue
-        lead_phone_map[lead["id"]] = phone
-        phone_leads.setdefault(phone, []).append(lead)
+        lead_id = lead.get("id")
+        if not lead_id:
+            continue
+        lead_phone_map[lead_id] = phone
+        lead_by_id[lead_id] = lead
 
     by_phone: dict[str, list[dict]] = {}
     for m in messages:
@@ -238,8 +241,9 @@ def check_no_reply():
             continue
         by_phone.setdefault(phone, []).append(m)
 
-    # Track which leads still have unanswered inbounds
-    still_unanswered_phones: set[str] = set()
+    # Track the exact lead rows that still have unanswered inbounds. This matters
+    # when ManyContacts creates duplicate lead rows for the same phone number.
+    still_unanswered_lead_ids: set[str] = set()
 
     for phone, msgs in by_phone.items():
         sorted_msgs = sorted(msgs, key=lambda x: x["sent_at"])
@@ -256,23 +260,19 @@ def check_no_reply():
             sent = datetime.fromisoformat(last_inbound["sent_at"].replace("Z", "+00:00"))
             gap_min = (now - sent).total_seconds() / 60
             if 60 < gap_min <= MAX_OPERATIONAL_ALERT_MINUTES:
-                still_unanswered_phones.add(phone)
-                lead_rows = phone_leads.get(phone, [])
-                lead_rows = sorted(
-                    lead_rows,
-                    key=lambda row: row.get("updated_at") or "",
-                    reverse=True,
-                )
-                lead_id = lead_rows[0].get("id") if lead_rows else None
-                agent = (lead_rows[0].get("assigned_agent") if lead_rows else None) or "unknown"
+                lead_id = last_inbound.get("lead_id")
+                lead = lead_by_id.get(lead_id or "")
+                agent = (lead.get("assigned_agent") if lead else None) or "unknown"
                 if not lead_id:
                     continue
+                still_unanswered_lead_ids.add(lead_id)
                 _upsert_alert(
                     lead_id, agent, "HIGH", "no_reply",
                     f"Inbound message unanswered for {_fmt_duration(gap_min)}."
                 )
 
-    # Auto-resolve alerts for leads that have now been answered
+    # Auto-resolve alerts for leads that have now been answered, and for duplicate
+    # lead rows that share a phone but are not the row with the unanswered message.
     open_alerts = _paginate(
         lambda: supabase.table("alerts")
         .select("id,lead_id")
@@ -281,8 +281,8 @@ def check_no_reply():
     )
     resolved_ids = []
     for alert in open_alerts:
-        phone = lead_phone_map.get(alert["lead_id"])
-        if phone and phone not in still_unanswered_phones:
+        lead_id = alert.get("lead_id")
+        if lead_id and lead_id not in still_unanswered_lead_ids:
             resolved_ids.append(alert["id"])
     if resolved_ids:
         supabase.table("alerts").update({"resolved": True}).in_("id", resolved_ids).execute()
