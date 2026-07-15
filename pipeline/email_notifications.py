@@ -601,7 +601,9 @@ def send_webhook_health_alert(details: dict) -> bool:
     html_body = f"""
     <h2>Fiper WhatsApp Webhook Warning</h2>
     <p>
-      One or more WhatsApp webhook lines appear to be delayed, disabled, or missing heartbeat updates.
+      <b>Urgent:</b> one or more WhatsApp webhook lines appear to be delayed,
+      disabled, or missing heartbeat updates. ManyContacts can automatically
+      disable forwarding after repeated failed webhook requests.
     </p>
     <ul>
       <li><b>Active WhatsApp chats:</b> {html.escape(str(active_chats))}</li>
@@ -612,7 +614,7 @@ def send_webhook_health_alert(details: dict) -> bool:
     <h3>Stale lines</h3>
     <ul>{stale_rows or '<li>No line details available</li>'}</ul>
     <p>
-      Please check ManyContacts -> API / Developers and make sure
+      Please check ManyContacts -> API / Developers now and make sure
       <b>Enable WhatsApp API webhook forwarding</b> is ON and saved.
     </p>
     """
