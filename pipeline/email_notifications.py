@@ -536,17 +536,9 @@ def notify_agent_alert(alert: dict) -> bool:
                     lead_label = " | ".join(bits)
         except Exception:
             pass
-    html_body = f"""
-    <h2>New Fiper Alert</h2>
-    <p><b>Agent:</b> {html.escape(agent)}</p>
-    <p><b>Severity:</b> {html.escape(severity)}</p>
-    <p><b>Type:</b> {html.escape(alert_type)}</p>
-    <p><b>Lead:</b> {html.escape(lead_label)}</p>
-    <p><b>Message:</b> {html.escape(message)}</p>
-    <p><b>Lead ID:</b> {html.escape(str(lead_id))}</p>
-    """
     latest_customer_message = (alert.get("last_customer_message") or "").strip()
-    if not latest_customer_message and lead_id and lead_id != "test":
+    latest_customer_time = alert.get("last_customer_message_at") or ""
+    if lead_id and lead_id != "test":
         try:
             msg_rows = _paginate(
                 lambda: supabase.table("messages")
@@ -557,10 +549,27 @@ def notify_agent_alert(alert: dict) -> bool:
                 .limit(1)
             )
             if msg_rows:
-                latest_customer_message = (msg_rows[0].get("body") or "").strip()
+                latest_customer_message = latest_customer_message or (msg_rows[0].get("body") or "").strip()
+                latest_customer_time = latest_customer_time or (msg_rows[0].get("sent_at") or "")
         except Exception:
             pass
     latest_customer_message = latest_customer_message or "No customer message saved."
+    report_tz = ZoneInfo(REPORT_TIMEZONE)
+    message_time_label = _fmt_report_message_time(latest_customer_time, report_tz)
+    alert_time_label = _fmt_report_message_time(alert.get("created_at"), report_tz)
+    html_body = f"""
+    <h2>New Fiper Alert</h2>
+    <p><b>Agent:</b> {html.escape(agent)}</p>
+    <p><b>Severity:</b> {html.escape(severity)}</p>
+    <p><b>Type:</b> {html.escape(alert_type)}</p>
+    <p><b>Lead:</b> {html.escape(lead_label)}</p>
+    <p><b>Message time ({html.escape(REPORT_TIMEZONE_LABEL)}):</b> {html.escape(message_time_label)}</p>
+    <p><b>Alert time ({html.escape(REPORT_TIMEZONE_LABEL)}):</b> {html.escape(alert_time_label)}</p>
+    <p><b>Alert:</b> {html.escape(_clean_alert_message(message) or message)}</p>
+    <p><b>Latest customer message:</b></p>
+    <blockquote style="margin:0;padding:10px 12px;background:#f3f7ff;border-left:4px solid #0b7cff;white-space:pre-wrap">{html.escape(latest_customer_message)}</blockquote>
+    <p><b>Lead ID:</b> {html.escape(str(lead_id))}</p>
+    """
     wa_body = (
         f"Hello {agent} / مرحباً {agent}،\n"
         f"You have a {severity} {alert_type} alert that needs action.\n"
