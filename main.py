@@ -1793,6 +1793,74 @@ Rules: direct and professional, use actual numbers, English only, no bullet poin
 
 
 # ---------------------------------------------------------------------------
+# Telegram bot webhook — auto-registers agent chat IDs
+# ---------------------------------------------------------------------------
+
+_TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+_TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+
+
+@app.post("/telegram-webhook")
+async def telegram_webhook(request: Request):
+    secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    if _TELEGRAM_WEBHOOK_SECRET and secret != _TELEGRAM_WEBHOOK_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid secret token")
+
+    data = await request.json()
+    message = data.get("message") or data.get("edited_message") or {}
+    if not message:
+        return {"ok": True}
+
+    chat = message.get("chat", {})
+    from_ = message.get("from", {})
+    chat_id = str(chat.get("id", ""))
+    username = (from_.get("username") or "").lower().strip()
+    first_name = (from_.get("first_name") or "").strip()
+    last_name = (from_.get("last_name") or "").strip()
+
+    if not chat_id:
+        return {"ok": True}
+
+    if username:
+        try:
+            supabase.table("telegram_chat_ids").upsert(
+                {
+                    "username": username,
+                    "chat_id": chat_id,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "registered_at": datetime.now(timezone.utc).isoformat(),
+                },
+                on_conflict="username",
+            ).execute()
+            log.info(f"[telegram] Registered @{username} → chat_id={chat_id}")
+        except Exception as e:
+            log.error(f"[telegram] Failed to store @{username}: {e}")
+
+    text = (message.get("text") or "").strip().lower()
+    if text in ("/start", "ok", "hello", "hi", "مرحبا", "السلام عليكم"):
+        try:
+            import requests as _req
+            _req.post(
+                f"https://api.telegram.org/bot{_TELEGRAM_BOT_TOKEN}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": (
+                        f"✅ مرحباً {first_name}! تم تسجيلك بنجاح.\n"
+                        f"ستصلك تنبيهات Fiper مباشرة هنا.\n\n"
+                        f"Hello {first_name}! You are now registered.\n"
+                        f"Fiper alerts will be sent to you here."
+                    ),
+                },
+                timeout=5,
+            )
+        except Exception:
+            pass
+
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
 # ManyContacts webhook (real-time messages)
 # ---------------------------------------------------------------------------
 

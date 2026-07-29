@@ -42,12 +42,52 @@ REPORT_TIMEZONE_LABEL = os.getenv("REPORT_TIMEZONE_LABEL", "UTC+2")
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "")
+META_WHATSAPP_PHONE_ID = os.getenv("META_WHATSAPP_PHONE_ID", "")
+META_WHATSAPP_TOKEN = os.getenv("META_WHATSAPP_TOKEN", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+CALLBELL_API_KEY = os.getenv("CALLBELL_API_KEY", "")
+CALLBELL_CHANNEL_UUID = os.getenv("CALLBELL_CHANNEL_UUID", "")
 _contacts_cache: dict = {"loaded_at": 0.0, "contacts": {}}
 
 
 def _agent_phone_env_key(agent_name: str | None) -> str:
     slug = re.sub(r"[^A-Z0-9]+", "_", _normalize_name(agent_name).upper()).strip("_")
     return f"AGENT_WHATSAPP_{slug}" if slug else ""
+
+
+def _agent_telegram_env_key(agent_name: str | None) -> str:
+    slug = re.sub(r"[^A-Z0-9]+", "_", _normalize_name(agent_name).upper()).strip("_")
+    return f"AGENT_TELEGRAM_{slug}" if slug else ""
+
+
+def _telegram_chat_id_from_db(username: str) -> str:
+    if not username:
+        return ""
+    try:
+        rows = (
+            supabase.table("telegram_chat_ids")
+            .select("chat_id")
+            .eq("username", username.lower().lstrip("@"))
+            .limit(1)
+            .execute()
+            .data or []
+        )
+        return (rows[0].get("chat_id") or "") if rows else ""
+    except Exception:
+        return ""
+
+
+def _agent_telegram_id(agent_name: str | None) -> str:
+    # 1. Explicit env var override
+    env_id = os.getenv(_agent_telegram_env_key(agent_name), "").strip()
+    if env_id:
+        return env_id
+    # 2. Auto-lookup: get @username from Google Sheet, then query Supabase
+    contact = _agent_contact(agent_name)
+    username = (contact or {}).get("telegram", "").strip()
+    if not username:
+        return ""
+    return _telegram_chat_id_from_db(username)
 
 
 def _agent_env_key(agent_name: str | None) -> str:
@@ -150,9 +190,19 @@ def _load_agent_contacts() -> dict[str, dict]:
                 or row.get("Phone")
                 or ""
             ).strip()
+            tg_raw = (
+                row.get("Telegram user")
+                or row.get("Telegram User")
+                or row.get("TELEGRAM")
+                or ""
+            ).strip()
+            # Accept @username or full t.me/username links; skip if it looks like a URL
+            if tg_raw.startswith("http"):
+                tg_raw = tg_raw.rstrip("/").split("/")[-1]
+            telegram = tg_raw.lstrip("@").lower() if tg_raw else ""
             if not (name and email):
                 continue
-            contact = {"name": name, "email": email, "phone": phone}
+            contact = {"name": name, "email": email, "phone": phone, "telegram": telegram}
             for key in _name_keys(name):
                 contacts[key] = contact
     except Exception:
@@ -451,6 +501,65 @@ def _send_whatsapp(phone: str | None, body: str) -> bool:
     return True
 
 
+def _send_whatsapp_meta(phone: str | None, body: str) -> bool:
+    digits = re.sub(r"\D+", "", phone or "")
+    if not (META_WHATSAPP_PHONE_ID and META_WHATSAPP_TOKEN and digits and body.strip()):
+        return False
+    response = requests.post(
+        f"https://graph.facebook.com/v17.0/{META_WHATSAPP_PHONE_ID}/messages",
+        headers={
+            "Authorization": f"Bearer {META_WHATSAPP_TOKEN}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "messaging_product": "whatsapp",
+            "to": digits,
+            "type": "text",
+            "text": {"body": body.strip()},
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    return True
+
+
+def _send_whatsapp_callbell(phone: str | None, body: str) -> bool:
+    digits = re.sub(r"\D+", "", phone or "")
+    if not (CALLBELL_API_KEY and digits and body.strip()):
+        return False
+    payload: dict = {
+        "to": f"+{digits}",
+        "from": "whatsapp",
+        "type": "text",
+        "content": {"text": body.strip()},
+    }
+    if CALLBELL_CHANNEL_UUID:
+        payload["channel_uuid"] = CALLBELL_CHANNEL_UUID
+    response = requests.post(
+        "https://api.callbell.eu/v1/messages/send",
+        headers={
+            "Authorization": f"Bearer {CALLBELL_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json=payload,
+        timeout=20,
+    )
+    response.raise_for_status()
+    return True
+
+
+def _send_telegram(chat_id: str | None, body: str) -> bool:
+    if not (TELEGRAM_BOT_TOKEN and chat_id and body.strip()):
+        return False
+    response = requests.post(
+        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+        json={"chat_id": chat_id, "text": body.strip(), "parse_mode": "Markdown"},
+        timeout=20,
+    )
+    response.raise_for_status()
+    return True
+
+
 def send_test_notification(to: str, phone: str = "") -> bool:
     html_body = f"""
     <h2>Fiper Test Alert</h2>
@@ -478,6 +587,10 @@ def send_test_notification(to: str, phone: str = "") -> bool:
 
 
 def notify_agent_alert(alert: dict) -> bool:
+    _now = datetime.now(ZoneInfo(REPORT_TIMEZONE))
+    if not (0 <= _now.weekday() <= 4 and 9 <= _now.hour < 19):
+        return False
+
     agent = _display_agent_name(alert.get("agent_name")) or "unknown"
     contact = resolve_agent_contact(agent)
     recipient = (contact.get("email") or "").strip()
@@ -581,9 +694,21 @@ def notify_agent_alert(alert: dict) -> bool:
         "Please contact the lead and update the conversation now.\n"
         "يرجى التواصل مع العميل وتحديث المحادثة الآن."
     )
+    telegram_id = _agent_telegram_id(agent)
+    tg_body = (
+        f"🚨 *Fiper Alert — {severity}*\n\n"
+        f"*Agent:* {agent}\n"
+        f"*Type:* {alert_type}\n"
+        f"*Lead:* {lead_label}\n"
+        f"*Alert:* {_clean_alert_message(message) or message}\n\n"
+        f"*Last message ({REPORT_TIMEZONE_LABEL}):* {message_time_label}\n"
+        f'"{latest_customer_message[:200]}"\n\n'
+        "Please contact the lead and update the conversation now."
+    )
     email_sent = _send_email(recipient, f"Fiper Alert - {severity} - {alert_type}", html_body) if recipient else False
-    whatsapp_sent = _send_whatsapp(whatsapp_phone, wa_body) if whatsapp_phone else False
-    return email_sent or whatsapp_sent
+    whatsapp_sent = _send_whatsapp_callbell(whatsapp_phone, wa_body) if whatsapp_phone else False
+    telegram_sent = _send_telegram(telegram_id, tg_body) if telegram_id else False
+    return email_sent or whatsapp_sent or telegram_sent
 
 
 def send_webhook_health_alert(details: dict) -> bool:
