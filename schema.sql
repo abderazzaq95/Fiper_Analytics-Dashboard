@@ -103,6 +103,25 @@ CREATE TABLE IF NOT EXISTS manycontacts_users (
 CREATE INDEX IF NOT EXISTS idx_manycontacts_users_name ON manycontacts_users(name);
 
 -- ============================================================
+-- notification_deliveries
+-- Tracks alert notifications sent through external channels.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS notification_deliveries (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  alert_id           UUID REFERENCES alerts(id) ON DELETE SET NULL,
+  lead_id            UUID REFERENCES leads(id) ON DELETE SET NULL,
+  agent_name         TEXT,
+  channel            TEXT NOT NULL,       -- 'email' | 'telegram' | 'whatsapp'
+  recipient          TEXT,
+  status             TEXT NOT NULL,       -- 'sent' | 'failed'
+  subject            TEXT,
+  message_preview    TEXT,
+  provider_response  JSONB,
+  error_message      TEXT,
+  sent_at            TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
 -- Indexes for common query patterns
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_leads_status        ON leads(status);
@@ -122,3 +141,6 @@ CREATE INDEX IF NOT EXISTS idx_alerts_resolved     ON alerts(resolved);
 CREATE INDEX IF NOT EXISTS idx_alerts_severity     ON alerts(severity);
 CREATE INDEX IF NOT EXISTS idx_alerts_lead         ON alerts(lead_id);
 CREATE INDEX IF NOT EXISTS idx_leads_wa_line       ON leads(whatsapp_business_number);
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_alert ON notification_deliveries(alert_id);
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_channel_sent ON notification_deliveries(channel, sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_agent_sent ON notification_deliveries(agent_name, sent_at DESC);

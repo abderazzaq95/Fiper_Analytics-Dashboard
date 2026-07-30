@@ -560,6 +560,87 @@ def _send_telegram(chat_id: str | None, body: str) -> bool:
     return True
 
 
+def _log_notification_delivery(
+    *,
+    alert_id: str | None,
+    lead_id: str | None,
+    agent_name: str | None,
+    channel: str,
+    recipient: str | None,
+    status: str,
+    subject: str | None = None,
+    message_preview: str | None = None,
+    provider_response: dict | None = None,
+    error_message: str | None = None,
+) -> None:
+    try:
+        row = {
+            "alert_id": alert_id or None,
+            "lead_id": lead_id or None,
+            "agent_name": agent_name or None,
+            "channel": channel,
+            "recipient": recipient or None,
+            "status": status,
+            "subject": subject or None,
+            "message_preview": (message_preview or "")[:500] or None,
+            "provider_response": provider_response,
+            "error_message": (error_message or "")[:1000] or None,
+            "sent_at": datetime.now(timezone.utc).isoformat(),
+        }
+        supabase.table("notification_deliveries").insert(row).execute()
+    except Exception:
+        # Delivery logging must never block the actual alert notification path.
+        pass
+
+
+def _send_telegram_alert(
+    chat_id: str | None,
+    body: str,
+    *,
+    alert: dict,
+    agent_name: str,
+    subject: str,
+) -> bool:
+    if not (TELEGRAM_BOT_TOKEN and chat_id and body.strip()):
+        return False
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={"chat_id": chat_id, "text": body.strip(), "parse_mode": "Markdown"},
+            timeout=20,
+        )
+        response.raise_for_status()
+        try:
+            provider_response = response.json()
+        except Exception:
+            provider_response = {"status_code": response.status_code, "text": response.text[:500]}
+        _log_notification_delivery(
+            alert_id=alert.get("id"),
+            lead_id=alert.get("lead_id"),
+            agent_name=agent_name,
+            channel="telegram",
+            recipient=chat_id,
+            status="sent",
+            subject=subject,
+            message_preview=body,
+            provider_response=provider_response,
+        )
+        return True
+    except Exception as exc:
+        _log_notification_delivery(
+            alert_id=alert.get("id"),
+            lead_id=alert.get("lead_id"),
+            agent_name=agent_name,
+            channel="telegram",
+            recipient=chat_id,
+            status="failed",
+            subject=subject,
+            message_preview=body,
+            error_message=str(exc),
+        )
+        return False
+
+
 def send_test_notification(to: str, phone: str = "") -> bool:
     html_body = f"""
     <h2>Fiper Test Alert</h2>
@@ -705,9 +786,14 @@ def notify_agent_alert(alert: dict) -> bool:
         f'"{latest_customer_message[:200]}"\n\n'
         "Please contact the lead and update the conversation now."
     )
-    email_sent = _send_email(recipient, f"Fiper Alert - {severity} - {alert_type}", html_body) if recipient else False
+    subject = f"Fiper Alert - {severity} - {alert_type}"
+    email_sent = _send_email(recipient, subject, html_body) if recipient else False
     whatsapp_sent = _send_whatsapp_callbell(whatsapp_phone, wa_body) if whatsapp_phone else False
-    telegram_sent = _send_telegram(telegram_id, tg_body) if telegram_id else False
+    telegram_sent = (
+        _send_telegram_alert(telegram_id, tg_body, alert=alert, agent_name=agent, subject=subject)
+        if telegram_id
+        else False
+    )
     return email_sent or whatsapp_sent or telegram_sent
 
 
