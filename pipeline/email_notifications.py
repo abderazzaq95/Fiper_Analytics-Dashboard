@@ -190,13 +190,12 @@ def _load_agent_contacts() -> dict[str, dict]:
                 or row.get("Phone")
                 or ""
             ).strip()
-            tg_raw = (
-                row.get("Telegram user")
-                or row.get("Telegram User")
-                or row.get("TELEGRAM")
-                or ""
-            ).strip()
-            # Accept @username or full t.me/username links; skip if it looks like a URL
+            tg_raw = ""
+            for _k, _v in row.items():
+                if "telegram" in _k.lower():
+                    tg_raw = (_v or "").strip()
+                    break
+            # Accept @username or full t.me/username links
             if tg_raw.startswith("http"):
                 tg_raw = tg_raw.rstrip("/").split("/")[-1]
             telegram = tg_raw.lstrip("@").lower() if tg_raw else ""
