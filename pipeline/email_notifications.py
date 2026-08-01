@@ -112,9 +112,12 @@ def _name_keys(name: str | None) -> set[str]:
     normalized = _normalize_name(name)
     if not normalized:
         return set()
-    compact = normalized.replace(" ", "")
-    no_vowels = re.sub(r"[aeiou]", "", compact)
-    return {normalized, compact, no_vowels}
+    words = normalized.split()
+    keys = set()
+    for variant in [normalized, " ".join(reversed(words))]:
+        compact = variant.replace(" ", "")
+        keys.update({variant, compact, re.sub(r"[aeiou]", "", compact)})
+    return keys
 
 
 def _looks_like_uuid(value: str | None) -> bool:
