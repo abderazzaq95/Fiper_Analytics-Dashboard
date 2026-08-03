@@ -654,7 +654,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
     <a href="#sec-channels" onclick="smoothScrollTo('sec-channels',event)" data-en="Channels"     data-ar="القنوات">Channels</a>
     <a href="#sec-pipeline" onclick="smoothScrollTo('sec-pipeline',event)" data-en="Lead Pipeline" data-ar="خط العملاء">Lead Pipeline</a>
     <a href="#sec-insights" onclick="smoothScrollTo('sec-insights',event)" data-en="AI Insights"  data-ar="رؤى الذكاء الاصطناعي">AI Insights</a>
-    <a href="#sec-geo"      onclick="smoothScrollTo('sec-geo',event)"      data-en="Geographic"   data-ar="Ø§Ù„Ø¬ØºØ±Ø§ÙÙŠ">Geographic</a>
+    <a href="#sec-geo"      onclick="smoothScrollTo('sec-geo',event)"      data-en="Geographic"   data-ar="الجغرافي">Geographic</a>
     <a href="#sec-agents"   onclick="smoothScrollTo('sec-agents',event)"   data-en="Agents"       data-ar="الوكلاء">Agents</a>
     <a href="#sec-alerts"   onclick="smoothScrollTo('sec-alerts',event)"   data-en="Alerts"       data-ar="التنبيهات">Alerts</a>
     <a href="#sec-journey"  onclick="smoothScrollTo('sec-journey',event)"  data-en="Lead Journey" data-ar="رحلة العميل">Lead Journey</a>
@@ -665,7 +665,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 
   <!-- Hot Leads Alert -->
   <div id="hotLeadsSection" style="display:none;margin-bottom:24px">
-    <div class="section-label" style="color:var(--red)"><span data-en="🔥 Hot Leads — Immediate Attention" data-ar="🔥 عملاء ساخنون — تحتاج اهتمام ÙÙˆØ±ÙŠ">🔥 Hot Leads — Immediate Attention</span></div>
+    <div class="section-label" style="color:var(--red)"><span data-en="🔥 Hot Leads — Immediate Attention" data-ar="🔥 عملاء ساخنون — تحتاج اهتمام فوري">🔥 Hot Leads — Immediate Attention</span></div>
     <div class="card" style="border:2px solid var(--red);padding:0;overflow:hidden">
       <div style="padding:10px 20px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-light)">
         <span data-en="Hot = score 80+ and status is new." data-ar="Hot = score 80+ and status is new.">Hot = score 80+ and status is new.</span>
@@ -741,7 +741,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
             </div>
             <div style="text-align:center">
               <div style="font-size:12px;font-weight:700;color:var(--navy)" data-en="Avg Treatment Score" data-ar="متوسط نقاط المعاملة">Avg Treatment Score</div>
-              <div style="font-size:11px;color:var(--text-light);margin-top:2px" data-en="Agent interaction quality" data-ar="جودة ØªÙØ§Ø¹Ù„ الوكيل">Agent interaction quality</div>
+              <div style="font-size:11px;color:var(--text-light);margin-top:2px" data-en="Agent interaction quality" data-ar="جودة تفاعل الوكيل">Agent interaction quality</div>
             </div>
           </div>
         </div>
@@ -765,7 +765,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   </div>
 
   <!-- Geographic -->
-  <div id="sec-geo" class="section-label"><span data-en="Geographic Distribution" data-ar="التوزيع Ø§Ù„Ø¬ØºØ±Ø§ÙÙŠ">Geographic Distribution</span></div>
+  <div id="sec-geo" class="section-label"><span data-en="Geographic Distribution" data-ar="التوزيع الجغرافي">Geographic Distribution</span></div>
   <div class="card">
     <div class="card-head" data-en="Leads by Country" data-ar="العملاء حسب الدولة">Leads by Country</div>
     <div id="geoList"><div style="padding:4px 0">
@@ -827,7 +827,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   <div id="sec-alerts" class="section-label"><span data-en="Active Alerts" data-ar="التنبيهات النشطة">Active Alerts</span></div>
   <div class="card" style="padding:0;overflow:hidden">
     <div style="padding:18px 22px 14px;border-bottom:1px solid var(--border)">
-      <div class="card-head" style="margin:0" data-en="Open Alerts" data-ar="التنبيهات Ø§Ù„Ù…ÙØªÙˆØ­Ø©">Open Alerts</div>
+      <div class="card-head" style="margin:0" data-en="Open Alerts" data-ar="التنبيهات المفتوحة">Open Alerts</div>
     </div>
   <div id="alertsList"><div style="padding:4px 0">
     <div style="display:flex;align-items:flex-start;gap:14px;padding:14px 22px;border-bottom:1px solid var(--border)"><div class="skeleton" style="height:40px;width:4px;border-radius:4px;flex-shrink:0"></div><div style="flex:1"><div class="skeleton" style="height:10px;width:45%;margin-bottom:10px;border-radius:4px"></div><div class="skeleton" style="height:9px;width:70%;border-radius:4px"></div></div><div class="skeleton" style="height:22px;width:50px;border-radius:20px;flex-shrink:0"></div></div>
@@ -921,8 +921,8 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
       <div class="jfilter-label" data-en="Channel" data-ar="القناة">Channel</div>
       <select class="jfilter-select" id="jChannel" onchange="jFilterChange('channel',this.value)">
         <option value="" data-en="All" data-ar="الكل">All</option>
-        <option value="maqsam" data-en="Maqsam only" data-ar="مقسم ÙÙ‚Ø·">Maqsam only</option>
-        <option value="whatsapp" data-en="WhatsApp only" data-ar="واتساب ÙÙ‚Ø·">WhatsApp only</option>
+        <option value="maqsam" data-en="Maqsam only" data-ar="مقسم فقط">Maqsam only</option>
+        <option value="whatsapp" data-en="WhatsApp only" data-ar="واتساب فقط">WhatsApp only</option>
         <option value="both" data-en="Both channels" data-ar="القناتان">Both channels</option>
       </select>
     </div>
@@ -973,9 +973,9 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
       </select>
     </div>
     <div class="jfilter-sep"></div>
-    <button class="jfilter-toggle" id="jHighRisk" onclick="toggleHighRisk()">⚠️ <span data-en="High Risk Only" data-ar="عالي الخطورة ÙÙ‚Ø·">High Risk Only</span></button>
+    <button class="jfilter-toggle" id="jHighRisk" onclick="toggleHighRisk()">⚠️ <span data-en="High Risk Only" data-ar="عالي الخطورة فقط">High Risk Only</span></button>
     <div class="jfilter-actions">
-      <button class="btn-primary jfilter-apply" onclick="applyJourneyFilters()">🔍 <span data-en="Apply Filters" data-ar="تطبيق Ø§Ù„ÙÙ„Ø§ØªØ±">Apply Filters</span></button>
+      <button class="btn-primary jfilter-apply" onclick="applyJourneyFilters()">🔍 <span data-en="Apply Filters" data-ar="تطبيق الفلاتر">Apply Filters</span></button>
       <a href="#" class="jfilter-reset" onclick="resetJourneyFilters(event)" data-en="Reset" data-ar="إعادة تعيين">Reset</a>
       <button class="btn-icon" id="journeyExportBtn" onclick="exportJourneyCSV(event)" title="Export CSV">📥 <span data-en="Export CSV" data-ar="تصدير CSV">Export CSV</span></button>
     </div>
@@ -1325,7 +1325,7 @@ function renderGeo(leads) {
   const sorted = Object.values(counts).sort((a,b)=>b.count-a.count);
   const total  = sorted.reduce((s,c)=>s+c.count, 0);
   if (!sorted.length) {
-    document.getElementById('geoList').innerHTML = `<div class="empty-state"><div class="empty-icon">🌍</div><div class="empty-text" data-en="No location data" data-ar="لا توجد بيانات Ø¬ØºØ±Ø§ÙÙŠØ©">No location data</div></div>`;
+    document.getElementById('geoList').innerHTML = `<div class="empty-state"><div class="empty-icon">🌍</div><div class="empty-text" data-en="No location data" data-ar="لا توجد بيانات جغرافية">No location data</div></div>`;
     return;
   }
   const max = sorted[0].count;
@@ -1379,7 +1379,7 @@ function renderKPI(ov, ch) {
 
   document.getElementById('kpiGrid').innerHTML = `
     <div class="kpi-card${_fiCls()}">
-      <div class="kpi-label" data-en="Unique Leads" data-ar="عملاء ÙØ±ÙŠØ¯ÙˆÙ†">${lang==='ar'?'عملاء ÙØ±ÙŠØ¯ÙˆÙ†':'Unique Leads'}</div>
+      <div class="kpi-label" data-en="Unique Leads" data-ar="عملاء فريدون">${lang==='ar'?'عملاء ÙØ±ÙŠØ¯ÙˆÙ†':'Unique Leads'}</div>
       <div class="kpi-value">${fmt(ov.leads.total)}</div>
       <div class="kpi-sub">${fmt(ov.leads.converted)} ${lang==='ar'?'محول':'converted'} · ${lang==='ar'?'Ø¨Ø§Ù„Ù‡Ø§ØªÙ':'by phone'}</div>
       <span class="kpi-badge badge-blue">${pct(ov.leads.conversion_rate)} CVR</span>
@@ -1404,7 +1404,7 @@ function renderKPI(ov, ch) {
       <span class="kpi-badge badge-green">WhatsApp</span>
     </div>
     <div class="kpi-card ${ov.alerts.open>0?'red':''}${_fiCls()}" style="animation-delay:.2s">
-      <div class="kpi-label" data-en="Open Alerts" data-ar="التنبيهات Ø§Ù„Ù…ÙØªÙˆØ­Ø©">${lang==='ar'?'التنبيهات Ø§Ù„Ù…ÙØªÙˆØ­Ø©':'Open Alerts'}</div>
+      <div class="kpi-label" data-en="Open Alerts" data-ar="التنبيهات المفتوحة">${lang==='ar'?'التنبيهات Ø§Ù„Ù…ÙØªÙˆØ­Ø©':'Open Alerts'}</div>
       <div class="kpi-value" style="color:${ov.alerts.open>0?'var(--red)':'var(--navy)'}">${fmt(ov.alerts.open)}</div>
       <div class="kpi-sub">${fmt(ov.alerts.high)} ${lang==='ar'?'عالية الخطورة':'high severity'}</div>
       <span class="kpi-badge ${ov.alerts.open>0?'badge-red':'badge-green'}">${ov.alerts.open>0?(lang==='ar'?'يحتاج إجراء':'Action needed'):(lang==='ar'?'بخير':'All clear')}</span>
@@ -1445,7 +1445,7 @@ function renderChannels(ch, quality) {
     </div>
     <div class="ch-row"><span class="ch-row-label" data-en="Total Leads" data-ar="إجمالي العملاء">${lang==='ar'?'إجمالي العملاء':'Total Leads'}</span><span class="ch-row-val">${fmt(ch.whatsapp.leads)}</span></div>
     <div class="ch-row"><span class="ch-row-label" data-en="Active Chats" data-ar="المحادثات النشطة">${lang==='ar'?'المحادثات النشطة':'Active Chats'}</span><span class="ch-row-val">${fmt(ch.whatsapp.messages)}</span></div>
-    <div class="ch-row"><span class="ch-row-label" data-en="Stored Messages" data-ar="الرسائل Ø§Ù„Ù…Ø­ÙÙˆØ¸Ø©">${lang==='ar'?'الرسائل Ø§Ù„Ù…Ø­ÙÙˆØ¸Ø©':'Stored Messages'}</span><span class="ch-row-val">${fmt(ch.whatsapp.stored_messages ?? ch.whatsapp.messages)}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Stored Messages" data-ar="الرسائل المحفوظة">${lang==='ar'?'الرسائل Ø§Ù„Ù…Ø­ÙÙˆØ¸Ø©':'Stored Messages'}</span><span class="ch-row-val">${fmt(ch.whatsapp.stored_messages ?? ch.whatsapp.messages)}</span></div>
     <div class="ch-row"><span class="ch-row-label" data-en="Avg Response Time" data-ar="متوسط وقت الرد">${lang==='ar'?'متوسط وقت الرد':'Avg Response Time'}</span><span class="ch-row-val">${ch.whatsapp.avg_response_time_min ? fmt(ch.whatsapp.avg_response_time_min,1)+'m' : '—'}</span></div>
     <div class="ch-row"><span class="ch-row-label" data-en="Conversion Rate" data-ar="معدل التحويل">${lang==='ar'?'معدل التحويل':'Conversion Rate'}</span><span class="ch-row-val"><span class="pill ${ch.whatsapp.conversion_rate>0?'pill-green':'pill-gray'}">${pct(ch.whatsapp.conversion_rate)}</span></span></div>`;
 
@@ -1685,7 +1685,7 @@ function renderQualityRisk(quality, ov) {
     :(lang==='ar'?'مختلط':'Mixed');
   const overallColor=pos>neg&&pos>neu?'var(--green)':neg>pos?'var(--red)':'var(--warn)';
   const bySev=quality?.alerts?.by_severity||{};
-  const RECS={HIGH:{en:'Immediate action required — escalate to a senior agent or supervisor.',ar:'يتطلب تدخلاً ÙÙˆØ±ÙŠØ§Ù‹ — تصعيد إلى وكيل أقدم أو Ù…Ø´Ø±Ù الآن.'},MED:{en:'Follow up within 24 hours to prevent escalation.',ar:'متابعة خلال 24 ساعة لتجنب التصعيد.'},LOW:{en:'Monitor and address during regular workflow.',ar:'راقب وعالج ضمن سير العمل المعتاد.'}};
+  const RECS={HIGH:{en:'Immediate action required — escalate to a senior agent or supervisor.',ar:'يتطلب تدخلاً فوريØ§Ù‹ — تصعيد إلى وكيل أقدم أو Ù…Ø´Ø±Ù الآن.'},MED:{en:'Follow up within 24 hours to prevent escalation.',ar:'متابعة خلال 24 ساعة لتجنب التصعيد.'},LOW:{en:'Monitor and address during regular workflow.',ar:'راقب وعالج ضمن سير العمل المعتاد.'}};
   const sevCards=['HIGH','MED','LOW'].map(sev=>{
     const count=bySev[sev]||0;
     const color=sev==='HIGH'?'var(--red)':sev==='MED'?'var(--warn)':'var(--blue)';
@@ -2865,7 +2865,7 @@ function renderAlerts(quality) {
   const el = document.getElementById('alertsList');
   const wasExpanded = document.getElementById('alertsRest')?.style.display === 'block';
   if (!list.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text" data-en="All clear — no open alerts" data-ar="لا توجد تنبيهات Ù…ÙØªÙˆØ­Ø©">${lang==='ar'?'لا توجد تنبيهات Ù…ÙØªÙˆØ­Ø©':'All clear — no open alerts'}</div><div class="empty-sub" data-en="System is operating normally" data-ar="النظام يعمل بشكل طبيعي">${lang==='ar'?'النظام يعمل بشكل طبيعي':'System is operating normally'}</div></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text" data-en="All clear — no open alerts" data-ar="لا توجد تنبيهات مفتوحة">${lang==='ar'?'لا توجد تنبيهات Ù…ÙØªÙˆØ­Ø©':'All clear — no open alerts'}</div><div class="empty-sub" data-en="System is operating normally" data-ar="النظام يعمل بشكل طبيعي">${lang==='ar'?'النظام يعمل بشكل طبيعي':'System is operating normally'}</div></div>`;
     return;
   }
   const typeLabels = {no_reply:lang==='ar'?'لا رد':'No Reply',weak_engagement:lang==='ar'?'ØªÙØ§Ø¹Ù„ Ø¶Ø¹ÙŠÙ':'Weak Engagement',negative_sentiment:lang==='ar'?'مشاعر سلبية':'Negative Sentiment',poor_treatment:lang==='ar'?'معاملة سيئة':'Poor Treatment',beginner_risk:lang==='ar'?'خطر مبتدئ':'Beginner Risk',slow_response:lang==='ar'?'رد بطيء':'Slow Response',stale_callback:lang==='ar'?'معاودة متأخرة':'Stale Callback',profit_expectations:lang==='ar'?'توقعات Ù…ÙØ±Ø·Ø©':'Profit Expectations'};
@@ -3799,7 +3799,7 @@ function setLiveStatus(connected) {
   if (!dot) return;
   dot.className = 'live-dot ' + (connected ? 'on' : 'off');
   dot.title = connected
-    ? (lang==='ar' ? 'متصل — تحديث ÙÙˆØ±ÙŠ' : 'Connected — live updates')
+    ? (lang==='ar' ? 'متصل — تحديث فوري' : 'Connected — live updates')
     : (lang==='ar' ? 'غير متصل — استطلاع كل دقيقتين' : 'Disconnected — polling every 2 min');
 }
 
