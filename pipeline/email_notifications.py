@@ -50,6 +50,18 @@ CALLBELL_API_KEY = os.getenv("CALLBELL_API_KEY", "")
 CALLBELL_CHANNEL_UUID = os.getenv("CALLBELL_CHANNEL_UUID", "")
 _contacts_cache: dict = {"loaded_at": 0.0, "contacts": {}}
 
+AGENT_CONTACT_ALIASES = {
+    # Alert rows sometimes carry shortened or alternate names that do not
+    # exactly match the contact sheet names used for Telegram lookup.
+    "fatma": "fatma aqel",
+    "amjad": "amjad alkhawaldi",
+    "amjad mahmoud": "amjad alkhawaldi",
+    "maitha": "maitha almoqbali",
+    "maitha moqbali": "maitha almoqbali",
+    "maitha meqbali": "maitha almoqbali",
+    "meqbali": "maitha almoqbali",
+}
+
 
 def _agent_phone_env_key(agent_name: str | None) -> str:
     slug = re.sub(r"[^A-Z0-9]+", "_", _normalize_name(agent_name).upper()).strip("_")
@@ -83,9 +95,16 @@ def _agent_telegram_id(agent_name: str | None) -> str:
     env_id = os.getenv(_agent_telegram_env_key(agent_name), "").strip()
     if env_id:
         return env_id
-    # 2. Auto-lookup: get @username from Google Sheet, then query Supabase
+    # 2. Google Sheet lookup
     contact = _agent_contact(agent_name)
-    username = (contact or {}).get("telegram", "").strip()
+    if not contact:
+        return ""
+    # 2a. Direct chat_id column in Sheet — most reliable, no DB round-trip
+    direct_id = contact.get("telegram_id", "").strip()
+    if direct_id:
+        return direct_id
+    # 2b. Fallback: @username → telegram_chat_ids table
+    username = contact.get("telegram", "").strip()
     if not username:
         return ""
     return _telegram_chat_id_from_db(username)
@@ -195,17 +214,24 @@ def _load_agent_contacts() -> dict[str, dict]:
                 or ""
             ).strip()
             tg_raw = ""
+            tg_direct_id = ""
             for _k, _v in row.items():
-                if "telegram" in _k.lower():
-                    tg_raw = (_v or "").strip()
-                    break
+                k_lower = _k.lower()
+                if "telegram" not in k_lower:
+                    continue
+                v = (_v or "").strip()
+                if "id" in k_lower or "chat" in k_lower:
+                    tg_direct_id = v
+                elif not tg_raw:
+                    tg_raw = v
             # Accept @username or full t.me/username links
             if tg_raw.startswith("http"):
                 tg_raw = tg_raw.rstrip("/").split("/")[-1]
             telegram = tg_raw.lstrip("@").lower() if tg_raw else ""
+            telegram_id = re.sub(r"[^\d]", "", tg_direct_id) if tg_direct_id else ""
             if not (name and email):
                 continue
-            contact = {"name": name, "email": email, "phone": phone, "telegram": telegram}
+            contact = {"name": name, "email": email, "phone": phone, "telegram": telegram, "telegram_id": telegram_id}
             for key in _name_keys(name):
                 contacts[key] = contact
     except Exception:
@@ -217,7 +243,11 @@ def _load_agent_contacts() -> dict[str, dict]:
 
 def _agent_contact(agent_name: str | None) -> dict | None:
     contacts = _load_agent_contacts()
-    for key in _name_keys(agent_name):
+    keys = _name_keys(agent_name)
+    alias = AGENT_CONTACT_ALIASES.get(_normalize_name(agent_name))
+    if alias:
+        keys.update(_name_keys(alias))
+    for key in keys:
         if key in contacts:
             return contacts[key]
     return None
@@ -792,11 +822,24 @@ def notify_agent_alert(alert: dict) -> bool:
     subject = f"Fiper Alert - {severity} - {alert_type}"
     email_sent = _send_email(recipient, subject, html_body) if recipient else False
     whatsapp_sent = _send_whatsapp_callbell(whatsapp_phone, wa_body) if whatsapp_phone else False
-    telegram_sent = (
-        _send_telegram_alert(telegram_id, tg_body, alert=alert, agent_name=agent, subject=subject)
-        if telegram_id
-        else False
-    )
+    if telegram_id:
+        telegram_sent = _send_telegram_alert(
+            telegram_id, tg_body, alert=alert, agent_name=agent, subject=subject
+        )
+    else:
+        _log_notification_delivery(
+            alert_id=alert.get("id"),
+            lead_id=alert.get("lead_id"),
+            agent_name=agent,
+            channel="telegram",
+            recipient=None,
+            status="skipped",
+            subject=subject,
+            message_preview=tg_body,
+            provider_response={"reason": "no_telegram_recipient"},
+            error_message="No Telegram chat ID resolved for agent",
+        )
+        telegram_sent = False
     return email_sent or whatsapp_sent or telegram_sent
 
 
