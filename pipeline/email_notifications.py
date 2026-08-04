@@ -897,13 +897,7 @@ def send_webhook_health_alert(details: dict) -> bool:
         f"{tg_lines}\n\n"
         "👉 ManyContacts → API / Developers → re\\-enable webhook"
     )
-    _send_telegram(TELEGRAM_ADMIN_CHAT_ID, tg_text)
-
-    return _send_email(
-        recipients,
-        "Fiper Alert - WhatsApp webhook may be disabled",
-        html_body,
-    )
+    return _send_telegram(TELEGRAM_ADMIN_CHAT_ID, tg_text)
 
 
 def send_supervisor_report(report_label: str = "") -> bool:
