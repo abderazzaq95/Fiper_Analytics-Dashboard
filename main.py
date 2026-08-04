@@ -2736,51 +2736,58 @@ async def _process_manycontacts_webhook(body: dict, now_iso: str, path: str, url
             _last_webhook_processing_errors.pop(0)
 @app.post("/webhook/manycontacts")
 @app.post("/webhook/whatsapp")
-@app.post("/webhook/manycontacts")
 @app.post("/webhook/meta")
 @app.post("/webhook/wa")
 @app.post("/webhook/manycontacts/message_new")
 @app.post("/webhook/manycontacts/messages")
 async def webhook_manycontacts(request: Request):
-    raw = await request.body()
-    ct = request.headers.get("content-type", "")
-    log.info(f"[webhook/mc] POST {request.url.path} | size={len(raw)} | ct={ct!r}")
-
-    # Read optional ?wa_line= query param — set per-inbox in ManyContacts webhook URL.
-    # This is the primary mechanism for attributing messages to a business line since
-    # ManyContacts does not include the business number in the webhook payload itself.
-    _url_line_raw = request.query_params.get("wa_line") or request.query_params.get("line")
-    _url_line = whatsapp.normalize_business_line(_url_line_raw) if _url_line_raw else None
-    if _url_line and _url_line not in whatsapp.BUSINESS_NUMBERS:
-        log.warning(f"[webhook/mc] unknown wa_line in URL: {_url_line_raw!r} — ignored")
-        _url_line = None
-    if _url_line:
-        log.info(f"[webhook/mc] wa_line={_url_line!r} attributed from URL param")
-
     try:
-        body = json.loads(raw)
-    except Exception:
-        log.warning(f"[webhook/mc] non-JSON body: {raw[:500]!r}")
-        _last_webhook_payloads.append({"at": datetime.now(timezone.utc).isoformat(), "raw": raw[:1000].decode("utf-8", "replace"), "parsed": False})
+        raw = await request.body()
+        ct = request.headers.get("content-type", "")
+        log.info(f"[webhook/mc] POST {request.url.path} | size={len(raw)} | ct={ct!r}")
+
+        # Read optional ?wa_line= query param — set per-inbox in ManyContacts webhook URL.
+        # This is the primary mechanism for attributing messages to a business line since
+        # ManyContacts does not include the business number in the webhook payload itself.
+        _url_line_raw = request.query_params.get("wa_line") or request.query_params.get("line")
+        try:
+            _url_line = whatsapp.normalize_business_line(_url_line_raw) if _url_line_raw else None
+        except Exception:
+            _url_line = None
+        if _url_line and _url_line not in whatsapp.BUSINESS_NUMBERS:
+            log.warning(f"[webhook/mc] unknown wa_line in URL: {_url_line_raw!r} — ignored")
+            _url_line = None
+        if _url_line:
+            log.info(f"[webhook/mc] wa_line={_url_line!r} attributed from URL param")
+
+        try:
+            body = json.loads(raw)
+        except Exception:
+            log.warning(f"[webhook/mc] non-JSON body: {raw[:500]!r}")
+            _last_webhook_payloads.append({"at": datetime.now(timezone.utc).isoformat(), "raw": raw[:1000].decode("utf-8", "replace"), "parsed": False})
+            if len(_last_webhook_payloads) > 5:
+                _last_webhook_payloads.pop(0)
+            return {"status": "ok"}
+
+        # Store last 5 payloads for debugging
+        _last_webhook_payloads.append({
+            "at": datetime.now(timezone.utc).isoformat(),
+            "path": request.url.path,
+            "event": body.get("event"),
+            "keys": list(body.keys()),
+            "body": body,
+            "preview": str(body)[:500],
+        })
         if len(_last_webhook_payloads) > 5:
             _last_webhook_payloads.pop(0)
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        asyncio.create_task(_process_manycontacts_webhook(body, now_iso, request.url.path, _url_line))
+        return {"status": "accepted"}
+
+    except Exception as e:
+        log.error(f"[webhook/mc] unexpected handler error: {e}", exc_info=True)
         return {"status": "ok"}
-
-    # Store last 5 payloads for debugging
-    _last_webhook_payloads.append({
-        "at": datetime.now(timezone.utc).isoformat(),
-        "path": request.url.path,
-        "event": body.get("event"),
-        "keys": list(body.keys()),
-        "body": body,
-        "preview": str(body)[:500],
-    })
-    if len(_last_webhook_payloads) > 5:
-        _last_webhook_payloads.pop(0)
-
-    now_iso = datetime.now(timezone.utc).isoformat()
-    asyncio.create_task(_process_manycontacts_webhook(body, now_iso, request.url.path, _url_line))
-    return {"status": "accepted"}
 
 
 # ---------------------------------------------------------------------------
