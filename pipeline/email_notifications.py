@@ -45,6 +45,7 @@ TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "")
 META_WHATSAPP_PHONE_ID = os.getenv("META_WHATSAPP_PHONE_ID", "")
 META_WHATSAPP_TOKEN = os.getenv("META_WHATSAPP_TOKEN", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_ADMIN_CHAT_ID = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "")
 CALLBELL_API_KEY = os.getenv("CALLBELL_API_KEY", "")
 CALLBELL_CHANNEL_UUID = os.getenv("CALLBELL_CHANNEL_UUID", "")
 _contacts_cache: dict = {"loaded_at": 0.0, "contacts": {}}
@@ -840,6 +841,19 @@ def send_webhook_health_alert(details: dict) -> bool:
       <b>Enable WhatsApp API webhook forwarding</b> is ON and saved.
     </p>
     """
+    _LINE_LABELS = {"96897245526": "Oman 🇴🇲", "905318880855": "Turkey 🇹🇷"}
+    tg_lines = "\n".join(
+        f"• Line *{_LINE_LABELS.get(str(item.get('number') or ''), str(item.get('number') or 'unknown'))}*"
+        f" — silent {item.get('lag_min', '?')} min"
+        for item in stale_lines
+    )
+    tg_text = (
+        "⚠️ *WhatsApp Webhook Stalled*\n\n"
+        f"{tg_lines}\n\n"
+        "👉 ManyContacts → API / Developers → re\\-enable webhook"
+    )
+    _send_telegram(TELEGRAM_ADMIN_CHAT_ID, tg_text)
+
     return _send_email(
         recipients,
         "Fiper Alert - WhatsApp webhook may be disabled",
