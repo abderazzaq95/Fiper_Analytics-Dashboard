@@ -2914,6 +2914,32 @@ def debug_send_weekly_report(token: str = Query("")):
     sent = email_notifications.send_weekly_intelligence_report("manual test")
     return {"sent": sent}
 
+@app.get("/api/debug/agent-telegram-status")
+def debug_agent_telegram_status(agents: str = Query(""), token: str = Query("")):
+    """Check Telegram registration + recent notification_deliveries for named agents."""
+    _require_email_debug_token(token)
+    names = [n.strip() for n in agents.split(",") if n.strip()] if agents else []
+    result = {}
+    for name in names:
+        contact = email_notifications.resolve_agent_contact(name)
+        rows = (
+            supabase.table("notification_deliveries")
+            .select("channel,status,agent_name,created_at,error_message")
+            .ilike("agent_name", f"%{name.split()[0]}%")
+            .eq("channel", "telegram")
+            .order("created_at", desc=True)
+            .limit(5)
+            .execute()
+            .data or []
+        )
+        result[name] = {
+            "telegram_id": contact.get("telegram_id") or "",
+            "email": contact.get("email") or "",
+            "recent_telegram_deliveries": rows,
+        }
+    return result
+
+
 @app.post("/api/debug/email/agent-alert")
 def debug_send_agent_alert(agent: str = Query("Jehad Qasim"), token: str = Query("")):
     _require_email_debug_token(token)
