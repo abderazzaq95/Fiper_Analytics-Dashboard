@@ -61,6 +61,7 @@ AGENT_CONTACT_ALIASES = {
     "maitha meqbali": "maitha almoqbali",
     "meqbali": "maitha almoqbali",
     "bashir": "bashir hallak",
+    "saif talib": "saif ghaleb",
 }
 
 
