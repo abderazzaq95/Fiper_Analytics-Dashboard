@@ -2924,10 +2924,10 @@ def debug_agent_telegram_status(agents: str = Query(""), token: str = Query(""))
         contact = email_notifications.resolve_agent_contact(name)
         rows = (
             supabase.table("notification_deliveries")
-            .select("channel,status,agent_name,created_at,error_message")
+            .select("channel,status,agent_name,sent_at,error_message")
             .ilike("agent_name", f"%{name.split()[0]}%")
             .eq("channel", "telegram")
-            .order("created_at", desc=True)
+            .order("sent_at", desc=True)
             .limit(5)
             .execute()
             .data or []
@@ -2941,22 +2941,33 @@ def debug_agent_telegram_status(agents: str = Query(""), token: str = Query(""))
 
 
 @app.post("/api/debug/email/agent-alert")
-def debug_send_agent_alert(agent: str = Query("Jehad Qasim"), token: str = Query("")):
+def debug_send_agent_alert(agent: str = Query("Jehad Qasim"), token: str = Query(""), force: bool = Query(False)):
     _require_email_debug_token(token)
     contact = email_notifications.resolve_agent_contact(agent)
+    telegram_id = email_notifications._agent_telegram_id(agent)
     try:
-        sent = email_notifications.notify_agent_alert({
+        alert = {
             "lead_id": "test",
             "agent_name": agent,
             "severity": "HIGH",
             "type": "test_alert",
-            "message": "Test alert notification from Fiper Analytics Dashboard.",
-        })
-        return {"agent": agent, "sent": sent, "contact": contact}
+            "message": "⚠️ TEST ONLY — This is a test alert from Fiper. No action needed.",
+        }
+        if force:
+            # Bypass working-hours guard: send channels directly
+            tg_sent = email_notifications._send_telegram(
+                telegram_id,
+                f"⚠️ *TEST ALERT*\n\nAgent: *{agent}*\nThis is a test from Fiper. No action needed.",
+            ) if telegram_id else False
+            sent = tg_sent
+        else:
+            sent = email_notifications.notify_agent_alert(alert)
+        return {"agent": agent, "sent": sent, "telegram_id": telegram_id, "contact": contact}
     except Exception as exc:
         return {
             "agent": agent,
             "sent": False,
+            "telegram_id": telegram_id,
             "contact": contact,
             "error": _safe_error_message(exc),
         }
