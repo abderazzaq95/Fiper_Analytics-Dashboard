@@ -114,7 +114,9 @@ def _upsert_alert(lead_id, agent_name, severity, alert_type, message):
         "type": alert_type,
         "message": message,
     }
-    supabase.table("alerts").insert(alert).execute()
+    result = supabase.table("alerts").insert(alert).execute()
+    if result.data:
+        alert["id"] = result.data[0]["id"]
     try:
         email_notifications.notify_agent_alert(alert)
     except Exception:
