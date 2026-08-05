@@ -1562,6 +1562,16 @@ async def lifespan(app: FastAPI):
     )
     scheduler.add_job(_ping_self, "interval", minutes=10, id="keepalive", replace_existing=True)
     scheduler.add_job(
+        lambda: alert_engine.run_all_checks(),
+        "interval",
+        minutes=15,
+        id="alert_checks",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(timezone.utc) + timedelta(minutes=5),
+    )
+    scheduler.add_job(
         check_whatsapp_webhook_health,
         "interval",
         minutes=2,
