@@ -704,8 +704,7 @@ def send_test_notification(to: str, phone: str = "") -> bool:
 
 def notify_agent_alert(alert: dict) -> bool:
     _now = datetime.now(ZoneInfo(REPORT_TIMEZONE))
-    if not (0 <= _now.weekday() <= 4 and 9 <= _now.hour < 19):
-        return False
+    _in_hours = (0 <= _now.weekday() <= 4 and 9 <= _now.hour < 19)
 
     agent = _display_agent_name(alert.get("agent_name")) or "unknown"
     contact = resolve_agent_contact(agent)
@@ -822,8 +821,9 @@ def notify_agent_alert(alert: dict) -> bool:
         "Please contact the lead and update the conversation now."
     )
     subject = f"Fiper Alert - {severity} - {alert_type}"
-    email_sent = _send_email(recipient, subject, html_body) if recipient else False
-    whatsapp_sent = _send_whatsapp_callbell(whatsapp_phone, wa_body) if whatsapp_phone else False
+    # Email and WhatsApp: business hours only (09:00–19:00 Mon–Fri)
+    email_sent = _send_email(recipient, subject, html_body) if (recipient and _in_hours) else False
+    whatsapp_sent = _send_whatsapp_callbell(whatsapp_phone, wa_body) if (whatsapp_phone and _in_hours) else False
     if telegram_id:
         telegram_sent = _send_telegram_alert(
             telegram_id, tg_body, alert=alert, agent_name=agent, subject=subject

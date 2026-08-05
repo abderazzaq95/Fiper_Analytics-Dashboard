@@ -11,7 +11,7 @@ supabase = create_client(
     os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY")
 )
 
-MAX_OPERATIONAL_ALERT_MINUTES = 24 * 60
+MAX_OPERATIONAL_ALERT_MINUTES = 4 * 60
 
 
 def _paginate(build_query) -> list:
@@ -218,7 +218,7 @@ def check_no_reply():
 
     leads = _paginate(
         lambda: supabase.table("leads")
-        .select("id,phone,wa_contact_id,assigned_agent,updated_at")
+        .select("id,phone,wa_contact_id,assigned_agent,updated_at,last_message_at")
         .eq("channel", "whatsapp")
     )
 
@@ -265,6 +265,14 @@ def check_no_reply():
                 agent = (lead.get("assigned_agent") if lead else None) or "unknown"
                 if not lead_id:
                     continue
+                # ManyContacts doesn't expose outbound messages via API/webhook.
+                # Use last_message_at (synced from contact.updatedAt) as a proxy:
+                # if it's newer than the last inbound, the agent replied outside our DB.
+                lead_last_msg = lead.get("last_message_at") if lead else None
+                if lead_last_msg:
+                    lead_last_msg_dt = datetime.fromisoformat(lead_last_msg.replace("Z", "+00:00"))
+                    if lead_last_msg_dt > sent:
+                        continue
                 still_unanswered_lead_ids.add(lead_id)
                 _upsert_alert(
                     lead_id, agent, "HIGH", "no_reply",
