@@ -704,7 +704,8 @@ def send_test_notification(to: str, phone: str = "") -> bool:
 
 def notify_agent_alert(alert: dict) -> bool:
     _now = datetime.now(ZoneInfo(REPORT_TIMEZONE))
-    _in_hours = (0 <= _now.weekday() <= 4 and 9 <= _now.hour < 19)
+    if not (0 <= _now.weekday() <= 4 and 9 <= _now.hour < 19):
+        return False
 
     agent = _display_agent_name(alert.get("agent_name")) or "unknown"
     contact = resolve_agent_contact(agent)
@@ -821,9 +822,8 @@ def notify_agent_alert(alert: dict) -> bool:
         "Please contact the lead and update the conversation now."
     )
     subject = f"Fiper Alert - {severity} - {alert_type}"
-    # Email and WhatsApp: business hours only (09:00–19:00 Mon–Fri)
-    email_sent = _send_email(recipient, subject, html_body) if (recipient and _in_hours) else False
-    whatsapp_sent = _send_whatsapp_callbell(whatsapp_phone, wa_body) if (whatsapp_phone and _in_hours) else False
+    email_sent = _send_email(recipient, subject, html_body) if recipient else False
+    whatsapp_sent = _send_whatsapp_callbell(whatsapp_phone, wa_body) if whatsapp_phone else False
     if telegram_id:
         telegram_sent = _send_telegram_alert(
             telegram_id, tg_body, alert=alert, agent_name=agent, subject=subject
@@ -843,6 +843,84 @@ def notify_agent_alert(alert: dict) -> bool:
         )
         telegram_sent = False
     return email_sent or whatsapp_sent or telegram_sent
+
+
+def send_overnight_alert_catchup() -> int:
+    """Send Telegram for any open alerts that fired outside working hours.
+
+    Runs at 09:05 UTC+2 Mon-Fri. Finds unresolved alerts from the last 20 hours
+    where no 'sent' notification exists, then delivers them now via Telegram only.
+    Returns number of notifications sent.
+    """
+    from datetime import timezone as _tz
+    cutoff = (datetime.now(_tz.utc) - timedelta(hours=20)).isoformat()
+    try:
+        alerts = (
+            supabase.table("alerts")
+            .select("id,lead_id,agent_name,severity,type,message,created_at")
+            .eq("resolved", False)
+            .gte("created_at", cutoff)
+            .execute()
+            .data or []
+        )
+    except Exception:
+        return 0
+
+    sent_count = 0
+    for alert in alerts:
+        alert_id = alert.get("id")
+        if not alert_id:
+            continue
+        # Skip if a 'sent' notification already exists for this alert
+        try:
+            existing = (
+                supabase.table("notification_deliveries")
+                .select("id")
+                .eq("alert_id", alert_id)
+                .eq("status", "sent")
+                .limit(1)
+                .execute()
+                .data or []
+            )
+        except Exception:
+            continue
+        if existing:
+            continue
+
+        agent = _display_agent_name(alert.get("agent_name")) or "unknown"
+        telegram_id = _agent_telegram_id(agent)
+        if not telegram_id:
+            continue
+
+        severity = alert.get("severity", "HIGH")
+        alert_type = alert.get("type", "alert")
+        message = alert.get("message", "")
+        created_at = alert.get("created_at", "")
+        try:
+            from zoneinfo import ZoneInfo as _ZI
+            alert_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            alert_local = alert_dt.astimezone(_ZI(REPORT_TIMEZONE))
+            alert_time_label = alert_local.strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            alert_time_label = created_at[:16]
+
+        tg_body = (
+            f"🔔 *Overnight Alert — {severity}*\n\n"
+            f"*Agent:* {agent}\n"
+            f"*Type:* {alert_type}\n"
+            f"*Alert:* {_clean_alert_message(message) or message}\n\n"
+            f"*Fired at ({REPORT_TIMEZONE_LABEL}):* {alert_time_label}\n"
+            "_This alert fired outside working hours and is delivered now._"
+        )
+        subject = f"Fiper Alert - {severity} - {alert_type} (overnight)"
+        ok = _send_telegram_alert(
+            telegram_id, tg_body,
+            alert=alert, agent_name=agent, subject=subject,
+        )
+        if ok:
+            sent_count += 1
+
+    return sent_count
 
 
 def send_webhook_health_alert(details: dict) -> bool:

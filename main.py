@@ -1380,8 +1380,8 @@ def check_whatsapp_webhook_health():
     """Email supervisors when a ManyContacts line has activity but message webhooks stall."""
     global _last_webhook_health_alert
 
-    threshold_min = int(os.getenv("WEBHOOK_STALE_MINUTES", "3"))
-    cooldown_min = int(os.getenv("WEBHOOK_ALERT_COOLDOWN_MINUTES", "30"))
+    threshold_min = int(os.getenv("WEBHOOK_STALE_MINUTES", "30"))
+    cooldown_min = int(os.getenv("WEBHOOK_ALERT_COOLDOWN_MINUTES", "120"))
     activity_window_min = int(os.getenv("WEBHOOK_ACTIVITY_WINDOW_MINUTES", "90"))
     now = datetime.now(timezone.utc)
 
@@ -1580,6 +1580,19 @@ async def lifespan(app: FastAPI):
         max_instances=1,
         coalesce=True,
         next_run_time=datetime.now(timezone.utc) + timedelta(minutes=2),
+    )
+    scheduler.add_job(
+        lambda: email_notifications.send_overnight_alert_catchup(),
+        "cron",
+        day_of_week="mon-fri",
+        hour=9,
+        minute=5,
+        timezone="Etc/GMT-2",
+        id="overnight_alert_catchup",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=3600,
     )
     scheduler.add_job(
         send_sales_report,
