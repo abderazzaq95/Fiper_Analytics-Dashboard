@@ -893,7 +893,7 @@ def send_overnight_alert_catchup() -> int:
             continue
 
         severity = alert.get("severity", "HIGH")
-        alert_type = alert.get("type", "alert")
+        alert_type = (alert.get("type") or "alert").replace("_", " ").title()
         message = alert.get("message", "")
         created_at = alert.get("created_at", "")
         try:
