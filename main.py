@@ -2827,6 +2827,79 @@ def health():
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
+def _qc_phone(value: object) -> str:
+    """Normalize a customer phone for the QC chat-presence lookup."""
+    digits = re.sub(r"\D", "", str(value or ""))
+    return digits[2:] if digits.startswith("00") else digits
+
+
+@app.post("/api/qc/chat-exists")
+async def qc_chat_exists(request: Request):
+    """Return message presence only; never expose WhatsApp message content."""
+    payload = await request.json()
+    raw_phones = payload.get("phones") if isinstance(payload, dict) else None
+    if not isinstance(raw_phones, list):
+        raise HTTPException(status_code=400, detail="phones must be an array")
+
+    phones = list(dict.fromkeys(_qc_phone(value) for value in raw_phones if _qc_phone(value)))
+    if len(phones) > 500:
+        raise HTTPException(status_code=400, detail="maximum 500 phones")
+    if not phones:
+        return {"results": {}}
+
+    variants = list(dict.fromkeys(
+        variant
+        for phone in phones
+        for variant in (phone, f"+{phone}", f"00{phone}")
+    ))
+    lead_rows = (
+        supabase.table("leads")
+        .select("id,phone")
+        .in_("phone", variants)
+        .execute()
+        .data or []
+    )
+
+    lead_phone = {row.get("id"): _qc_phone(row.get("phone")) for row in lead_rows if row.get("id")}
+    lead_ids = list(lead_phone)
+    message_rows: list[dict] = []
+    for offset in range(0, len(lead_ids), 100):
+        message_rows.extend((
+            supabase.table("messages")
+            .select("lead_id,sent_at,whatsapp_business_number")
+            .in_("lead_id", lead_ids[offset:offset + 100])
+            .execute()
+            .data or []
+        ))
+
+    results = {
+        phone: {
+            "hasChat": False,
+            "messageCount": 0,
+            "latestMessageAt": None,
+            "account": "oman" if phone.startswith("968") else "turkey",
+        }
+        for phone in phones
+    }
+    account_lines = {"oman": "96897245526", "turkey": "905318880855"}
+    for message in message_rows:
+        phone = lead_phone.get(message.get("lead_id"))
+        if phone not in results:
+            continue
+        expected_line = account_lines[results[phone]["account"]]
+        stored_line = _qc_phone(message.get("whatsapp_business_number"))
+        if stored_line and stored_line != expected_line:
+            continue
+        item = results[phone]
+        item["hasChat"] = True
+        item["messageCount"] += 1
+        sent_at = message.get("sent_at")
+        if sent_at and (not item["latestMessageAt"] or sent_at > item["latestMessageAt"]):
+            item["latestMessageAt"] = sent_at
+
+    return {"results": results}
+
+
 @app.get("/api/status")
 def pipeline_status():
     pipeline_job  = scheduler.get_job("pipeline")
