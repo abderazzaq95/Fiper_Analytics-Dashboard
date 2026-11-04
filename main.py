@@ -2833,17 +2833,74 @@ def _qc_phone(value: object) -> str:
     return digits[2:] if digits.startswith("00") else digits
 
 
+def _qc_name(value: object) -> str:
+    return re.sub(r"[^\w]+", " ", str(value or "").lower(), flags=re.UNICODE).strip()
+
+
+def _qc_same_agent(expected: object, actual: object) -> bool:
+    left, right = _qc_name(expected), _qc_name(actual)
+    if not left or not right:
+        return False
+    if left in right or right in left:
+        return True
+    left_parts, right_parts = set(left.split()), set(right.split())
+    return bool(left_parts & right_parts) and len(left_parts | right_parts) <= 4
+
+
+def _qc_chat_condition(messages: list[dict], call_agent: object, negative_analysis: bool = False) -> tuple[str, str]:
+    if not messages:
+        return "No Chat", "No stored WhatsApp messages"
+
+    wrong_number = re.compile(
+        r"wrong\s+(number|person)|not\s+(my|the)\s+number|رقم\s*(خاطئ|غلط)|"
+        r"لست\s+الشخص|مش\s+أنا|yanlış\s+numara",
+        re.IGNORECASE,
+    )
+    poor_chat = re.compile(
+        r"complain|complaint|scam|fraud|angry|unhappy|bad\s+service|lost\s+money|"
+        r"شكوى|احتيال|نصب|خداع|سيئ|غاضب|زعلان|خسرت|dolandır|şikayet|kötü",
+        re.IGNORECASE,
+    )
+    inbound_bodies = [str(m.get("body") or "") for m in messages if m.get("direction") == "inbound"]
+    if any(wrong_number.search(body) for body in inbound_bodies):
+        return "Wrong Number", "Client message indicates a wrong number"
+
+    outbound_agents = [m.get("agent_name") for m in messages if m.get("direction") == "outbound" and m.get("agent_name")]
+    if call_agent and outbound_agents and not any(_qc_same_agent(call_agent, name) for name in outbound_agents):
+        return "Another Agent", "Conversation is handled by another agent"
+
+    if negative_analysis or any(poor_chat.search(body) for body in inbound_bodies):
+        return "Poor", "Negative or complaint-related conversation detected"
+
+    inbound = [m for m in messages if m.get("direction") == "inbound"]
+    outbound = [m for m in messages if m.get("direction") == "outbound"]
+    if outbound and not inbound:
+        return "No Reply", "Agent wrote but the client did not reply"
+
+    ordered = sorted(messages, key=lambda m: str(m.get("sent_at") or ""))
+    if ordered and ordered[-1].get("direction") == "inbound":
+        return "Need Assist", "Latest stored message is from the client"
+    return "Good", "Two-way conversation with no unresolved negative signal"
+
+
 @app.post("/api/qc/chat-exists")
 async def qc_chat_exists(request: Request):
-    """Return message presence only; never expose WhatsApp message content."""
+    """Classify stored chats without exposing WhatsApp message content."""
     payload = await request.json()
-    raw_phones = payload.get("phones") if isinstance(payload, dict) else None
-    if not isinstance(raw_phones, list):
-        raise HTTPException(status_code=400, detail="phones must be an array")
+    raw_items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(raw_items, list):
+        raw_phones = payload.get("phones") if isinstance(payload, dict) else None
+        if not isinstance(raw_phones, list):
+            raise HTTPException(status_code=400, detail="items or phones must be an array")
+        raw_items = [{"key": _qc_phone(phone), "phone": phone, "agentName": ""} for phone in raw_phones]
+    if len(raw_items) > 500:
+        raise HTTPException(status_code=400, detail="maximum 500 items")
 
-    phones = list(dict.fromkeys(_qc_phone(value) for value in raw_phones if _qc_phone(value)))
-    if len(phones) > 500:
-        raise HTTPException(status_code=400, detail="maximum 500 phones")
+    items = [
+        {"key": str(item.get("key") or index), "phone": _qc_phone(item.get("phone")), "agentName": item.get("agentName")}
+        for index, item in enumerate(raw_items) if isinstance(item, dict) and _qc_phone(item.get("phone"))
+    ]
+    phones = list(dict.fromkeys(item["phone"] for item in items))
     if not phones:
         return {"results": {}}
 
@@ -2866,36 +2923,53 @@ async def qc_chat_exists(request: Request):
     for offset in range(0, len(lead_ids), 100):
         message_rows.extend((
             supabase.table("messages")
-            .select("lead_id,sent_at,whatsapp_business_number")
+            .select("lead_id,direction,body,agent_name,sent_at,whatsapp_business_number")
             .in_("lead_id", lead_ids[offset:offset + 100])
             .execute()
             .data or []
         ))
 
-    results = {
-        phone: {
-            "hasChat": False,
-            "messageCount": 0,
-            "latestMessageAt": None,
-            "account": "oman" if phone.startswith("968") else "turkey",
-        }
-        for phone in phones
-    }
+    negative_leads: set[str] = set()
+    for offset in range(0, len(lead_ids), 100):
+        analyses = (
+            supabase.table("ai_analysis")
+            .select("lead_id,sentiment,source")
+            .in_("lead_id", lead_ids[offset:offset + 100])
+            .execute()
+            .data or []
+        )
+        negative_leads.update(
+            row.get("lead_id") for row in analyses
+            if row.get("lead_id") and row.get("sentiment") == "negative" and row.get("source") == "whatsapp"
+        )
+
+    messages_by_phone: dict[str, list[dict]] = {phone: [] for phone in phones}
     account_lines = {"oman": "96897245526", "turkey": "905318880855"}
     for message in message_rows:
         phone = lead_phone.get(message.get("lead_id"))
-        if phone not in results:
+        if phone not in messages_by_phone:
             continue
-        expected_line = account_lines[results[phone]["account"]]
+        account = "oman" if phone.startswith("968") else "turkey"
+        expected_line = account_lines[account]
         stored_line = _qc_phone(message.get("whatsapp_business_number"))
         if stored_line and stored_line != expected_line:
             continue
-        item = results[phone]
-        item["hasChat"] = True
-        item["messageCount"] += 1
-        sent_at = message.get("sent_at")
-        if sent_at and (not item["latestMessageAt"] or sent_at > item["latestMessageAt"]):
-            item["latestMessageAt"] = sent_at
+        messages_by_phone[phone].append(message)
+
+    results = {}
+    for item in items:
+        phone_messages = messages_by_phone[item["phone"]]
+        is_negative = any(message.get("lead_id") in negative_leads for message in phone_messages)
+        condition, reason = _qc_chat_condition(phone_messages, item["agentName"], is_negative)
+        latest = max((str(message.get("sent_at") or "") for message in phone_messages), default="") or None
+        results[item["key"]] = {
+            "hasChat": bool(phone_messages),
+            "messageCount": len(phone_messages),
+            "latestMessageAt": latest,
+            "account": "oman" if item["phone"].startswith("968") else "turkey",
+            "condition": condition,
+            "reason": reason,
+        }
 
     return {"results": results}
 
