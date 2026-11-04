@@ -2874,12 +2874,14 @@ def _qc_chat_condition(messages: list[dict], call_agent: object, negative_analys
 
     inbound = [m for m in messages if m.get("direction") == "inbound"]
     outbound = [m for m in messages if m.get("direction") == "outbound"]
-    if outbound and not inbound:
-        return "No Reply", "Agent wrote but the client did not reply"
+    if inbound and not outbound:
+        return "No Reply", "Client wrote but the agent did not reply"
 
     ordered = sorted(messages, key=lambda m: str(m.get("sent_at") or ""))
     if ordered and ordered[-1].get("direction") == "inbound":
         return "Need Assist", "Latest stored message is from the client"
+    if outbound and not inbound:
+        return "Good", "Agent contacted the client; no agent response is missing"
     return "Good", "Two-way conversation with no unresolved negative signal"
 
 
