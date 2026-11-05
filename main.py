@@ -2865,9 +2865,10 @@ def _qc_chat_condition(messages: list[dict], call_agent: object, negative_analys
     if any(wrong_number.search(body) for body in inbound_bodies):
         return "Wrong Number", "Client message indicates a wrong number"
 
-    outbound_agents = [m.get("agent_name") for m in messages if m.get("direction") == "outbound" and m.get("agent_name")]
-    if call_agent and outbound_agents and not any(_qc_same_agent(call_agent, name) for name in outbound_agents):
-        return "Another Agent", "Conversation is handled by another agent"
+    # Do not infer "Another Agent" from display-name mismatches alone. ManyContacts
+    # names are incomplete, transliterated or inherited from a previous owner, which
+    # caused valid chats to lose criterion 10. That condition now requires an explicit
+    # assignment/owner signal when one becomes available in the stored webhook data.
 
     if negative_analysis or any(poor_chat.search(body) for body in inbound_bodies):
         return "Poor", "Negative or complaint-related conversation detected"
