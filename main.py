@@ -2886,6 +2886,52 @@ def _qc_chat_condition(messages: list[dict], call_agent: object, negative_analys
     return "Good", "Two-way conversation with no unresolved negative signal"
 
 
+def _qc_account_opened(
+    messages: list[dict], lead_statuses: list[object], analyses: list[dict]
+) -> tuple[bool | None, str, str]:
+    """Conservatively confirm an opened account from stored CRM/WhatsApp evidence.
+
+    Unknown is deliberately returned as None rather than False: an absent message is
+    not evidence that the customer has no account.
+    """
+    if any(str(status or "").lower() == "converted" for status in lead_statuses):
+        return True, "CRM lead status is converted", "crm"
+
+    converted = next(
+        (row for row in sorted(analyses, key=lambda row: str(row.get("analyzed_at") or ""), reverse=True)
+         if str(row.get("source") or "").lower() == "whatsapp"
+         and str(row.get("outcome") or "").lower() == "converted"),
+        None,
+    )
+    if converted:
+        summary = str(converted.get("summary") or "").strip()
+        return True, summary[:240] or "WhatsApp analysis outcome is converted", "whatsapp_analysis"
+
+    # Strong completion language only. Invitations, registration links and future
+    # promises must not be interpreted as an already-opened account.
+    opened = re.compile(
+        r"account\s+(?:has\s+been|is|was)\s+(?:opened|created|activated|verified)|"
+        r"(?:opened|created|activated|verified)\s+(?:your|the)\s+account|"
+        r"already\s+(?:opened|created|registered|have)\s+(?:an?\s+)?account|"
+        r"your\s+(?:account\s+number|login\s+credentials|username\s+and\s+password)|"
+        r"\u062a\u0645\s+(?:\u0641\u062a\u062d|\u0625\u0646\u0634\u0627\u0621|\u062a\u0641\u0639\u064a\u0644)\s+\u0627\u0644\u062d\u0633\u0627\u0628|"
+        r"\u062d\u0633\u0627\u0628\u0643\s+(?:\u062c\u0627\u0647\u0632|\u0645\u0641\u062a\u0648\u062d|\u0645\u0641\u0639\u0644)|"
+        r"\u0641\u062a\u062d\u062a\s+(?:\u062d\u0633\u0627\u0628|\u0627\u0644\u062d\u0633\u0627\u0628)|"
+        r"\u0623\u0646\u0634\u0623\u062a\s+(?:\u062d\u0633\u0627\u0628|\u0627\u0644\u062d\u0633\u0627\u0628)|"
+        r"\u0628\u064a\u0627\u0646\u0627\u062a\s+\u0627\u0644\u062f\u062e\u0648\u0644|\u0631\u0642\u0645\s+\u0627\u0644\u062d\u0633\u0627\u0628|"
+        r"hesab(?:\u0131n\u0131z)?\s+(?:a\u00e7\u0131ld\u0131|aktif)|hesap\s+olu\u015fturuldu|giri\u015f\s+bilgileriniz",
+        re.IGNORECASE,
+    )
+    for message in sorted(messages, key=lambda row: str(row.get("sent_at") or ""), reverse=True):
+        body = str(message.get("body") or "").strip()
+        if body and opened.search(body):
+            role = "client" if message.get("direction") == "inbound" else (message.get("agent_name") or "agent")
+            when = str(message.get("sent_at") or "").strip()
+            evidence = f"{when} {role}: {body}".strip()
+            return True, evidence[:240], "whatsapp_message"
+    return None, "No explicit account-opening evidence in the stored conversation", "whatsapp"
+
+
 @app.post("/api/qc/chat-exists")
 async def qc_chat_exists(request: Request):
     """Classify stored chats without exposing WhatsApp message content."""
@@ -2914,33 +2960,44 @@ async def qc_chat_exists(request: Request):
     ))
     lead_rows = (
         supabase.table("leads")
-        .select("id,phone")
+        .select("id,phone,status")
         .in_("phone", variants)
         .execute()
         .data or []
     )
 
     lead_phone = {row.get("id"): _qc_phone(row.get("phone")) for row in lead_rows if row.get("id")}
+    lead_status = {row.get("id"): row.get("status") for row in lead_rows if row.get("id")}
     lead_ids = list(lead_phone)
     message_rows: list[dict] = []
     for offset in range(0, len(lead_ids), 100):
-        message_rows.extend((
-            supabase.table("messages")
-            .select("lead_id,direction,body,agent_name,sent_at,whatsapp_business_number")
-            .in_("lead_id", lead_ids[offset:offset + 100])
-            .execute()
-            .data or []
-        ))
+        page_start = 0
+        while True:
+            page = (
+                supabase.table("messages")
+                .select("lead_id,direction,body,agent_name,sent_at,whatsapp_business_number")
+                .in_("lead_id", lead_ids[offset:offset + 100])
+                .order("sent_at")
+                .range(page_start, page_start + 999)
+                .execute()
+                .data or []
+            )
+            message_rows.extend(page)
+            if len(page) < 1000:
+                break
+            page_start += 1000
 
     negative_leads: set[str] = set()
+    analysis_rows: list[dict] = []
     for offset in range(0, len(lead_ids), 100):
         analyses = (
             supabase.table("ai_analysis")
-            .select("lead_id,sentiment,source")
+            .select("lead_id,sentiment,source,outcome,summary,analyzed_at")
             .in_("lead_id", lead_ids[offset:offset + 100])
             .execute()
             .data or []
         )
+        analysis_rows.extend(analyses)
         negative_leads.update(
             row.get("lead_id") for row in analyses
             if row.get("lead_id") and row.get("sentiment") == "negative" and row.get("source") == "whatsapp"
@@ -2962,8 +3019,15 @@ async def qc_chat_exists(request: Request):
     results = {}
     for item in items:
         phone_messages = messages_by_phone[item["phone"]]
+        phone_lead_ids = [lead_id for lead_id, phone in lead_phone.items() if phone == item["phone"]]
+        phone_analyses = [row for row in analysis_rows if row.get("lead_id") in phone_lead_ids]
         is_negative = any(message.get("lead_id") in negative_leads for message in phone_messages)
         condition, reason = _qc_chat_condition(phone_messages, item["agentName"], is_negative)
+        account_opened, account_evidence, account_source = _qc_account_opened(
+            phone_messages,
+            [lead_status.get(lead_id) for lead_id in phone_lead_ids],
+            phone_analyses,
+        )
         latest = max((str(message.get("sent_at") or "") for message in phone_messages), default="") or None
         results[item["key"]] = {
             "hasChat": bool(phone_messages),
@@ -2972,6 +3036,9 @@ async def qc_chat_exists(request: Request):
             "account": "oman" if item["phone"].startswith("968") else "turkey",
             "condition": condition,
             "reason": reason,
+            "accountOpened": account_opened,
+            "accountOpenedEvidence": account_evidence,
+            "accountOpenedSource": account_source,
         }
 
     return {"results": results}
