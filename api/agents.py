@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 from pipeline.time_ranges import since_iso
 from collections import defaultdict
 import re
+import threading
+import time
 from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line, resolve_agent_name
 
 load_dotenv()
@@ -117,6 +119,32 @@ def _message_agent_name(
     return None
 
 
+_agents_refreshing: set[str] = set()
+_agents_refresh_lock = threading.Lock()
+
+
+def _refresh_agents_in_background(cache_key: str, range: str, wa_line: str) -> None:
+    """Rebuild one cache entry in a background thread (at most one per key)."""
+    with _agents_refresh_lock:
+        if cache_key in _agents_refreshing:
+            return
+        _agents_refreshing.add(cache_key)
+
+    def work():
+        import logging
+        try:
+            data = _agents_inner(range, wa_line)
+            if data.get("agents"):
+                _agents_cache[cache_key] = (time.time(), data)
+        except Exception as exc:
+            logging.getLogger("fiper").warning(f"/api/agents background refresh failed ({cache_key}): {exc}")
+        finally:
+            with _agents_refresh_lock:
+                _agents_refreshing.discard(cache_key)
+
+    threading.Thread(target=work, name=f"agents-refresh-{cache_key}", daemon=True).start()
+
+
 @router.get("/api/agents")
 def agents(
     range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
@@ -128,13 +156,18 @@ def agents(
     cache_key = f"{range}:{wa_line}"
     now_ts = time.time()
 
-    # Return cached result if still fresh (skip cache when refresh=1)
+    # Return cached result if still fresh (skip cache when refresh=1).
+    # If it is older than the TTL, still answer instantly with it and rebuild
+    # it in the background (stale-while-revalidate): a week of agent stats
+    # takes minutes to compute, nobody should wait for that on page load.
     if refresh != "1":
         cached = _agents_cache.get(cache_key)
         if cached:
             cached_at, cached_data = cached
             if now_ts - cached_at < _AGENTS_CACHE_TTL:
                 return cached_data
+            _refresh_agents_in_background(cache_key, range, wa_line)
+            return {**cached_data, "stale_seconds": int(now_ts - cached_at)}
 
     try:
         data = _agents_inner(range, wa_line)
@@ -324,8 +357,11 @@ def _fetch_in_parallel(table: str, select: str, id_field: str, ids: list[str], e
         for future in as_completed(futures):
             try:
                 results.extend(future.result())
-            except Exception:
-                pass
+            except Exception as exc:
+                # Do not hide it: a lost batch silently lowers the agent numbers.
+                import logging
+                logging.getLogger("fiper").warning(
+                    f"_fetch_in_parallel: {table} batch of {len(futures[future])} failed: {exc}")
     return results
 
 

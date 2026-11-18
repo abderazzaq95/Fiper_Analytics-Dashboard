@@ -16,7 +16,7 @@ from supabase import create_client
 from dotenv import load_dotenv
 
 from pipeline import whatsapp, maqsam, ai_analyzer, alert_engine, email_notifications, reminders
-from api import overview, agents, leads, channels, quality, journey, journey_v2
+from api import overview, agents, leads, channels, quality, journey, journey_v2, auth
 
 load_dotenv()
 
@@ -1679,6 +1679,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Server-side login: every route except auth.PUBLIC_* needs a session cookie.
+app.middleware("http")(auth.auth_middleware)
+app.include_router(auth.router)
 app.include_router(overview.router)
 app.include_router(agents.router)
 app.include_router(leads.router)
@@ -3230,6 +3233,40 @@ def debug_send_agent_alert(agent: str = Query("Jehad Qasim"), token: str = Query
             "contact": contact,
             "error": _safe_error_message(exc),
         }
+
+
+@app.get("/api/waiting")
+def waiting_now():
+    """Dashboard 'Waiting now': customers without an answer (login required)."""
+    from pipeline import reports, reminder_templates
+    items = reports._waiting_now()
+    by_agent: dict[str, int] = {}
+    for w in items:
+        key = w.get("agent") or ""
+        by_agent[key] = by_agent.get(key, 0) + 1
+    now = datetime.now(timezone.utc)
+    return {
+        "mode": reminders.mode(),
+        "working_time": reminders.SCHEDULE.is_working_time(now),
+        "work_hours": f"{reminders.SCHEDULE.start_hour:02d}:00-{reminders.SCHEDULE.end_hour:02d}:00 {reminders.TZ_LABEL}",
+        "ladder": {"first": reminders.LADDER.first_min, "second": reminders.LADDER.second_min,
+                   "escalate": reminders.LADDER.escalate_min},
+        "total": len(items),
+        "over_2h": sum(1 for w in items if w["elapsed_min"] >= 120),
+        "by_agent": sorted(([a or None, n] for a, n in by_agent.items()), key=lambda x: -x[1]),
+        "items": [{
+            "name": w.get("name"),
+            "phone": reminder_templates.phone_display(w.get("phone")),
+            "line": reminder_templates.line_labels(w.get("line"))[1],
+            "agent": w.get("agent"),
+            "elapsed_min": round(w["elapsed_min"], 1),
+            "since": w["since"].isoformat() if w.get("since") else None,
+            "body": reminder_templates.short(w.get("body"), 160),
+            "reminders": w.get("reminders", 0),
+            "escalations": w.get("escalations", 0),
+        } for w in items],
+        "generated_at": now.isoformat(),
+    }
 
 
 @app.get("/api/reminders/status")

@@ -10,6 +10,9 @@ router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 
 _EMPTY_HOURLY = [{"hour": h, "calls": 0} for h in range(24)]
+# Peak-hours chart in Fiper's local time (same timezone as the reports), not UTC.
+from zoneinfo import ZoneInfo  # noqa: E402
+_LOCAL_TZ = ZoneInfo(os.getenv("REPORT_TIMEZONE", "Etc/GMT-2"))
 BATCH_SIZE = 100
 
 
@@ -100,7 +103,7 @@ def _overview_count_fallback(range: str, wa_line: str = "all") -> dict:
             continue
         try:
             dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
-            hourly_counts[dt.hour] += 1
+            hourly_counts[dt.astimezone(_LOCAL_TZ).hour] += 1
         except (ValueError, TypeError):
             pass
     hourly_distribution = [{"hour": h, "calls": count} for h, count in enumerate(hourly_counts)]
@@ -364,7 +367,7 @@ def _overview_inner(range: str, wa_line: str = "all"):
         if ts:
             try:
                 dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-                hourly_counts[dt.hour] += 1
+                hourly_counts[dt.astimezone(_LOCAL_TZ).hour] += 1
             except (ValueError, TypeError):
                 pass
     hourly_distribution = [

@@ -643,6 +643,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
     <span class="wa-line-state" id="waLineState"><span class="dot"></span><span id="waLineStateText">Ready</span></span>
     <button class="btn-icon" id="refreshBtn" onclick="triggerRefresh()">↻ <span data-en="Refresh" data-ar="تحديث">Refresh</span></button>
     <button class="btn-lang" onclick="toggleLang()" id="langBtn">العربية</button>
+    <button class="btn-icon" onclick="doLogout()" title="Sign out" data-en="Sign out" data-ar="خروج">Sign out</button>
   </div>
 </header>
 
@@ -650,6 +651,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
 <nav id="topNav">
   <button id="navHamburger" onclick="toggleNavMenu()" aria-label="Menu">☰</button>
   <div id="navLinks">
+    <a href="#sec-waiting"  onclick="smoothScrollTo('sec-waiting',event)"  data-en="⏳ Waiting now" data-ar="⏳ بانتظار الرد">⏳ Waiting now</a>
     <a href="#sec-overview" onclick="smoothScrollTo('sec-overview',event)" data-en="Overview"     data-ar="نظرة عامة">Overview</a>
     <a href="#sec-channels" onclick="smoothScrollTo('sec-channels',event)" data-en="Channels"     data-ar="القنوات">Channels</a>
     <a href="#sec-pipeline" onclick="smoothScrollTo('sec-pipeline',event)" data-en="Lead Pipeline" data-ar="خط العملاء">Lead Pipeline</a>
@@ -675,6 +677,14 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
         <button id="hotLeadsToggleBtn" onclick="toggleHotLeads()" style="background:none;border:none;color:var(--primary);font-size:13px;font-weight:700;cursor:pointer;padding:5px 12px;border-radius:6px"></button>
       </div>
     </div>
+  </div>
+
+  <!-- Waiting now (reply reminders) -->
+  <div id="sec-waiting" class="section-label"><span data-en="⏳ Customers waiting for a reply" data-ar="⏳ عملاء بانتظار الرد">⏳ Customers waiting for a reply</span></div>
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:24px">
+    <div id="waitingHead" style="padding:14px 22px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:8px;align-items:center"></div>
+    <div id="waitingAgents" style="padding:10px 22px;border-bottom:1px solid var(--border);display:none;flex-wrap:wrap;gap:6px"></div>
+    <div class="table-wrap"><div id="waitingList"><div style="padding:16px 22px"><div class="skeleton" style="height:10px;width:60%;border-radius:4px;margin-bottom:10px"></div><div class="skeleton" style="height:10px;width:45%;border-radius:4px"></div></div></div></div>
   </div>
 
   <!-- KPI -->
@@ -707,7 +717,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   <div id="hourlySection" style="display:none;margin-top:18px">
     <div class="section-label"><span data-en="Peak Call Hours" data-ar="ساعات الذروة للمكالمات">Peak Call Hours</span></div>
     <div class="card">
-      <div class="card-head" data-en="Calls by Hour of Day (UTC)" data-ar="المكالمات حسب ساعة اليوم (UTC)">Calls by Hour of Day (UTC)</div>
+      <div class="card-head" data-en="Calls by Hour of Day (UTC+2)" data-ar="المكالمات حسب ساعة اليوم (UTC+2)">Calls by Hour of Day (UTC+2)</div>
       <div class="chart-wrap" style="height:180px"><canvas id="hourlyChart"></canvas></div>
     </div>
   </div>
@@ -1092,6 +1102,7 @@ function toggleLang() {
   localStorage.setItem('fiper_lang', lang);
   applyLang();
   if (_cache) renderAll(..._cache);
+  renderWaiting();
   loadJourneyV2();
 }
 
@@ -3755,7 +3766,7 @@ async function loadAll(bgRefresh = false) {
 }
 
 // ── Top nav smooth scroll + active tracking ───────────────────────────────────
-const _NAV_SECTIONS = ['sec-overview','sec-channels','sec-pipeline','sec-insights','sec-geo','sec-agents','sec-alerts','sec-journey'];
+const _NAV_SECTIONS = ['sec-waiting','sec-overview','sec-channels','sec-pipeline','sec-insights','sec-geo','sec-agents','sec-alerts','sec-journey'];
 function _stickyOffset() {
   const hdr = document.querySelector('header');
   const nav = document.getElementById('topNav');
@@ -3830,22 +3841,139 @@ function connectSSE() {
   };
 }
 
-// ── Auth gate ─────────────────────────────────────────────────────────────────
-const _AUTH_KEY = 'fiper_auth_v1';
-function _checkAuth() {
-  return sessionStorage.getItem(_AUTH_KEY) === 'ok';
-}
-function doLogin() {
-  const u = document.getElementById('loginUser').value.trim();
-  const p = document.getElementById('loginPass').value;
-  if (u === 'fiper' && p === 'Fiper2026') {
-    sessionStorage.setItem(_AUTH_KEY, 'ok');
-    document.getElementById('loginOverlay').style.display = 'none';
-    _initDashboard();
-  } else {
-    document.getElementById('loginErr').textContent = 'Invalid username or password.';
+// ── Auth gate (checked on the server; the page holds no credentials) ─────────
+let _dashboardStarted = false;
+function _showLogin() {
+  const ov = document.getElementById('loginOverlay');
+  if (ov.style.display !== 'flex') {
+    ov.style.display = 'flex';
+    document.getElementById('loginPass').value = '';
+    setTimeout(() => document.getElementById('loginUser').focus(), 50);
   }
 }
+async function doLogin() {
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value;
+  const err = document.getElementById('loginErr');
+  const btn = document.getElementById('loginBtn');
+  err.textContent = '';
+  btn.disabled = true;
+  try {
+    const r = await fetch(`${API}/api/login`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username: u, password: p}),
+    });
+    if (r.ok) {
+      document.getElementById('loginOverlay').style.display = 'none';
+      document.getElementById('loginPass').value = '';
+      if (_dashboardStarted) { loadAll(); loadWaiting(); } else { _initDashboard(); }
+    } else {
+      const body = await r.json().catch(() => ({}));
+      err.textContent = r.status === 429 ? (body.detail || 'Too many attempts. Try again later.') : 'Invalid username or password.';
+    }
+  } catch (e) {
+    err.textContent = 'Connection error. Please try again.';
+  } finally {
+    btn.disabled = false;
+  }
+}
+async function doLogout() {
+  try { await fetch(`${API}/api/logout`, {method: 'POST'}); } catch (e) {}
+  location.reload();
+}
+// Any API answer "401 login required" (e.g. session expired) shows the login screen.
+const _rawFetch = window.fetch.bind(window);
+window.fetch = async (...args) => {
+  const r = await _rawFetch(...args);
+  const url = String(args[0] && args[0].url ? args[0].url : args[0]);
+  if (r.status === 401 && !url.includes('/api/login')) _showLogin();
+  return r;
+};
+
+// ── Waiting now (reply reminders) ─────────────────────────────────────────────
+let _waiting = null, _waitingAt = 0, _waitingFilter = null, _waitingShowAll = false;
+const _w = (en, ar) => lang === 'ar' ? ar : en;
+function _waitMins(m) {
+  m = Math.max(0, Math.round(m));
+  if (m < 60) return _w(`${m} min`, `${m} د`);
+  const h = Math.floor(m / 60), r = m % 60;
+  return r ? _w(`${h}h ${r}m`, `${h} س ${r} د`) : _w(`${h}h`, `${h} س`);
+}
+async function loadWaiting() {
+  try {
+    const r = await fetch(`${API}/api/waiting?_=${Date.now()}`, {cache: 'no-store'});
+    if (!r.ok) return;
+    _waiting = await r.json();
+    _waitingAt = Date.now();
+    renderWaiting();
+  } catch (e) { console.warn('waiting:', e); }
+}
+function setWaitingFilter(agent) {
+  _waitingFilter = (_waitingFilter === agent) ? null : agent;
+  renderWaiting();
+}
+function renderWaiting() {
+  const head = document.getElementById('waitingHead');
+  const agentsEl = document.getElementById('waitingAgents');
+  const list = document.getElementById('waitingList');
+  if (!head || !_waiting) return;
+  const d = _waiting;
+  // Timers keep running between refreshes (only during working hours, like the reminders).
+  const extra = d.working_time ? (Date.now() - _waitingAt) / 60000 : 0;
+  const items = d.items.map(i => ({...i, live: i.elapsed_min + extra}));
+  const over2h = items.filter(i => i.live >= 120).length;
+  const modeTxt = d.mode === 'live' ? _w('Reminders: LIVE', 'التذكيرات: مفعّلة')
+                : d.mode === 'shadow' ? _w('Reminders: test mode', 'التذكيرات: وضع التجربة') : _w('Reminders: off', 'التذكيرات: متوقفة');
+  head.innerHTML = `
+    <span class="pill ${items.length ? 'pill-warn' : 'pill-green'}" style="font-size:13px">${items.length} ${_w('waiting', 'بانتظار الرد')}</span>
+    <span class="pill ${over2h ? 'pill-red' : 'pill-gray'}" style="font-size:13px">${over2h} ${_w('over 2h', 'أكثر من ساعتين')}</span>
+    <span class="pill ${d.mode === 'live' ? 'pill-blue' : 'pill-gray'}">${esc(modeTxt)}</span>
+    <span style="font-size:11px;color:var(--text-light);margin-inline-start:auto">
+      ${esc(_w(`Working time only (${d.work_hours}) · reminder at ${d.ladder.first} & ${d.ladder.second} min · supervisor at ${d.ladder.escalate / 60}h`,
+               `وقت العمل فقط (${d.work_hours}) · تذكير بعد ${d.ladder.first} و${d.ladder.second} د · المشرف بعد ${d.ladder.escalate / 60} س`))}
+    </span>`;
+  if (d.by_agent.length) {
+    agentsEl.style.display = 'flex';
+    agentsEl.innerHTML = d.by_agent.map(([a, n], idx) => {
+      const label = a || _w('Unassigned', 'غير مُسنَد');
+      const on = _waitingFilter === a;
+      return `<button onclick="setWaitingFilter(_waiting.by_agent[${idx}][0])" style="border:1px solid ${on ? 'var(--blue)' : 'var(--border)'};background:${on ? 'var(--blue-light)' : '#fff'};color:var(--navy);border-radius:20px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:inherit">${esc(label)} <b>${n}</b></button>`;
+    }).join('');
+  } else {
+    agentsEl.style.display = 'none';
+  }
+  let rows = _waitingFilter === undefined || _waitingFilter === null ? items : items.filter(i => i.agent === _waitingFilter);
+  if (!rows.length) {
+    list.innerHTML = `<div style="padding:22px;text-align:center;color:var(--green);font-weight:700">${_w('No customer is waiting right now 👏', 'لا يوجد عملاء بانتظار الرد الآن 👏')}</div>`;
+    return;
+  }
+  const limit = _waitingShowAll ? rows.length : 25;
+  const body = rows.slice(0, limit).map(i => {
+    const tone = i.live >= 120 ? 'pill-red' : i.live >= 45 ? 'pill-warn' : 'pill-blue';
+    let status = `<span class="pill pill-gray">${_w('New', 'جديد')}</span>`;
+    if (i.escalations > 1) status = `<span class="pill pill-red">${_w(`Follow-up ×${i.escalations - 1}`, `متابعة ×${i.escalations - 1}`)}</span>`;
+    else if (i.escalations) status = `<span class="pill pill-red">${_w('Escalated', 'تم التصعيد')}</span>`;
+    else if (i.reminders) status = `<span class="pill pill-warn">${_w(`Reminded ×${i.reminders}`, `تذكير ×${i.reminders}`)}</span>`;
+    const since = i.since ? new Date(i.since).toLocaleString(lang === 'ar' ? 'ar' : 'en-GB', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'}) : '—';
+    return `<tr>
+      <td><div class="agent-name-cell">${esc(i.name || _w('Customer', 'عميل'))}</div>
+          <div style="font-size:11px;color:var(--text-light)" dir="ltr">${esc(i.phone || '')}${i.line ? ' · ' + esc(i.line) : ''}</div></td>
+      <td>${esc(i.agent || _w('Unassigned', 'غير مُسنَد'))}</td>
+      <td><span class="pill ${tone}">${_waitMins(i.live)}</span></td>
+      <td style="font-size:12px;color:var(--text-light)">${esc(since)}</td>
+      <td dir="auto" style="max-width:360px;font-size:12px">${esc(i.body || '')}</td>
+      <td>${status}</td>
+    </tr>`;
+  }).join('');
+  const more = rows.length > limit
+    ? `<div style="padding:10px 22px;text-align:center"><button onclick="_waitingShowAll=true;renderWaiting()" style="background:none;border:none;color:var(--blue);font-weight:700;cursor:pointer;font-family:inherit">${_w(`Show all ${rows.length}`, `عرض الكل (${rows.length})`)}</button></div>` : '';
+  list.innerHTML = `<table><thead><tr>
+      <th>${_w('Customer', 'العميل')}</th><th>${_w('Agent', 'الموظف')}</th><th>${_w('Waiting (working time)', 'الانتظار (وقت العمل)')}</th>
+      <th>${_w('Since', 'منذ')}</th><th>${_w('Last message', 'آخر رسالة')}</th><th>${_w('Status', 'الحالة')}</th>
+    </tr></thead><tbody>${body}</tbody></table>${more}`;
+}
+setInterval(() => { if (_dashboardStarted && !document.hidden) loadWaiting(); }, 60 * 1000);
+setInterval(() => { if (_waiting) renderWaiting(); }, 30 * 1000);
 document.getElementById('loginPass').addEventListener('keydown', e => {
   if (e.key === 'Enter') doLogin();
 });
@@ -3854,6 +3982,8 @@ document.getElementById('loginUser').addEventListener('keydown', e => {
 });
 
 function _initDashboard() {
+  _dashboardStarted = true;
+  loadWaiting();
   applyLang();
   const waSel = document.getElementById('waLineSelect');
   if (waSel) waSel.value = waLine;
@@ -3863,11 +3993,18 @@ function _initDashboard() {
   _updateActiveNav();
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────────
-if (_checkAuth()) {
-  document.getElementById('loginOverlay').style.display = 'none';
-  _initDashboard();
-}
+// ── Init: ask the server whether this browser already has a valid session ────
+(async () => {
+  try {
+    const r = await _rawFetch(`${API}/api/me`, {cache: 'no-store'});
+    if (r.ok) {
+      document.getElementById('loginOverlay').style.display = 'none';
+      _initDashboard();
+      return;
+    }
+  } catch (e) {}
+  _showLogin();
+})();
 </script>
 </body>
 </html>
