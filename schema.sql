@@ -165,7 +165,9 @@ CREATE TABLE IF NOT EXISTS pending_replies (
   resolved_at        TIMESTAMPTZ,
   reminder_count     INTEGER NOT NULL DEFAULT 0,
   last_reminded_at   TIMESTAMPTZ,
-  escalated_at       TIMESTAMPTZ,
+  escalated_at       TIMESTAMPTZ,           -- first escalation
+  escalation_count   INTEGER NOT NULL DEFAULT 0,  -- supervisor emails sent (1 = escalation, 2+ = follow-ups)
+  last_escalated_at  TIMESTAMPTZ,
   snoozed_until      TIMESTAMPTZ,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()

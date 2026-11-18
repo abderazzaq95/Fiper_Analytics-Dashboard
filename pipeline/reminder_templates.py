@@ -10,8 +10,19 @@ messages use dir="auto" so mixed Arabic/English text never scrambles.
 from __future__ import annotations
 
 import html
+import os
 import re
 from datetime import datetime, tzinfo
+
+
+def _logo_url() -> str:
+    # Served by this app (static/email/fiper-logo.png). RENDER_EXTERNAL_URL is
+    # set automatically on Render; EMAIL_LOGO_URL overrides it.
+    explicit = os.getenv("EMAIL_LOGO_URL", "").strip()
+    if explicit:
+        return explicit
+    base = os.getenv("RENDER_EXTERNAL_URL", "https://fiper-analytics-dashboard.onrender.com").rstrip("/")
+    return f"{base}/static/email/fiper-logo.png"
 
 # Brand (matches static/index.html)
 BLUE = "#0774FF"
@@ -96,10 +107,16 @@ def _shell(*, preheader: str, accent: str, icon: str, title_ar: str, title_en: s
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{BG}">
 <tr><td align="center" style="padding:24px 12px">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#FFFFFF;border:1px solid {BORDER};border-radius:14px;overflow:hidden">
-    <tr><td style="{header_bg}padding:22px 24px;color:#FFFFFF" dir="rtl">
+    <tr><td style="background:#FFFFFF;padding:16px 24px;border-bottom:1px solid {BORDER}">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td align="left" dir="ltr"><img src="{_e(_logo_url())}" width="130" height="48" alt="Fiper"
+            style="display:block;border:0;outline:none;width:130px;height:48px;font-family:{FONT};font-size:22px;font-weight:700;color:{NAVY}"></td>
+        <td align="right" style="font-size:12px;color:{MUTED}" dir="rtl">تنبيهات المبيعات<br><span dir="ltr">Sales alerts</span></td>
+      </tr></table>
+    </td></tr>
+    <tr><td style="{header_bg}padding:20px 24px;color:#FFFFFF" dir="rtl">
       {label_html}
-      <div style="font-size:13px;letter-spacing:1px;opacity:.85;font-weight:700" dir="ltr">FIPER</div>
-      <div style="font-size:22px;font-weight:700;margin-top:6px">{icon} {_e(title_ar)}</div>
+      <div style="font-size:22px;font-weight:700">{icon} {_e(title_ar)}</div>
       <div style="font-size:14px;opacity:.9;margin-top:2px" dir="ltr" align="right">{_e(title_en)}</div>
     </td></tr>
     <tr><td style="padding:22px 24px" dir="rtl">{body}</td></tr>
@@ -108,19 +125,20 @@ def _shell(*, preheader: str, accent: str, icon: str, title_ar: str, title_en: s
       <div dir="ltr" align="right" style="margin-top:2px">{_e(footer_en)}</div>
     </td></tr>
   </table>
-  <div style="font-size:11px;color:{MUTED};margin-top:12px" dir="ltr">Fiper Analytics · automatic reply reminders</div>
+  <div style="font-size:11px;color:{MUTED};margin-top:12px" dir="ltr">Fiper · automatic reply reminders</div>
 </td></tr></table>
 </body></html>"""
 
 
 def _customer_card(item: dict, tz: tzinfo, tz_label: str, *, show_agent: bool = False) -> str:
     bg, fg = urgency(item["elapsed_min"], item.get("stage", 1))
-    line_ar, line_en, flag = line_labels(item.get("line"))
+    line_ar, _, _ = line_labels(item.get("line"))
     name = item.get("name") or "عميل"
     phone = phone_display(item.get("phone"))
+    # No flag emoji in email: Windows renders them as letters ("OM").
     line_badge = (
         f"<span style='display:inline-block;background:{BG};border:1px solid {BORDER};color:{NAVY};"
-        f"font-size:12px;padding:2px 8px;border-radius:12px;margin-right:6px'>{flag} {_e(line_ar)}</span>"
+        f"font-size:12px;font-weight:400;padding:2px 8px;border-radius:12px;margin-right:6px'>خط {_e(line_ar)}</span>"
         if line_ar else ""
     )
     agent_row = ""
@@ -213,10 +231,59 @@ def agent_reminder_text(agent: str, items: list[dict], other_waiting: int, tz: t
 
 # ── Supervisor escalation ────────────────────────────────────────────────────
 
-def escalation(items: list[dict], tz: tzinfo, tz_label: str, escalate_after_min: float, shadow: bool) -> tuple[str, str, str]:
+def days_ar(hours: float) -> str:
+    d = round(hours / 24)
+    if d <= 1:
+        return "يوم"
+    if d == 2:
+        return "يومين"
+    return f"{d} أيام" if d <= 10 else f"{d} يوماً"
+
+
+def days_en(hours: float) -> str:
+    d = round(hours / 24)
+    return "1 day" if d <= 1 else f"{d} days"
+
+
+def _stage_heading(esc_stage: int, followup_hours: tuple[float, ...]) -> tuple[str, str, str]:
+    """(arabic, english, colour) for an escalation stage."""
+    if esc_stage <= 0:
+        return "تصعيد جديد", "New escalation", RED_FG
+    hours = followup_hours[esc_stage - 1] if esc_stage - 1 < len(followup_hours) else followup_hours[-1]
+    final = esc_stage >= len(followup_hours)
+    if final:
+        return f"متابعة أخيرة: ما زالوا دون رد بعد {days_ar(hours)}", f"Final follow-up — still unanswered after {days_en(hours)}", "#6A1B9A"
+    return f"متابعة: ما زالوا دون رد بعد {days_ar(hours)}", f"Follow-up — still unanswered after {days_en(hours)}", AMBER_FG
+
+
+def escalation_footer(followup_hours: tuple[float, ...]) -> tuple[str, str]:
+    if not followup_hours:
+        return ("تصلك هذه الرسالة لأنك مسؤول متابعة العملاء دون رد.",
+                "You receive this as the contact for unanswered customers.")
+    parts_ar = [f"بعد {days_ar(h)}" for h in followup_hours]
+    parts_en = [f"after {days_en(h)}" for h in followup_hours]
+    if len(parts_ar) == 1:
+        ar = f"إذا بقي العميل دون رد، ستصلك متابعة {parts_ar[0]}."
+        en = f"If a customer is still unanswered, you get a follow-up {parts_en[0]}."
+    else:
+        ar = ("إذا بقي العميل دون رد، ستصلك متابعة " + "، ثم ".join(parts_ar[:-1])
+              + f"، ثم متابعة أخيرة {parts_ar[-1]}. ويتوقف كل شيء تلقائياً بمجرد الرد على العميل.")
+        en = ("If a customer is still unanswered, you get a follow-up " + ", then ".join(parts_en[:-1])
+              + f" and a final one {parts_en[-1]}. Everything stops automatically once the customer is answered.")
+    return ar, en
+
+
+def escalation(items: list[dict], tz: tzinfo, tz_label: str, escalate_after_min: float, shadow: bool,
+               followup_hours: tuple[float, ...] = (24, 72)) -> tuple[str, str, str]:
     n = len(items)
     tag = "[SHADOW] " if shadow else ""
-    subject = f"{tag}🚨 عملاء دون رد ({n}) · {n} customer(s) unanswered — Fiper"
+    only_followups = all(i.get("esc_stage", 0) > 0 for i in items)
+    if only_followups:
+        subject = f"{tag}⏳ متابعة: عملاء ما زالوا دون رد ({n}) · Follow-up: {n} still unanswered — Fiper"
+        title_ar, title_en, icon = f"متابعة: ما زالوا دون رد ({n})", f"Follow-up — {n} customer(s) still unanswered", "⏳"
+    else:
+        subject = f"{tag}🚨 عملاء دون رد ({n}) · {n} customer(s) unanswered — Fiper"
+        title_ar, title_en, icon = f"عملاء دون رد ({n})", f"{n} customer(s) still unanswered", "🚨"
 
     by_agent: dict[str, int] = {}
     for i in items:
@@ -227,8 +294,27 @@ def escalation(items: list[dict], tz: tzinfo, tz_label: str, escalate_after_min:
         f"<td style='padding:6px 10px;border-bottom:1px solid {BORDER};font-weight:700;color:{RED_FG}' align='left'>{c}</td></tr>"
         for a, c in sorted(by_agent.items(), key=lambda kv: -kv[1])
     )
-    ordered = sorted(items, key=lambda i: -i["elapsed_min"])
-    cards = "".join(_customer_card({**i, "stage": 2}, tz, tz_label, show_agent=True) for i in ordered)
+    # Sections: new escalations first, then follow-ups (latest stage last).
+    sections_html = []
+    text_sections = []
+    for stage in sorted({i.get("esc_stage", 0) for i in items}):
+        group = sorted((i for i in items if i.get("esc_stage", 0) == stage), key=lambda i: -i["elapsed_min"])
+        h_ar, h_en, colour = _stage_heading(stage, followup_hours)
+        sections_html.append(
+            f"<div style='margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid {colour};"
+            f"font-size:15px;font-weight:700;color:{colour}' dir='rtl'>{_e(h_ar)} ({len(group)})"
+            f"<div dir='ltr' align='right' style='font-size:12px;font-weight:400;color:{MUTED}'>{_e(h_en)}</div></div>"
+            + "".join(_customer_card({**i, "stage": 2}, tz, tz_label, show_agent=True) for i in group)
+        )
+        text_sections.append(
+            f"— {h_ar} ({len(group)}) —\n" + "\n\n".join(
+                f"{idx}) {i.get('name') or 'عميل'} {phone_display(i.get('phone'))} — {i.get('agent') or 'UNASSIGNED'}\n"
+                f"⏳ {wait_ar(i['elapsed_min'])} ({local_time(i.get('since'), tz)}) · 🔔 {i.get('reminders', 0)}\n"
+                f"💬 {short(i.get('body'), 120)}"
+                for idx, i in enumerate(group, 1)
+            )
+        )
+    cards = "".join(sections_html)
     shadow_note = (
         "<p style='background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:10px 12px;font-size:13px'>"
         "وضع التجربة: لم يُرسل أي شيء للموظفين. <span dir='ltr'>Shadow mode — nothing was sent to agents.</span></p>"
@@ -244,21 +330,15 @@ def escalation(items: list[dict], tz: tzinfo, tz_label: str, escalate_after_min:
   {summary_rows}
 </table>
 {cards}"""
+    footer_ar, footer_en = escalation_footer(tuple(followup_hours))
     html_doc = _shell(
-        preheader=f"عملاء دون رد ({n}) — {n} customers unanswered",
-        accent=RED_FG, icon="🚨",
-        title_ar=f"عملاء دون رد ({n})", title_en=f"{n} customer(s) still unanswered",
+        preheader=f"{title_ar} — {title_en}",
+        accent=RED_FG if not only_followups else AMBER_FG, icon=icon,
+        title_ar=title_ar, title_en=title_en,
         body=body, label="SHADOW" if shadow else "",
-        footer_ar="تصلك هذه الرسالة لأنك مشرف التصعيد. لن يُصعَّد العميل نفسه مرة أخرى.",
-        footer_en="You receive this as the escalation contact. Each customer is escalated only once.",
+        footer_ar=footer_ar, footer_en=footer_en,
     )
-    text_lines = [
-        f"{idx}) {i.get('name') or 'عميل'} {phone_display(i.get('phone'))} — {i.get('agent') or 'UNASSIGNED'}\n"
-        f"⏳ {wait_ar(i['elapsed_min'])} ({local_time(i.get('since'), tz)}) · 🔔 {i.get('reminders', 0)}\n"
-        f"💬 {short(i.get('body'), 120)}"
-        for idx, i in enumerate(ordered, 1)
-    ]
-    text = f"{tag}🚨 عملاء دون رد ({n}) · {n} customer(s) unanswered\n\n" + "\n\n".join(text_lines)
+    text = f"{tag}{icon} {title_ar} · {title_en}\n\n" + "\n\n".join(text_sections) + f"\n\n{footer_ar}"
     return subject, text, html_doc
 
 

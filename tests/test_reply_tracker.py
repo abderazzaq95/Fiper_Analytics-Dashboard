@@ -145,6 +145,34 @@ class LadderTest(unittest.TestCase):
     def test_min_gap_between_reminders(self):
         self.assertEqual(self.due(50, count=1, last=self.now - timedelta(minutes=5)), set())
 
+    def followup(self, sent, hours_since_first):
+        return due_actions(elapsed_working_min=999, reminder_count=2, last_reminded_at=None, escalated=True,
+                           has_agent=True, now=self.now, ladder=LADDER, escalation_count=sent,
+                           first_escalated_at=self.now - timedelta(hours=hours_since_first))
+
+    def test_followup_after_one_day_then_three_days(self):
+        self.assertEqual(self.followup(1, 23), set())
+        self.assertEqual(self.followup(1, 24), {"followup"})
+        self.assertEqual(self.followup(2, 48), set())
+        self.assertEqual(self.followup(2, 72), {"followup"})
+        self.assertEqual(self.followup(3, 500), set())  # nothing after the final follow-up
+
+    def test_rows_escalated_before_followups_existed_count_as_one(self):
+        self.assertEqual(self.followup(0, 25), {"followup"})
+
+    def test_agent_never_pinged_about_very_old_wait(self):
+        # More than 20 working hours: supervisor only, no agent reminder.
+        self.assertEqual(self.due(21 * 60, count=0), {"escalate"})
+        self.assertEqual(self.due(21 * 60, count=0, agent=False), {"escalate"})
+
+    def test_weekend_message_still_reminds_agent_on_monday(self):
+        # Friday 20:00 local -> Monday 09:15 local is only 15 working minutes.
+        fri = utc(2026, 11, 20, 18, 0)
+        mon = utc(2026, 11, 23, 7, 15)
+        elapsed = SCHED.working_minutes_between(fri, mon)
+        self.assertEqual(elapsed, 15)
+        self.assertEqual(self.due(elapsed), {"remind"})
+
 
 class HelpersTest(unittest.TestCase):
     def test_banal(self):

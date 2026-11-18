@@ -10,10 +10,14 @@ Every few minutes (scheduled in main.py) ``run_cycle()``:
       REMINDER_FIRST_MIN    (default 15 working min) -> reminder 1 to agent
       REMINDER_SECOND_MIN   (default 45)             -> reminder 2 to agent
       REMINDER_ESCALATE_MIN (default 120)            -> supervisor escalation
-   Then it stops pinging the agent. Customers waiting longer than
-   REMINDER_MAX_AGE_HOURS are expired and never reminded.
+   Then it stops pinging the agent. If the customer is still unanswered the
+   supervisor gets follow-ups REMINDER_FOLLOWUP_HOURS after the first
+   escalation (default 24h and 72h). Agents are never pinged about customers
+   who waited more than REMINDER_AGENT_MAX_WORKING_HOURS (default 20 working
+   hours); waits are closed as expired after REMINDER_TRACK_MAX_AGE_HOURS.
 4. Re-checks the database right before sending, so a customer who was just
-   answered is never included.
+   answered is never included. Each step is recorded BEFORE it is sent, so a
+   database error can never make the same message repeat every cycle.
 
 REMINDER_MODE:
   off    - do nothing
@@ -40,6 +44,7 @@ from pipeline.reply_tracker import (
     due_actions,
     fmt_minutes,
     parse_dt,
+    parse_hours_list,
     parse_work_days,
     phone_key,
 )
@@ -74,9 +79,13 @@ LADDER = Ladder(
     first_min=_env_int("REMINDER_FIRST_MIN", 15),
     second_min=_env_int("REMINDER_SECOND_MIN", 45),
     escalate_min=_env_int("REMINDER_ESCALATE_MIN", 120),
+    followup_hours=parse_hours_list(os.getenv("REMINDER_FOLLOWUP_HOURS", "24,72")),
+    agent_max_working_hours=_env_int("REMINDER_AGENT_MAX_WORKING_HOURS", 20),
 )
-MAX_AGE_HOURS = _env_int("REMINDER_MAX_AGE_HOURS", 48)
-LOOKBACK_HOURS = max(MAX_AGE_HOURS + 6, _env_int("REMINDER_LOOKBACK_HOURS", 72))
+# How long an unanswered customer is tracked (calendar). Must cover the last
+# follow-up plus a weekend; after this the wait is closed as "expired".
+MAX_AGE_HOURS = max(_env_int("REMINDER_TRACK_MAX_AGE_HOURS", 168), int(max(LADDER.followup_hours, default=0)) + 72)
+LOOKBACK_HOURS = MAX_AGE_HOURS + 6
 AGENT_MAX_PER_HOUR = _env_int("REMINDER_AGENT_MAX_PER_HOUR", 6)
 SHADOW_DIGEST_MINUTES = _env_int("REMINDER_SHADOW_DIGEST_MINUTES", 60)
 
@@ -388,6 +397,7 @@ def _tpl_item(item: dict) -> dict:
         "stage": item["stage"],
         "agent": r.get("agent_name"),
         "reminders": r.get("reminder_count") or 0,
+        "esc_stage": item.get("esc_stage", 0),  # 0 new escalation, 1 first follow-up, 2 final ...
     }
 
 
@@ -396,7 +406,8 @@ def _agent_texts(agent: str, items: list[dict], other_waiting: int) -> tuple[str
 
 
 def _escalation_texts(items: list[dict], shadow: bool) -> tuple[str, str, str]:
-    return templates.escalation([_tpl_item(i) for i in items], SCHEDULE.tz, TZ_LABEL, LADDER.escalate_min, shadow)
+    return templates.escalation([_tpl_item(i) for i in items], SCHEDULE.tz, TZ_LABEL, LADDER.escalate_min, shadow,
+                                followup_hours=LADDER.followup_hours)
 
 
 # ── Delivery ──────────────────────────────────────────────────────────────────
@@ -517,6 +528,21 @@ def _flush_shadow_digest(now: datetime, force: bool = False) -> None:
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
+def _mark(row_id: str, fields: dict, now: datetime) -> bool:
+    """Record a step BEFORE sending it. If this fails, the step is not sent,
+    so a database problem can never turn into the same message every cycle."""
+    try:
+        supabase.table(TABLE).update({**fields, "updated_at": now.isoformat()}).eq("id", row_id).execute()
+        return True
+    except Exception as exc:
+        log.error(f"[reminders] could not record step for {row_id}: {notify_safe(exc)}")
+        return False
+
+
+def notify_safe(exc: Exception) -> str:
+    return re.sub(r"(sb_secret_|eyJ)[A-Za-z0-9._-]+", "[redacted]", str(exc))[:300]
+
+
 def run_cycle(now: datetime | None = None) -> dict:
     global _last_cycle
     now = now or datetime.now(timezone.utc)
@@ -534,7 +560,7 @@ def run_cycle(now: datetime | None = None) -> dict:
         return result
 
     remind_by_agent: dict[str, list[dict]] = defaultdict(list)
-    escalate: list[dict] = []
+    supervisor: list[dict] = []  # new escalations + follow-ups, one email per cycle
     waiting_per_agent: dict[str, int] = defaultdict(int)
     for row in rows:
         if row.get("agent_name"):
@@ -543,53 +569,61 @@ def run_cycle(now: datetime | None = None) -> dict:
         if snoozed and snoozed > now:
             continue
         elapsed = SCHEDULE.working_minutes_between(parse_dt(row["waiting_since"]), now)
+        escalated = bool(row.get("escalated_at"))
+        esc_count = int(row.get("escalation_count") or (1 if escalated else 0))
         actions = due_actions(
             elapsed_working_min=elapsed,
             reminder_count=int(row.get("reminder_count") or 0),
             last_reminded_at=parse_dt(row.get("last_reminded_at")),
-            escalated=bool(row.get("escalated_at")),
+            escalated=escalated,
             has_agent=bool(row.get("agent_name")),
             now=now,
             ladder=LADDER,
+            escalation_count=esc_count,
+            first_escalated_at=parse_dt(row.get("escalated_at")),
         )
         item = {"row": row, "elapsed": elapsed, "stage": int(row.get("reminder_count") or 0) + 1}
         if "remind" in actions:
             remind_by_agent[row["agent_name"]].append(item)
         if "escalate" in actions:
-            escalate.append(item)
+            supervisor.append({**item, "esc_stage": 0})
+        if "followup" in actions:
+            supervisor.append({**item, "esc_stage": esc_count})
 
-    due_rows = [i["row"] for items in remind_by_agent.values() for i in items] + [i["row"] for i in escalate]
+    due_rows = [i["row"] for items in remind_by_agent.values() for i in items] + [i["row"] for i in supervisor]
     keep_ids = {r["id"] for r in _still_waiting(due_rows)} if due_rows else set()
 
     for agent, items in remind_by_agent.items():
         items = [i for i in items if i["row"]["id"] in keep_ids]
+        items = [i for i in items if _mark(i["row"]["id"], {
+            "reminder_count": i["stage"],
+            "last_reminded_at": now.isoformat(),
+        }, now)]
         if not items:
             continue
         other = max(0, waiting_per_agent.get(agent, 0) - len(items))
         if _deliver_to_agent(agent, items, other, now):
-            for i in items:
-                supabase.table(TABLE).update({
-                    "reminder_count": i["stage"],
-                    "last_reminded_at": now.isoformat(),
-                    "updated_at": now.isoformat(),
-                }).eq("id", i["row"]["id"]).execute()
             result["reminded"] += len(items)
 
-    escalate = [i for i in escalate if i["row"]["id"] in keep_ids]
-    if escalate:
-        _deliver_escalation(escalate)
-        for i in escalate:
-            supabase.table(TABLE).update({
-                "escalated_at": now.isoformat(),
-                "updated_at": now.isoformat(),
-            }).eq("id", i["row"]["id"]).execute()
-        result["escalated"] = len(escalate)
+    supervisor = [i for i in supervisor if i["row"]["id"] in keep_ids]
+    marked = []
+    for i in supervisor:
+        if i["esc_stage"] == 0:
+            fields = {"escalated_at": now.isoformat(), "escalation_count": 1, "last_escalated_at": now.isoformat()}
+        else:
+            fields = {"escalation_count": i["esc_stage"] + 1, "last_escalated_at": now.isoformat()}
+        if _mark(i["row"]["id"], fields, now):
+            marked.append(i)
+    if marked:
+        _deliver_escalation(marked)
+        result["escalated"] = sum(1 for i in marked if i["esc_stage"] == 0)
+        result["followups"] = sum(1 for i in marked if i["esc_stage"] > 0)
 
     if current_mode == "shadow":
         _flush_shadow_digest(now)
 
     _last_cycle = result
-    if result["reminded"] or result["escalated"] or stats["opened"]:
+    if result["reminded"] or result["escalated"] or result.get("followups") or stats["opened"]:
         log.info(f"[reminders] {result}")
     return result
 
@@ -609,6 +643,7 @@ def status_snapshot() -> dict:
             "waiting_working_time": fmt_minutes(elapsed),
             "reminders_sent": r.get("reminder_count") or 0,
             "escalated": bool(r.get("escalated_at")),
+            "supervisor_emails_sent": r.get("escalation_count") or (1 if r.get("escalated_at") else 0),
             "last_message": _short(r.get("last_inbound_body")),
         })
     return {
@@ -620,7 +655,9 @@ def status_snapshot() -> dict:
             "first_min": LADDER.first_min,
             "second_min": LADDER.second_min,
             "escalate_min": LADDER.escalate_min,
-            "max_age_hours": MAX_AGE_HOURS,
+            "followup_hours_after_escalation": list(LADDER.followup_hours),
+            "agent_max_working_hours": LADDER.agent_max_working_hours,
+            "track_max_age_hours": MAX_AGE_HOURS,
             "escalation_emails_configured": len(_escalation_emails()),
         },
         "last_cycle": _last_cycle,

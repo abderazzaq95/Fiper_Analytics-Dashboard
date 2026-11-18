@@ -51,6 +51,27 @@ class TemplatesTest(unittest.TestCase):
         # longest wait first
         self.assertLess(text.index("Bashir Hallak"), text.index("Fatma Aqel"))
 
+    def test_escalation_followup_sections_and_footer(self):
+        items = [item(esc_stage=0), item(name="Old", esc_stage=1, elapsed_min=900), item(name="Older", esc_stage=2)]
+        subject, text, html = T.escalation(items, TZ, "UTC+2", 120, shadow=False, followup_hours=(24, 72))
+        self.assertIn("تصعيد جديد", html)
+        self.assertIn("متابعة: ما زالوا دون رد بعد يوم", html)
+        self.assertIn("متابعة أخيرة: ما زالوا دون رد بعد 3 أيام", html)
+        self.assertIn("ثم متابعة أخيرة بعد 3 أيام", html)        # footer
+        self.assertNotIn("only once", html)
+        self.assertLess(text.index("تصعيد جديد"), text.index("متابعة أخيرة"))
+
+    def test_followup_only_email_has_followup_subject(self):
+        subject, _, _ = T.escalation([item(esc_stage=1)], TZ, "UTC+2", 120, shadow=False)
+        self.assertIn("متابعة", subject)
+
+    def test_logo_and_no_flag_emoji_in_email(self):
+        _, _, html = T.agent_reminder("Fatma", [item()], 0, TZ, "UTC+2")
+        self.assertIn("/static/email/fiper-logo.png", html)
+        self.assertIn('alt="Fiper"', html)
+        self.assertNotIn("🇴🇲", html)
+        self.assertIn("خط عُمان", html)
+
     def test_shadow_digest(self):
         subject, html = T.shadow_digest([{"agent": "Fatma", "items": [item()], "other": 0, "at": NOW}], TZ, "UTC+2")
         self.assertIn("SHADOW", subject)

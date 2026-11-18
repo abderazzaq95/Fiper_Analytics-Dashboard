@@ -198,6 +198,21 @@ class Ladder:
     second_min: float = 45
     escalate_min: float = 120
     min_gap_min: float = 10  # never two agent reminders closer than this (wall clock)
+    # Supervisor follow-ups, in hours after the FIRST escalation (calendar time;
+    # only sent during working hours, so a Saturday follow-up arrives Monday).
+    followup_hours: tuple[float, ...] = (24, 72)
+    # Agents are never pinged about a customer who has waited more than this
+    # much WORKING time (2 working days by default). Working time, not calendar
+    # time, so a Friday-evening message is still "fresh" on Monday morning.
+    agent_max_working_hours: float = 20
+
+
+def parse_hours_list(value: str | None, default: tuple[float, ...] = (24, 72)) -> tuple[float, ...]:
+    try:
+        hours = tuple(float(x) for x in (value or "").replace(" ", "").split(",") if x)
+    except ValueError:
+        return default
+    return tuple(sorted(hours)) if hours else default
 
 
 def due_actions(
@@ -209,24 +224,42 @@ def due_actions(
     has_agent: bool,
     now: datetime,
     ladder: Ladder,
+    escalation_count: int = 0,
+    first_escalated_at: datetime | None = None,
 ) -> set[str]:
-    """Return {"remind"} / {"escalate"} / both / empty for one waiting customer."""
+    """Return a subset of {"remind", "escalate", "followup"} for one waiting customer."""
     actions: set[str] = set()
+
+    if escalated:
+        # Supervisor owns it now: no more agent pings, only scheduled follow-ups.
+        sent = max(escalation_count, 1)  # rows escalated before follow-ups existed count as 1
+        idx = sent - 1
+        if (
+            first_escalated_at
+            and idx < len(ladder.followup_hours)
+            and now - first_escalated_at >= timedelta(hours=ladder.followup_hours[idx])
+        ):
+            actions.add("followup")
+        return actions
+
+    agent_ok = elapsed_working_min <= ladder.agent_max_working_hours * 60
+
     if not has_agent:
         # Nobody owns the chat: go straight to the supervisor at the first step.
-        if not escalated and elapsed_working_min >= ladder.first_min:
+        if elapsed_working_min >= ladder.first_min:
             actions.add("escalate")
         return actions
 
-    if not escalated and elapsed_working_min >= ladder.escalate_min:
+    if elapsed_working_min >= ladder.escalate_min:
         actions.add("escalate")
-        # The agent must still hear about it once, even if we only noticed late.
-        if reminder_count == 0:
+        # The agent must still hear about it once, even if we only noticed late,
+        # unless the customer has been waiting too long (supervisor only then).
+        if reminder_count == 0 and agent_ok:
             actions.add("remind")
         return actions
-    if escalated:
-        return actions  # supervisor owns it now; no more agent pings
 
+    if not agent_ok:
+        return actions
     gap_ok = last_reminded_at is None or (now - last_reminded_at) >= timedelta(minutes=ladder.min_gap_min)
     if reminder_count == 0 and elapsed_working_min >= ladder.first_min:
         actions.add("remind")
