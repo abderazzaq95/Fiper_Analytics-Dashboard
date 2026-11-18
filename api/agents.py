@@ -589,14 +589,13 @@ def _agents_inner(range: str, wa_line: str = "all"):
             "negative": sentiments.count("negative"),
         }
 
-        # Daily quality trend: last 7 days of treatment scores for this agent
-        seven_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        # Daily quality trend inside the selected period
         daily_scores: dict[str, list] = defaultdict(list)
         for lid in analysis_lead_ids:
             for a in lead_analysis.get(lid, []):
                 ts = a.get("analyzed_at")
                 score = a.get("treatment_score")
-                if (ts and score is not None and ts >= seven_ago
+                if (ts and score is not None and since <= ts < until
                         and not (a.get("source") == "maqsam" and score == 0)):
                     daily_scores[ts[:10]].append(score)
         quality_trend = sorted(
@@ -996,7 +995,6 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
     sentiments: list[str] = []
     treatment_scores: list[float] = []
     daily_scores: dict[str, list] = defaultdict(list)
-    seven_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     lead_analysis: dict[str, list] = defaultdict(list)
     for a in analyses_raw:
         if a.get("lead_id"):
@@ -1010,7 +1008,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
                     treatment_scores.append(a["treatment_score"])
             ts_val = a.get("analyzed_at")
             score_val = a.get("treatment_score")
-            if ts_val and score_val is not None and ts_val >= seven_ago:
+            if ts_val and score_val is not None and since <= ts_val < until:
                 if not (a.get("source") == "maqsam" and score_val == 0):
                     daily_scores[ts_val[:10]].append(score_val)
     quality_trend = sorted(

@@ -39,6 +39,10 @@ function showPage(id, ev) {
     a.classList.toggle('active', on);
     if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
+  // Waiting now is always live, so the date controls do not apply there.
+  const usesDates = id !== 'sec-waiting';
+  document.getElementById('rangeTabs').hidden = !usesDates;
+  document.getElementById('customRange').hidden = !usesDates || document.querySelector('#rangeTabs .active')?.dataset.range !== 'custom';
   document.body.classList.remove('nav-open');
   updatePageTitle();
   if (location.hash !== '#' + id.replace('sec-', '')) history.replaceState(null, '', '#' + id.replace('sec-', ''));

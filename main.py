@@ -1497,10 +1497,6 @@ def warm_dashboard_cache():
                 fn(range=rng, wa_line="all") if fn is not _ag.agents else fn(range=rng, wa_line="all", refresh="0")
             except Exception as e:
                 log.warning(f"cache warm {fn.__name__}/{rng} failed: {e}")
-    try:
-        _ch.channels_traffic(wa_line="all")
-    except Exception as e:
-        log.warning(f"cache warm traffic failed: {e}")
 
 
 def run_reply_reminders():

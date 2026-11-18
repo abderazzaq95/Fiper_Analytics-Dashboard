@@ -515,7 +515,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   .jfilter-bar{gap:8px}
 }
 </style>
-<link rel="stylesheet" href="/static/dashboard.css?v=4"/>
+<link rel="stylesheet" href="/static/dashboard.css?v=5"/>
 </head>
 <body>
 
@@ -644,14 +644,6 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   <div class="two-col">
     <div class="card" id="waCard"><div style="display:flex;align-items:center;gap:10px;margin-bottom:20px"><div class="skeleton" style="height:38px;width:38px;border-radius:10px;flex-shrink:0"></div><div style="flex:1"><div class="skeleton" style="height:13px;width:90px;margin-bottom:7px;border-radius:4px"></div><div class="skeleton" style="height:10px;width:70px;border-radius:4px"></div></div></div><div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><div class="skeleton" style="height:10px;width:90px;border-radius:4px"></div><div class="skeleton" style="height:10px;width:36px;border-radius:4px"></div></div><div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><div class="skeleton" style="height:10px;width:75px;border-radius:4px"></div><div class="skeleton" style="height:10px;width:44px;border-radius:4px"></div></div><div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><div class="skeleton" style="height:10px;width:110px;border-radius:4px"></div><div class="skeleton" style="height:10px;width:30px;border-radius:4px"></div></div><div style="display:flex;justify-content:space-between;padding:10px 0"><div class="skeleton" style="height:10px;width:95px;border-radius:4px"></div><div class="skeleton" style="height:10px;width:38px;border-radius:4px"></div></div></div>
     <div class="card" id="mqCard"><div style="display:flex;align-items:center;gap:10px;margin-bottom:20px"><div class="skeleton" style="height:38px;width:38px;border-radius:10px;flex-shrink:0"></div><div style="flex:1"><div class="skeleton" style="height:13px;width:100px;margin-bottom:7px;border-radius:4px"></div><div class="skeleton" style="height:10px;width:65px;border-radius:4px"></div></div></div><div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><div class="skeleton" style="height:10px;width:80px;border-radius:4px"></div><div class="skeleton" style="height:10px;width:42px;border-radius:4px"></div></div><div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><div class="skeleton" style="height:10px;width:70px;border-radius:4px"></div><div class="skeleton" style="height:10px;width:48px;border-radius:4px"></div></div><div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)"><div class="skeleton" style="height:10px;width:105px;border-radius:4px"></div><div class="skeleton" style="height:10px;width:25px;border-radius:4px"></div></div><div style="display:flex;justify-content:space-between;padding:10px 0"><div class="skeleton" style="height:10px;width:90px;border-radius:4px"></div><div class="skeleton" style="height:10px;width:40px;border-radius:4px"></div></div></div>
-  </div>
-
-  <!-- Channel Traffic -->
-  <div class="card" style="margin-top:18px;padding:0;overflow:hidden">
-    <div style="padding:16px 22px 12px;border-bottom:1px solid var(--border)">
-      <div class="card-head" style="margin:0" data-en="Channel Traffic — Today / This Week / This Month" data-ar="حركة القنوات — اليوم / هذا الأسبوع / هذا الشهر">Channel Traffic — Today / This Week / This Month</div>
-    </div>
-    <div id="trafficTable"><div style="padding:16px 22px"><div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:12px"><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:10px"><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px"><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div><div class="skeleton" style="height:10px;border-radius:4px"></div></div></div></div>
   </div>
 
   <!-- Peak Hours -->
@@ -1058,6 +1050,7 @@ function setRange(r) {
   range = r;
   markRange(r.startsWith('custom:') ? 'custom' : r);
   document.getElementById('customRange').hidden = !r.startsWith('custom:');
+  if (r !== 'today') document.getElementById('hotLeadsSection').style.display = 'none';
   const cached = _rangeCache[_cacheKey(r)];
   if (cached) {
     // Render instantly from cache, then silently refresh in the background
@@ -1618,6 +1611,7 @@ function renderTopics(quality) {
 
 function renderTraffic(traffic) {
   const el = document.getElementById('trafficTable');
+  if (!el) return;  // table removed: it did not follow the selected dates
   if (!traffic) { el.innerHTML=''; return; }
   const pLabels = {today:{en:'Today',ar:'اليوم'},week:{en:'This Week',ar:'هذا الأسبوع'},month:{en:'This Month',ar:'هذا الشهر'}};
   function trendArrow(todayV,ydayV) {
@@ -1774,7 +1768,8 @@ function renderHotLeads(leadsData) {
   const hot = (leadsData.hot_leads || []).filter(l => inTeam(l.assigned_agent));
   hotLeadsCache = hot;
   const section = document.getElementById('hotLeadsSection');
-  if (!hot.length) { section.style.display = 'none'; return; }
+  // Hot leads are a live list, so they only belong to Today.
+  if (!hot.length || range !== 'today') { section.style.display = 'none'; return; }
   section.style.display = 'block';
   const shown = hotLeadsExpanded ? hot : hot.slice(0, 5);
   document.getElementById('hotLeadsList').innerHTML = shown.map(l => `
@@ -3652,7 +3647,7 @@ async function loadAll(bgRefresh = false) {
     const ovP      = get('/api/overview');
     const chP      = get('/api/channels');
     const leadsP   = get('/api/leads');
-    const trafficP = fetch(`${API}/api/channels/traffic?wa_line=${encodeURIComponent(waLine)}&_=${Date.now()}`, {cache:'no-store'}).then(r => r.ok ? r.json() : Promise.resolve({}));
+    const trafficP = Promise.resolve({});
     const [status, ovRaw, chRaw, leadsRaw, trafficRaw] = await Promise.all([statusP, ovP, chP, leadsP, trafficP]);
     _pipelineStatus = status;
     // Field-level merge: keep cached non-zero values when fresh data has zeros
@@ -3850,6 +3845,6 @@ function _initDashboard() {
   _showLogin();
 })();
 </script>
-<script src="/static/dashboard.js?v=4"></script>
+<script src="/static/dashboard.js?v=5"></script>
 </body>
 </html>
