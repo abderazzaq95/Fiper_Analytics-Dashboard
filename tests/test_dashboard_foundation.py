@@ -28,6 +28,7 @@ class AgentNamesTest(unittest.TestCase):
         self.assertEqual(N.display("Basher Hallak"), "Bashir Hallak")
         self.assertEqual(N.display("joeseph kesserwany"), "Joseph Kesserwany")
         self.assertEqual(N.display("محمد ضافر"), "Mohamed Dhafeer")
+        self.assertEqual(N.display("Mohamed Azzaioui"), "Azzaoui Ihda Mohammed")
 
     def test_unknown_names_are_not_merged(self):
         self.assertEqual(N.display("mohamed"), "Mohamed")
@@ -78,6 +79,33 @@ class WorkspaceTest(unittest.TestCase):
             limit=2)
         self.assertEqual([e["type"] for e in events], ["call", "message"])
         self.assertEqual(events[1]["agent"], "Fatima Zohra Hbada")
+
+    def test_teams_fall_back_to_second_maqsam_address(self):
+        calls = []
+
+        class Reply:
+            def __init__(self, ok):
+                self.ok = ok
+
+            def raise_for_status(self):
+                if not self.ok:
+                    raise workspace.requests.HTTPError("401")
+
+            def json(self):
+                return {"message": [{"name": "Zahrae", "groups": ["Team A"]}]}
+
+        def fake_get(url, **kwargs):
+            calls.append(url)
+            return Reply("api.maqsam.com" in url)
+
+        original = workspace.requests.get
+        os.environ.update(MAQSAM_ACCESS_KEY="key", MAQSAM_ACCESS_SECRET="secret")
+        workspace.requests.get = fake_get
+        try:
+            self.assertEqual(workspace._fetch_maqsam_agents()[0]["name"], "Zahrae")
+        finally:
+            workspace.requests.get = original
+        self.assertEqual(len(calls), 2)
 
     def test_phone_variants(self):
         self.assertEqual(workspace.phone_variants("+968 9123-4567"), ["96891234567", "+96891234567"])

@@ -43,7 +43,23 @@ def _fetch_maqsam_agents() -> list[dict]:
     password = os.getenv("MAQSAM_API_PASSWORD") or os.getenv("MAQSAM_ACCESS_SECRET") or ""
     if not (user and password):
         return []
-    base = os.getenv("MAQSAM_BASE_URL", "https://api.mq.maqsam.com").rstrip("/")
+    # The QC app uses api.mq.maqsam.com; the call sync here uses api.maqsam.com.
+    bases = [os.getenv("MAQSAM_BASE_URL", "https://api.mq.maqsam.com"), "https://api.maqsam.com"]
+    last_error = None
+    for base in dict.fromkeys(b.rstrip("/") for b in bases):
+        try:
+            rows = _fetch_agents_from(base, user, password)
+            if rows:
+                return rows
+        except (requests.RequestException, ValueError) as exc:
+            last_error = exc
+            log.warning(f"Maqsam agents not available from {base}: {type(exc).__name__}")
+    if last_error:
+        raise last_error
+    return []
+
+
+def _fetch_agents_from(base: str, user: str, password: str) -> list[dict]:
     rows: list[dict] = []
     for page in range(1, 11):
         response = requests.get(f"{base}/v1/agents", params={"page": page}, auth=(user, password), timeout=30)

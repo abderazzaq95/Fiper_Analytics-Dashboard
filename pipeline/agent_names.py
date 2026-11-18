@@ -12,6 +12,7 @@ import unicodedata
 AGENTS: dict[str, list[str]] = {
     "Alaa Eddin Alesh": ["alaa al eish"],
     "Amjad Alkhawaldi": ["amjad", "amjad mahmoud"],
+    "Azzaoui Ihda Mohammed": ["mohamed azzaioui"],
     "Bashir Hallak": ["bashir", "basher", "basher hallak"],
     "Fatima Zohra Hbada": ["zahrae"],
     "Fatma Aqel": ["fatma", "fatima akel", "fatima aqel"],
