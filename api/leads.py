@@ -3,7 +3,9 @@ from supabase import create_client
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
-from pipeline.time_ranges import since_iso
+from pipeline.time_ranges import since_iso, until_iso, RANGE_PATTERN
+from api.period import only_active
+from pipeline import agent_names
 from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
 from pipeline.swr_cache import SWRCache, ttl_for
 
@@ -20,9 +22,13 @@ def _since(range_: str) -> str:
     return since_iso(range_)
 
 
+def _until(range_: str) -> str:
+    return until_iso(range_)
+
+
 @router.get("/api/leads")
 def leads(
-    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    range: str = Query("week", pattern=RANGE_PATTERN),
     wa_line: str = Query("all"),
 ):
     try:
@@ -84,6 +90,13 @@ def _merge_by_phone(rows):
     return list(merged.values())
 
 
+def _with_agent_names(rows):
+    for row in rows:
+        if row.get("assigned_agent"):
+            row["assigned_agent"] = agent_names.display(row["assigned_agent"])
+    return rows
+
+
 def _score_distribution():
     score_buckets = dict(EMPTY_SCORE_BUCKETS)
     offset = 0
@@ -119,6 +132,7 @@ def _hot_leads(wa_line: str = "all"):
             .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at,whatsapp_business_number")
             .gte("score", 80)
             .eq("status", "new")
+            .gte("last_message_at", (datetime.now(timezone.utc) - timedelta(days=HOT_LEAD_MAX_AGE_DAYS)).isoformat())
             .order("score", desc=True)
             .limit(50)
             .execute()
@@ -126,13 +140,14 @@ def _hot_leads(wa_line: str = "all"):
         ) or []
         if wa_line and wa_line.lower() not in ("all", "*", "any"):
             rows = [r for r in rows if matches_business_line(r, wa_line)]
-        return rows
+        return _with_agent_names(rows)
     except Exception:
         return []
 
 
 def _leads_inner(range_: str, wa_line: str = "all"):
     since = _since(range_)
+    until = _until(range_)
 
     # Activity-based filtering: WA leads by last_message_at, Maqsam leads by calls
     wa_leads: list[dict] = []
@@ -152,6 +167,7 @@ def _leads_inner(range_: str, wa_line: str = "all"):
         if len(batch) < PAGE:
             break
         offset += PAGE
+    wa_leads = only_active(wa_leads, range_)
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         wa_leads = [l for l in wa_leads if matches_business_line(l, wa_line)]
 
@@ -162,7 +178,7 @@ def _leads_inner(range_: str, wa_line: str = "all"):
         batch = (
             supabase.table("calls")
             .select("lead_id")
-            .gte("called_at", since)
+            .gte("called_at", since).lt("called_at", until)
             .range(offset, offset + PAGE - 1)
             .execute()
             .data
@@ -191,7 +207,7 @@ def _leads_inner(range_: str, wa_line: str = "all"):
         if lead["id"] not in seen:
             seen.add(lead["id"])
             all_leads.append(lead)
-    all_leads = _merge_by_phone(all_leads)
+    all_leads = _with_agent_names(_merge_by_phone(all_leads))
     all_leads.sort(key=lambda l: l.get("score") or 0, reverse=True)
 
     status_counts: dict = {}
@@ -217,6 +233,7 @@ def _leads_inner(range_: str, wa_line: str = "all"):
 
 
 LIST_LIMIT = 50
+HOT_LEAD_MAX_AGE_DAYS = 14  # "immediate attention" must be recent
 
 
 def _avg_score(rows):

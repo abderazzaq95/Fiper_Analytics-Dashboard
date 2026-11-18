@@ -3,7 +3,8 @@ from supabase import create_client
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
-from pipeline.time_ranges import since_iso, period_start_utc
+from pipeline.time_ranges import since_iso, period_start_utc, until_iso, RANGE_PATTERN
+from api.period import only_active
 from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
 from pipeline.swr_cache import SWRCache, ttl_for
 load_dotenv()
@@ -15,6 +16,10 @@ BATCH_SIZE = 100
 
 def _since(range_: str) -> str:
     return since_iso(range_)
+
+
+def _until(range_: str) -> str:
+    return until_iso(range_)
 
 
 def _paginate(build_query) -> list:
@@ -56,7 +61,7 @@ def _unique_call_leads_count(since: str) -> int:
 
 @router.get("/api/channels")
 def channels(
-    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    range: str = Query("week", pattern=RANGE_PATTERN),
     wa_line: str = Query("all"),
 ):
     try:
@@ -101,13 +106,24 @@ def _channels_from_overview(range: str, wa_line: str = "all"):
         return None
 
 
+def _team_median_reply(range: str, wa_line: str = "all") -> float:
+    """Median first reply (working minutes), same definition as the reports."""
+    try:
+        from pipeline import reports
+        median = reports.reply_stats(range, wa_line)["team"].get("median_reply")
+        return round(median, 1) if median is not None else 0
+    except Exception:
+        return 0
+
+
 def _channels_inner(range: str, wa_line: str = "all"):
     since = _since(range)
+    until = _until(range)
 
     stored_messages_rows = _paginate(
         lambda: supabase.table("messages")
         .select("id,direction,lead_id,whatsapp_business_number")
-        .gte("sent_at", since)
+        .gte("sent_at", since).lt("sent_at", until)
     )
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         stored_messages_rows = [m for m in stored_messages_rows if matches_business_line(m, wa_line)]
@@ -119,6 +135,7 @@ def _channels_inner(range: str, wa_line: str = "all"):
         .eq("channel", "whatsapp")
         .gte("last_message_at", since)
     )
+    wa_activity = only_active(wa_activity, range)
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         wa_activity = [l for l in wa_activity if matches_business_line(l, wa_line)]
     active_whatsapp_conversations = len({
@@ -128,10 +145,10 @@ def _channels_inner(range: str, wa_line: str = "all"):
     })
 
     total_calls_maqsam = _exact_count(
-        lambda: supabase.table("calls").select("id", count="exact").gte("called_at", since)
+        lambda: supabase.table("calls").select("id", count="exact").gte("called_at", since).lt("called_at", until)
     )
     call_rows = _paginate(
-        lambda: supabase.table("calls").select("lead_id,duration_seconds").gte("called_at", since)
+        lambda: supabase.table("calls").select("lead_id,duration_seconds").gte("called_at", since).lt("called_at", until)
     )
 
     active_whatsapp_keys = {
@@ -181,7 +198,7 @@ def _channels_inner(range: str, wa_line: str = "all"):
             "conversion_rate": round(len(wa_converted_people) / len(active_whatsapp_keys) * 100, 1) if active_whatsapp_keys else 0,
             "messages": active_whatsapp_conversations,
             "stored_messages": stored_messages_count,
-            "avg_response_time_min": 0,
+            "avg_response_time_min": _team_median_reply(range, wa_line),
         },
         "maqsam": {
             "leads": len(mq_unique_people),

@@ -15,6 +15,7 @@ import time
 from typing import Callable
 
 log = logging.getLogger("fiper.cache")
+MAX_ENTRIES = 200
 
 
 class SWRCache:
@@ -37,8 +38,13 @@ class SWRCache:
             return entry[1]
         value = compute()
         if keep(value):
-            self._data[key] = (time.time(), value)
+            self._store(key, value)
         return value
+
+    def _store(self, key: str, value) -> None:
+        self._data[key] = (time.time(), value)
+        while len(self._data) > MAX_ENTRIES:  # custom date ranges create many keys
+            self._data.pop(min(self._data, key=lambda k: self._data[k][0]), None)
 
     def _refresh(self, key: str, compute, keep) -> None:
         with self._lock:
@@ -50,7 +56,7 @@ class SWRCache:
             try:
                 value = compute()
                 if keep(value):
-                    self._data[key] = (time.time(), value)
+                    self._store(key, value)
             except Exception as exc:
                 log.warning(f"[{self.name}] background refresh failed ({key}): {exc}")
             finally:

@@ -6,8 +6,9 @@ import requests
 import re
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
-from pipeline.time_ranges import since_iso
+from pipeline.time_ranges import since_iso, until_iso, RANGE_PATTERN
 from collections import Counter
+from pipeline import agent_names
 from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line, resolve_agent_name
 from pipeline.swr_cache import SWRCache, ttl_for
 
@@ -33,6 +34,10 @@ def _paginate(build_query) -> list:
 
 def _since(range_: str) -> str:
     return since_iso(range_)
+
+
+def _until(range_: str) -> str:
+    return until_iso(range_)
 
 
 def _digits_only(value: str | None) -> str:
@@ -175,7 +180,7 @@ def _topic_titles_from_examples(topic_specs: list[dict]) -> dict[str, str]:
 
 @router.get("/api/quality")
 def quality(
-    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    range: str = Query("week", pattern=RANGE_PATTERN),
     wa_line: str = Query("all"),
 ):
     try:
@@ -188,16 +193,15 @@ def quality(
 
 def _quality_inner(range: str, wa_line: str = "all"):
     since = _since(range)
+    until = _until(range)
 
-    alerts = (
-        supabase.table("alerts")
+    alerts = _paginate(
+        lambda: supabase.table("alerts")
         .select("*")
         .eq("resolved", False)
-        .gte("created_at", since)
+        .gte("created_at", since).lt("created_at", until)
         .order("created_at", desc=True)
-        .execute()
-        .data
-    ) or []
+    )
 
     # Enrich alerts with lead phone/name and resolve missing agent_name
     lead_map = {}
@@ -237,6 +241,7 @@ def _quality_inner(range: str, wa_line: str = "all"):
             current_agent = _lead_agent_name({"assigned_agent": a.get("agent_name")}, latest_msg)
             fallback_agent = _lead_agent_name(lead, latest_msg) if lead else None
             a["agent_name"] = current_agent or fallback_agent or a.get("agent_name")
+            a["agent_name"] = agent_names.display(a.get("agent_name"))
             if lead:
                 a["lead_phone"] = _lead_phone(lead)
                 a["lead_name"]  = lead.get("name")
@@ -293,37 +298,31 @@ def _quality_inner(range: str, wa_line: str = "all"):
         except Exception:
             pass
 
-    analyses = (
-        supabase.table("ai_analysis")
+    analyses = _paginate(
+        lambda: supabase.table("ai_analysis")
         .select("lead_id,sentiment,topics,treatment_score,risk_flags,analyzed_at,source,summary")
-        .gte("analyzed_at", since)
-        .execute()
-        .data
-    ) or []
+        .gte("analyzed_at", since).lt("analyzed_at", until)
+    )
 
     topic_example_rows = []
     try:
-        topic_example_rows = (
-            supabase.table("ai_analysis")
+        topic_example_rows = _paginate(
+        lambda: supabase.table("ai_analysis")
             .select("lead_id,topics,summary")
-            .gte("analyzed_at", since)
-            .execute()
-            .data
-        ) or []
+            .gte("analyzed_at", since).lt("analyzed_at", until)
+    )
     except Exception:
         topic_example_rows = []
 
     calls = _paginate(
-        lambda: supabase.table("calls").select("id,outcome").gte("called_at", since)
+        lambda: supabase.table("calls").select("id,outcome").gte("called_at", since).lt("called_at", until)
     )
 
-    messages = (
-        supabase.table("messages")
+    messages = _paginate(
+        lambda: supabase.table("messages")
         .select("lead_id,whatsapp_business_number")
-        .gte("sent_at", since)
-        .execute()
-        .data
-    ) or []
+        .gte("sent_at", since).lt("sent_at", until)
+    )
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         messages = [m for m in messages if matches_business_line(m, wa_line)]
 
@@ -571,23 +570,20 @@ def _quality_inner(range: str, wa_line: str = "all"):
 
 
 @router.get("/api/quality/summary")
-def quality_summary(range: str = Query("week", pattern="^(today|week|month|7d|30d)$")):
+def quality_summary(range: str = Query("week", pattern=RANGE_PATTERN)):
     since = _since(range)
+    until = _until(range)
 
-    analyses = (
-        supabase.table("ai_analysis")
+    analyses = _paginate(
+        lambda: supabase.table("ai_analysis")
         .select("sentiment,topics,risk_flags,treatment_score,outcome,summary")
-        .gte("analyzed_at", since)
-        .execute()
-        .data
+        .gte("analyzed_at", since).lt("analyzed_at", until)
     )
-    alerts = (
-        supabase.table("alerts")
+    alerts = _paginate(
+        lambda: supabase.table("alerts")
         .select("type,severity,message")
-        .gte("created_at", since)
+        .gte("created_at", since).lt("created_at", until)
         .eq("resolved", False)
-        .execute()
-        .data
     )
 
     context = f"""

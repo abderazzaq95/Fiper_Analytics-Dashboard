@@ -3,11 +3,13 @@ from supabase import create_client
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
-from pipeline.time_ranges import since_iso
+from pipeline.time_ranges import since_iso, until_iso, RANGE_PATTERN
+from api.period import only_active
 from collections import defaultdict
 import re
 import threading
 import time
+from pipeline import agent_names
 from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line, resolve_agent_name
 
 load_dotenv()
@@ -37,29 +39,40 @@ def _since(range_: str) -> str:
     return since_iso(range_)
 
 
-_NAME_ALIASES: dict[str, str] = {
-    # ManyContacts spelling → canonical (Maqsam spelling wins as it has full name)
-    "firas zabalwi":  "Feras Zabalawi",
-    "feras zabalwi":  "Feras Zabalawi",
-    "alaa al eish":   "Alaa Eddin Alesh",
-    "alaa eddin alesh": "Alaa Eddin Alesh",
-    "bashir":         "Basher Hallak",
-    "basher":         "Basher Hallak",
-    "fatima akel":    "Fatma Aqel",
-    "fatima aqel":    "Fatma Aqel",
-}
+def _until(range_: str) -> str:
+    return until_iso(range_)
+
+
+_NAME_ALIASES: dict[str, str] = agent_names.RAW_ALIASES
 
 
 def _norm(name: str | None) -> str | None:
     """Normalize agent name: strip + Title Case, then apply alias map.
     Collapses cross-system duplicates (ManyContacts vs Maqsam spellings).
     """
-    if not name:
-        return None
-    key = name.strip().lower()
-    if key in _NAME_ALIASES:
-        return _NAME_ALIASES[key]
-    return name.strip().title()
+    return agent_names.display(name)
+
+
+def _safe_reply_stats(range_: str, wa_line: str = "all") -> dict:
+    """First-reply figures, defined exactly like the email reports."""
+    try:
+        from pipeline import reports  # lazy: pulls in the notification stack
+        return reports.reply_stats(range_, wa_line)
+    except Exception as exc:
+        import logging
+        logging.getLogger("fiper").warning(f"reply stats unavailable ({range_}): {exc}")
+        return {"team": {}, "agents": {}}
+
+
+def _reply_fields(stats: dict, agent: str) -> dict:
+    row = (stats.get("agents") or {}).get(agent_names.key(agent)) or {}
+    median = row.get("median_reply")
+    return {
+        "avg_response_time_min": round(median, 1) if median is not None else 0,
+        "median_reply_min": round(median, 1) if median is not None else None,
+        "reply_within_15_pct": row.get("sla_pct"),
+        "customers_answered": row.get("answered", 0),
+    }
 
 
 def _looks_like_uuid(value: str | None) -> bool:
@@ -147,7 +160,7 @@ def _refresh_agents_in_background(cache_key: str, range: str, wa_line: str) -> N
 
 @router.get("/api/agents")
 def agents(
-    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    range: str = Query("week", pattern=RANGE_PATTERN),
     wa_line: str = Query("all"),
     refresh: str = Query("0"),
 ):
@@ -196,24 +209,24 @@ def agents(
 
 def _agents_lightweight(range: str, wa_line: str = "all"):
     since = _since(range)
+    until = _until(range)
     calls = _paginate(
         lambda: supabase.table("calls")
         .select("agent_name,lead_id,duration_seconds,called_at")
-        .gte("called_at", since)
+        .gte("called_at", since).lt("called_at", until)
     )
     messages = _paginate(
         lambda: supabase.table("messages")
         .select("agent_name,direction,sent_at,lead_id,whatsapp_business_number")
-        .gte("sent_at", since)
+        .gte("sent_at", since).lt("sent_at", until)
     )
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         messages = [m for m in messages if matches_business_line(m, wa_line)]
-    alerts = (
-        supabase.table("alerts")
+    alerts = _paginate(
+        lambda: supabase.table("alerts")
         .select("agent_name,lead_id,severity,type,message,resolved,created_at")
         .eq("resolved", False)
-        .gte("created_at", since)
-        .execute().data or []
+        .gte("created_at", since).lt("created_at", until)
     )
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         alert_lead_ids = list({a.get("lead_id") for a in alerts if a.get("lead_id")})
@@ -368,28 +381,27 @@ def _fetch_in_parallel(table: str, select: str, id_field: str, ids: list[str], e
 def _agents_inner(range: str, wa_line: str = "all"):
     from concurrent.futures import ThreadPoolExecutor, as_completed as cf_as_completed
     since = _since(range)
+    until = _until(range)
 
     # Fetch messages, calls, and alerts in parallel (3 independent queries)
     def _fetch_messages():
         return _paginate(lambda: supabase.table("messages")
             .select(add_whatsapp_line_select("agent_name,direction,sent_at,lead_id"))
-            .gte("sent_at", since))
+            .gte("sent_at", since).lt("sent_at", until))
 
     def _fetch_calls():
         return _paginate(lambda: supabase.table("calls")
             .select("agent_name,lead_id,duration_seconds,called_at")
-            .gte("called_at", since))
+            .gte("called_at", since).lt("called_at", until))
 
     def _fetch_alerts():
-        return (
-            supabase.table("alerts")
+        return _paginate(
+        lambda: supabase.table("alerts")
             .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
             .eq("resolved", False)
-            .gte("created_at", since)
+            .gte("created_at", since).lt("created_at", until)
             .order("created_at", desc=True)
-            .execute()
-            .data
-        ) or []
+    )
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         f_msgs   = executor.submit(_fetch_messages)
@@ -533,6 +545,7 @@ def _agents_inner(range: str, wa_line: str = "all"):
     # All agents: WhatsApp (leads + messages) + Maqsam (calls)
     all_agents = set(agent_leads.keys()) | set(agent_msgs.keys()) | set(agent_calls.keys()) | set(agent_alerts.keys())
 
+    reply_stats = _safe_reply_stats(range, wa_line)
     result = []
     for agent in all_agents:
         al = agent_leads.get(agent, [])
@@ -557,24 +570,6 @@ def _agents_inner(range: str, wa_line: str = "all"):
             round(sum(c["duration_seconds"] for c in completed_calls) / calls_answered)
             if calls_answered else 0
         )
-
-        # Response times (WhatsApp inbound → outbound gap)
-        by_lead: dict[str, list] = defaultdict(list)
-        for m in am:
-            by_lead[m["lead_id"]].append(m)
-        response_times = []
-        for msgs in by_lead.values():
-            sorted_msgs = sorted(msgs, key=lambda x: x.get("sent_at") or "")
-            last_in = None
-            for m in sorted_msgs:
-                if m["direction"] == "inbound":
-                    last_in = datetime.fromisoformat(m["sent_at"].replace("Z", "+00:00"))
-                elif m["direction"] == "outbound" and last_in:
-                    out_t = datetime.fromisoformat(m["sent_at"].replace("Z", "+00:00"))
-                    gap = (out_t - last_in).total_seconds() / 60
-                    if gap >= 0:
-                        response_times.append(gap)
-                    last_in = None
 
         # ── Collect ai_analysis for this agent ───────────────────────────────
         sentiments: list[str] = []
@@ -622,7 +617,7 @@ def _agents_inner(range: str, wa_line: str = "all"):
             "wa_chats":                 wa_chats,
             "messages_sent":            messages_sent,
             "avg_call_duration_seconds": avg_call_dur,
-            "avg_response_time_min":    round(sum(response_times) / len(response_times), 1) if response_times else 0,
+            **_reply_fields(reply_stats, agent),
             "avg_treatment_score":      round(sum(treatment_scores) / len(treatment_scores), 1) if treatment_scores else 0,
             "sentiment":                sentiment_summary,
             "open_alerts":              len(agent_alerts.get(agent, [])),
@@ -681,7 +676,7 @@ def _agents_inner(range: str, wa_line: str = "all"):
 @router.get("/api/agents/alerts")
 def agent_alerts(
     agent: str = Query(...),
-    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    range: str = Query("week", pattern=RANGE_PATTERN),
 ):
     """Return open alerts attributed to one normalized agent.
 
@@ -703,6 +698,8 @@ def _agent_alerts_inner(agent: str, range_: str):
 
     since = _since(range_)
 
+    until = _until(range_)
+
     # All name spelling variants for DB matching
     target_spellings: set[str] = {target}
     for raw_key, resolved in _NAME_ALIASES.items():
@@ -711,15 +708,13 @@ def _agent_alerts_inner(agent: str, range_: str):
     spelling_list = list(target_spellings)
 
     # Fetch all open alerts (small dataset — ~333 rows)
-    all_alerts = (
-        supabase.table("alerts")
+    all_alerts = _paginate(
+        lambda: supabase.table("alerts")
         .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
         .eq("resolved", False)
-        .gte("created_at", since)
+        .gte("created_at", since).lt("created_at", until)
         .order("created_at", desc=True)
-        .execute()
-        .data
-    ) or []
+    )
 
     # Pass 1: alerts with an explicit matching agent_name (fast, no lead lookup needed)
     matched_alerts: list[dict] = []
@@ -779,7 +774,7 @@ def _agent_alerts_inner(agent: str, range_: str):
 @router.get("/api/agents/detail")
 def agent_detail(
     agent: str = Query(...),
-    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    range: str = Query("week", pattern=RANGE_PATTERN),
     wa_line: str = Query("all"),
 ):
     try:
@@ -797,6 +792,8 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
         return {"agent": agent, "stats": {}, "calls": [], "wa_leads": [], "analyses": [], "alerts": []}
 
     since = _since(range_)
+
+    until = _until(range_)
     msg_select = add_whatsapp_line_select("agent_name,direction,sent_at,lead_id")
 
     # Build all spelling variants for this agent (ilike is case-insensitive)
@@ -810,20 +807,21 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
     def _fetch_calls_nv(nv):
         return _paginate(lambda nv2=nv: supabase.table("calls")
             .select("lead_id,duration_seconds,called_at,agent_name")
-            .gte("called_at", since).ilike("agent_name", nv2))
+            .gte("called_at", since).lt("called_at", until).ilike("agent_name", nv2))
 
     def _fetch_assigned_nv(nv):
         try:
-            return supabase.table("leads")\
+            rows = supabase.table("leads")\
                 .select("id,phone,name,assigned_agent,status,score,channel,whatsapp_business_number")\
                 .ilike("assigned_agent", nv).gte("last_message_at", since)\
                 .execute().data or []
+            return only_active(rows, range_)
         except Exception:
             return []
 
     def _fetch_msgs_nv(nv):
         return _paginate(lambda nv2=nv: supabase.table("messages")
-            .select(msg_select).gte("sent_at", since).ilike("agent_name", nv2))
+            .select(msg_select).gte("sent_at", since).lt("sent_at", until).ilike("agent_name", nv2))
 
     raw_calls_parts: list[list] = []
     assigned_parts: list[list] = []
@@ -866,7 +864,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
 
     def _fetch_extra_msgs(chunk):
         return supabase.table("messages").select(msg_select)\
-            .gte("sent_at", since).in_("lead_id", chunk).execute().data or []
+            .gte("sent_at", since).lt("sent_at", until).in_("lead_id", chunk).execute().data or []
 
     def _fetch_lead_detail(chunk):
         return supabase.table("leads")\
@@ -874,11 +872,10 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
             .in_("id", chunk).execute().data or []
 
     def _fetch_all_alerts():
-        query = supabase.table("alerts")\
-            .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")\
+        return _paginate(lambda: supabase.table("alerts")
+            .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
             .eq("resolved", False).order("created_at", desc=True)
-        query = query.gte("created_at", since)
-        return query.execute().data or []
+            .gte("created_at", since).lt("created_at", until))
 
     raw_msgs:   list[dict] = list(msgs_name_parts)
     leads_raw:  list[dict] = list(assigned_lead_rows)
@@ -995,30 +992,6 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
     messages_sent = len(outbound_msgs)
 
     # Response times
-    by_lead_rt: dict[str, list] = defaultdict(list)
-    for m in agent_msgs:
-        if m.get("lead_id"):
-            by_lead_rt[m["lead_id"]].append(m)
-    response_times = []
-    for msgs in by_lead_rt.values():
-        sorted_msgs = sorted(msgs, key=lambda x: x.get("sent_at") or "")
-        last_in = None
-        for m in sorted_msgs:
-            ts_raw = m.get("sent_at")
-            if not ts_raw:
-                continue
-            try:
-                ts_dt = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
-            except (ValueError, AttributeError):
-                continue
-            if m.get("direction") == "inbound":
-                last_in = ts_dt
-            elif m.get("direction") == "outbound" and last_in:
-                gap = (ts_dt - last_in).total_seconds() / 60
-                if gap >= 0:
-                    response_times.append(gap)
-                last_in = None
-
     # Sentiment and treatment from analyses
     sentiments: list[str] = []
     treatment_scores: list[float] = []
@@ -1113,7 +1086,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
             "messages_sent":            messages_sent,
             "leads":                    len(agent_lead_ids),
             "avg_call_duration_seconds": avg_call_dur,
-            "avg_response_time_min":    round(sum(response_times)/len(response_times),1) if response_times else 0,
+            **_reply_fields(_safe_reply_stats(range_, "all"), target),
             "avg_treatment_score":      round(sum(treatment_scores)/len(treatment_scores),1) if treatment_scores else 0,
             "sentiment": {
                 "positive": sentiments.count("positive"),

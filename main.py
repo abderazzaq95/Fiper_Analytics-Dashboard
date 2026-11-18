@@ -16,7 +16,7 @@ from supabase import create_client
 from dotenv import load_dotenv
 
 from pipeline import whatsapp, maqsam, ai_analyzer, alert_engine, email_notifications, reminders
-from api import overview, agents, leads, channels, quality, journey, journey_v2, auth
+from api import overview, agents, leads, channels, quality, journey, journey_v2, auth, workspace
 
 load_dotenv()
 
@@ -1708,6 +1708,7 @@ app.add_middleware(
 # Server-side login: every route except auth.PUBLIC_* needs a session cookie.
 app.middleware("http")(auth.auth_middleware)
 app.include_router(auth.router)
+app.include_router(workspace.router)
 app.include_router(overview.router)
 app.include_router(agents.router)
 app.include_router(leads.router)

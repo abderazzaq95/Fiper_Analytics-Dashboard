@@ -3,7 +3,8 @@ from supabase import create_client
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
-from pipeline.time_ranges import since_iso
+from pipeline.time_ranges import since_iso, until_iso, RANGE_PATTERN
+from api.period import only_active
 from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
 from pipeline.swr_cache import SWRCache, ttl_for
 load_dotenv()
@@ -20,6 +21,10 @@ BATCH_SIZE = 100
 
 def _since(range_: str) -> str:
     return since_iso(range_)
+
+
+def _until(range_: str) -> str:
+    return until_iso(range_)
 
 
 def _minutes_between(later: str, earlier: str) -> float:
@@ -53,11 +58,12 @@ def _safe_count(build_query) -> int:
 
 def _overview_count_fallback(range: str, wa_line: str = "all") -> dict:
     since = _since(range)
+    until = _until(range)
     try:
         msg_rows = _paginate(
             lambda: supabase.table("messages")
             .select("id,direction,lead_id,whatsapp_business_number")
-            .gte("sent_at", since)
+            .gte("sent_at", since).lt("sent_at", until)
         )
         if wa_line and wa_line.lower() not in ("all", "*", "any"):
             msg_rows = [m for m in msg_rows if matches_business_line(m, wa_line)]
@@ -73,6 +79,7 @@ def _overview_count_fallback(range: str, wa_line: str = "all") -> dict:
             .eq("channel", "whatsapp")
             .gte("last_message_at", since)
         )
+        wa_rows = only_active(wa_rows, range)
         if wa_line and wa_line.lower() not in ("all", "*", "any"):
             wa_rows = [r for r in wa_rows if matches_business_line(r, wa_line)]
         active_whatsapp = len({
@@ -83,14 +90,14 @@ def _overview_count_fallback(range: str, wa_line: str = "all") -> dict:
     except Exception:
         active_whatsapp = 0
     total_calls = _safe_count(
-        lambda: supabase.table("calls").select("id", count="exact").gte("called_at", since).limit(1)
+        lambda: supabase.table("calls").select("id", count="exact").gte("called_at", since).lt("called_at", until).limit(1)
     )
     call_rows = []
     try:
         call_rows = _paginate(
             lambda: supabase.table("calls")
             .select("lead_id,duration_seconds,called_at")
-            .gte("called_at", since)
+            .gte("called_at", since).lt("called_at", until)
         )
     except Exception:
         call_rows = []
@@ -110,15 +117,13 @@ def _overview_count_fallback(range: str, wa_line: str = "all") -> dict:
             pass
     hourly_distribution = [{"hour": h, "calls": count} for h, count in enumerate(hourly_counts)]
     try:
-        alert_rows = (
-            supabase.table("alerts")
+        alert_rows = _paginate(
+        lambda: supabase.table("alerts")
             .select("id,lead_id,severity,resolved,created_at")
-            .gte("created_at", since)
+            .gte("created_at", since).lt("created_at", until)
             .eq("resolved", False)
             .order("created_at", desc=True)
-            .execute()
-            .data
-        ) or []
+    )
         if wa_line and wa_line.lower() not in ("all", "*", "any"):
             alert_lead_ids = list({a.get("lead_id") for a in alert_rows if a.get("lead_id")})
             alert_lead_map = {}
@@ -136,10 +141,10 @@ def _overview_count_fallback(range: str, wa_line: str = "all") -> dict:
         high_alerts = sum(1 for a in alert_rows if a.get("severity") == "HIGH")
     except Exception:
         open_alerts = _safe_count(
-            lambda: supabase.table("alerts").select("id", count="exact").gte("created_at", since).eq("resolved", False).limit(1)
+            lambda: supabase.table("alerts").select("id", count="exact").gte("created_at", since).lt("created_at", until).eq("resolved", False).limit(1)
         )
         high_alerts = _safe_count(
-            lambda: supabase.table("alerts").select("id", count="exact").gte("created_at", since).eq("resolved", False).eq("severity", "HIGH").limit(1)
+            lambda: supabase.table("alerts").select("id", count="exact").gte("created_at", since).lt("created_at", until).eq("resolved", False).eq("severity", "HIGH").limit(1)
         )
     return {
         "range": range,
@@ -161,7 +166,7 @@ def _overview_count_fallback(range: str, wa_line: str = "all") -> dict:
 
 @router.get("/api/overview")
 def overview(
-    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    range: str = Query("week", pattern=RANGE_PATTERN),
     wa_line: str = Query("all"),
 ):
     try:
@@ -187,11 +192,12 @@ def overview(
 
 def _overview_inner(range: str, wa_line: str = "all"):
     since = _since(range)
+    until = _until(range)
 
     # Messages
-    messages = (
-        supabase.table("messages").select(add_whatsapp_line_select("id,direction,lead_id,sent_at"))
-        .gte("sent_at", since).execute().data or []
+    messages = _paginate(
+        lambda: supabase.table("messages").select(add_whatsapp_line_select("id,direction,lead_id,sent_at"))
+        .gte("sent_at", since).lt("sent_at", until)
     )
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         messages = [m for m in messages if matches_business_line(m, wa_line)]
@@ -205,6 +211,7 @@ def _overview_inner(range: str, wa_line: str = "all"):
         .eq("channel", "whatsapp")
         .gte("last_message_at", since)
     )
+    wa_activity = only_active(wa_activity, range)
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         wa_activity = [l for l in wa_activity if matches_business_line(l, wa_line)]
     active_whatsapp_conversations = len({
@@ -237,7 +244,7 @@ def _overview_inner(range: str, wa_line: str = "all"):
     calls_res = (
         supabase.table("calls")
         .select("id,duration_seconds,lead_id", count="exact")
-        .gte("called_at", since)
+        .gte("called_at", since).lt("called_at", until)
         .execute()
     )
     total_calls = calls_res.count if calls_res.count is not None else 0
@@ -257,7 +264,7 @@ def _overview_inner(range: str, wa_line: str = "all"):
             for c in _paginate(
                 lambda: supabase.table("calls")
                 .select("lead_id")
-                .gte("called_at", since)
+                .gte("called_at", since).lt("called_at", until)
             )
             if c.get("lead_id")
         )
@@ -287,9 +294,9 @@ def _overview_inner(range: str, wa_line: str = "all"):
         leads = [l for l in leads if matches_business_line(l, wa_line)]
 
     # Alerts: small dataset
-    alerts = (
-        supabase.table("alerts").select("id,lead_id,severity,resolved,created_at")
-        .gte("created_at", since).execute().data or []
+    alerts = _paginate(
+        lambda: supabase.table("alerts").select("id,lead_id,severity,resolved,created_at")
+        .gte("created_at", since).lt("created_at", until)
     )
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         # Build lead_map from the alert lead IDs directly, not from active_lead_ids,
@@ -362,7 +369,7 @@ def _overview_inner(range: str, wa_line: str = "all"):
 
     # Hourly distribution: bucket all calls by hour of day (0–23)
     all_called_at = _paginate(
-        lambda: supabase.table("calls").select("called_at").gte("called_at", since)
+        lambda: supabase.table("calls").select("called_at").gte("called_at", since).lt("called_at", until)
     )
     hourly_counts = [0] * 24
     for c in all_called_at:

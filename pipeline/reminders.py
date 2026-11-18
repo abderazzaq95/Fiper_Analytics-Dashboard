@@ -35,6 +35,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from pipeline import agent_names
 from pipeline import email_notifications as notify
 from pipeline import reminder_templates as templates
 from pipeline.reply_tracker import (
@@ -199,15 +200,17 @@ def _load_call_times(phones: list[str], since: datetime) -> dict[str, list[datet
 
 
 def _canonical_agent(name: str | None) -> str | None:
-    """Same person, one name: 'joseph kesrwany' / 'Joseph kesserwany' etc. map to
-    the contact-sheet name when the sheet knows them (also used for delivery)."""
+    """Same person, one name (pipeline/agent_names.py, then the contact sheet)."""
     if not name:
         return None
+    known = agent_names.canonical(name)
+    if known:
+        return known
     try:
         contact = notify._agent_contact(name)
     except Exception:
         contact = None
-    return ((contact or {}).get("name") or "").strip() or name
+    return agent_names.display((contact or {}).get("name") or name)
 
 
 def _pick_agent(conv: dict, last_agent: str | None) -> str | None:

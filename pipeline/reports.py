@@ -16,10 +16,14 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
+from pipeline import agent_names
 from pipeline import email_notifications as notify
 from pipeline import reminders
 from pipeline import report_templates as RT
 from pipeline.reply_tracker import Schedule, median, parse_dt, wait_episodes
+from pipeline.swr_cache import SWRCache, ttl_for
+from pipeline.time_ranges import period_bounds
+from pipeline.whatsapp import matches_business_line
 
 log = logging.getLogger("fiper.reports")
 supabase = notify.supabase
@@ -41,9 +45,8 @@ def agent_identity(name: str | None) -> tuple[str, str] | None:
     clean = reminders._clean_agent(raw)
     if clean:
         canon = reminders._canonical_agent(clean) or clean
-        key = notify._normalize_name(canon)
-        display = canon.title() if canon == canon.lower() else canon
-        result = (key, display) if key else None
+        ident = agent_names.key(canon)
+        result = (ident, agent_names.display(canon)) if ident else None
     _identity_cache[raw] = result
     return result
 
@@ -219,7 +222,7 @@ def _paginate(build):
     return notify._paginate(build)
 
 
-def _load(start: datetime, end: datetime) -> dict:
+def _load(start: datetime, end: datetime, *, full: bool = True) -> dict:
     ctx_start = start - timedelta(hours=24)  # context so waits that began just before are understood
     messages = _paginate(
         lambda: supabase.table("messages")
@@ -244,6 +247,9 @@ def _load(start: datetime, end: datetime) -> dict:
         conv["messages"].append(m)
         conv["leads"][lead["id"]] = lead
     calls_by_phone = reminders._load_call_times(sorted(convs), ctx_start)
+    if not full:
+        return {"messages": messages, "convs": convs, "calls_by_phone": calls_by_phone,
+                "call_rows": [], "new_leads": []}
     call_rows = _paginate(
         lambda: supabase.table("calls")
         .select("agent_name,outcome,duration_seconds,called_at")
@@ -306,6 +312,32 @@ def _waiting_now(agents: dict | None = None) -> list[dict]:
         })
     out.sort(key=lambda w: -w["elapsed_min"])
     return out
+
+
+# ── Shared reply figures (dashboard agent table, channels card) ──────────────
+
+_REPLY_CACHE = SWRCache("reply-stats", 300)
+
+
+def _compute_reply_stats(range_: str, wa_line: str) -> dict:
+    start, end = period_bounds(range_)
+    end = end or datetime.now(timezone.utc)
+    data = _load(start, end, full=False)
+    convs = data["convs"]
+    if wa_line and wa_line.lower() not in ("all", "*", "any"):
+        convs = {phone: conv for phone, conv in convs.items()
+                 if any(matches_business_line(m, wa_line) for m in conv["messages"])}
+    agents: dict[str, AgentStats] = {}
+    team = responsiveness(convs, data["calls_by_phone"], start, end, reminders.SCHEDULE, _owner_of, agents)
+    return {
+        "team": {k: team[k] for k in ("customers", "episodes", "answered", "median_reply", "sla_pct")},
+        "agents": {k: {"median_reply": a.median_reply, "sla_pct": a.sla_pct, "answered": a.answered,
+                       "episodes": a.episodes} for k, a in agents.items()},
+    }
+
+
+def reply_stats(range_: str, wa_line: str = "all") -> dict:
+    return _REPLY_CACHE.get(f"{range_}:{wa_line}", lambda: _compute_reply_stats(range_, wa_line), ttl=ttl_for(range_))
 
 
 # ── Daily ────────────────────────────────────────────────────────────────────

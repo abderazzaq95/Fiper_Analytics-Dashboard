@@ -8,7 +8,9 @@ import csv
 import io
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
-from pipeline.time_ranges import since_iso
+from pipeline.time_ranges import since_iso, until_iso, RANGE_PATTERN
+from api.period import only_active
+from pipeline import agent_names
 from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
 
 load_dotenv()
@@ -36,6 +38,10 @@ _BAD_FIPER_NAMES = re.compile(
 
 def _since(range_: str) -> str:
     return since_iso(range_)
+
+
+def _until(range_: str) -> str:
+    return until_iso(range_)
 
 
 def _detect_cc(phone: str) -> str:
@@ -160,7 +166,7 @@ def _merge_by_phone(raw_leads: list[dict]) -> list[dict]:
         channels = sorted({l.get("channel") for l in group if l.get("channel")})
         last_msg = max((l.get("last_message_at") or "" for l in group)) or None
         name = next((l.get("name") for l in group if l.get("name")), None)
-        agent = next((l.get("assigned_agent") for l in group if l.get("assigned_agent")), None)
+        agent = agent_names.display(next((l.get("assigned_agent") for l in group if l.get("assigned_agent")), None))
         # Prefer maqsam lead as primary (has calls); else first in group
         primary = next((l for l in group if l.get("channel") == "maqsam"), group[0])
         # Carry whatsapp_business_number: first non-null value across the group
@@ -183,6 +189,7 @@ def _merge_by_phone(raw_leads: list[dict]) -> list[dict]:
     # Leads with no phone are kept as-is (single-channel, no merge possible)
     for lead in no_phone:
         lead = dict(lead)
+        lead["assigned_agent"] = agent_names.display(lead.get("assigned_agent"))
         lead["lead_ids"] = [lead["id"]]
         lead["channels"] = [lead.get("channel") or ""]
         merged.append(lead)
@@ -194,7 +201,7 @@ def _merge_by_phone(raw_leads: list[dict]) -> list[dict]:
 def leads_journey_v2(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=5000),
-    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    range: str = Query("week", pattern=RANGE_PATTERN),
     wa_line: str = Query("all"),
     phone_search: str = Query(""),
     country: str = Query(""),
@@ -220,10 +227,11 @@ def leads_journey_v2(
 def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_score,
            channel, outcome, agent, high_risk_only, sort_by, lang="en"):
     since = _since(range)
+    until = _until(range)
 
     # ── 1. Collect active lead IDs from selected range ────────────────────────
     call_rows = _paginate(
-        lambda: supabase.table("calls").select("lead_id,called_at").gte("called_at", since)
+        lambda: supabase.table("calls").select("lead_id,called_at").gte("called_at", since).lt("called_at", until)
     )
     call_lead_ids: set[str] = set()
     call_counts: dict[str, int] = defaultdict(int)
@@ -233,11 +241,11 @@ def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_sc
             call_lead_ids.add(lid)
             call_counts[lid] += 1
 
-    msg_lead_rows = (
-        supabase.table("leads").select(add_whatsapp_line_select("id,channel"))
+    msg_lead_rows = _paginate(
+        lambda: supabase.table("leads").select(add_whatsapp_line_select("id,channel"))
         .gte("last_message_at", since)
-        .execute().data or []
     )
+    msg_lead_rows = only_active(msg_lead_rows, range)
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         msg_lead_rows = [
             r for r in msg_lead_rows
@@ -646,11 +654,12 @@ def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_sc
 def _export_rows_light(range, wa_line, phone_search, country, min_score, max_score,
                        channel, outcome, agent, high_risk_only, sort_by):
     since = _since(range)
+    until = _until(range)
 
     call_rows = _paginate(
         lambda: supabase.table("calls")
         .select("lead_id,outcome,called_at")
-        .gte("called_at", since)
+        .gte("called_at", since).lt("called_at", until)
     )
     call_lead_ids: set[str] = set()
     call_counts: dict[str, int] = defaultdict(int)
@@ -664,11 +673,11 @@ def _export_rows_light(range, wa_line, phone_search, country, min_score, max_sco
         if (c.get("outcome") or "") == "completed":
             answered_counts[lid] += 1
 
-    msg_lead_rows = (
-        supabase.table("leads").select(add_whatsapp_line_select("id,channel"))
+    msg_lead_rows = _paginate(
+        lambda: supabase.table("leads").select(add_whatsapp_line_select("id,channel"))
         .gte("last_message_at", since)
-        .execute().data or []
     )
+    msg_lead_rows = only_active(msg_lead_rows, range)
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         msg_lead_rows = [
             r for r in msg_lead_rows
@@ -809,7 +818,7 @@ def _export_rows_light(range, wa_line, phone_search, country, min_score, max_sco
 
 @router.get("/api/leads/journey/v2/export")
 def leads_journey_v2_export(
-    range: str = Query("week", pattern="^(today|week|month|7d|30d)$"),
+    range: str = Query("week", pattern=RANGE_PATTERN),
     wa_line: str = Query("all"),
     phone_search: str = Query(""),
     country: str = Query(""),

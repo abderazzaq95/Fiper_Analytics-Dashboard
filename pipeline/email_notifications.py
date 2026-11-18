@@ -8,11 +8,11 @@ import io
 import os
 import re
 import time
-import unicodedata
 
 import requests
 from dotenv import load_dotenv
 from supabase import create_client
+from pipeline import agent_names
 from pipeline.whatsapp import resolve_agent_name
 
 load_dotenv()
@@ -49,28 +49,7 @@ CALLBELL_API_KEY = os.getenv("CALLBELL_API_KEY", "")
 CALLBELL_CHANNEL_UUID = os.getenv("CALLBELL_CHANNEL_UUID", "")
 _contacts_cache: dict = {"loaded_at": 0.0, "contacts": {}}
 
-AGENT_CONTACT_ALIASES = {
-    # Alert rows sometimes carry shortened or alternate names that do not
-    # exactly match the contact sheet names used for Telegram lookup.
-    "fatma": "fatma aqel",
-    "amjad": "amjad alkhawaldi",
-    "amjad mahmoud": "amjad alkhawaldi",
-    "maitha": "maitha almoqbali",
-    "maitha moqbali": "maitha almoqbali",
-    "maitha meqbali": "maitha almoqbali",
-    "meqbali": "maitha almoqbali",
-    "bashir": "bashir hallak",
-    "saif talib": "saif ghaleb",
-    # Spelling variants seen in ManyContacts assignments (Nov 2026).
-    "joseph kesrwany": "joseph kesserwany",
-    "mohamed hussein": "mohammed hussein",  # 'mohamad husein' after normalization
-    "abdulatif hamoudi": "hammoudi abdellatif",
-    "alaa al eish": "alaa eddin alesh",
-    # Maqsam spellings of the same agents.
-    "fatima akel": "fatma aqel",
-    "mohamed hssin": "mohammed hussein",
-    "joeseph kesserwany": "joseph kesserwany",
-}
+AGENT_CONTACT_ALIASES = agent_names.contact_aliases()
 
 
 def _agent_phone_env_key(agent_name: str | None) -> str:
@@ -126,16 +105,7 @@ def _agent_env_key(agent_name: str | None) -> str:
 
 
 def _normalize_name(name: str | None) -> str:
-    value = unicodedata.normalize("NFKD", name or "")
-    value = "".join(ch for ch in value if not unicodedata.combining(ch))
-    value = re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
-    value = re.sub(r"\s+", " ", value)
-    # Common spelling variants in Fiper data.
-    value = value.replace("jihad", "jehad")
-    value = value.replace("mohamad", "mohamed")
-    value = value.replace("husein", "hussein")
-    value = value.replace("basher", "bashir")
-    return value
+    return agent_names.normalize_name(name)
 
 
 def _name_keys(name: str | None) -> set[str]:
