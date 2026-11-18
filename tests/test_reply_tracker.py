@@ -113,6 +113,31 @@ class WaitStateTest(unittest.TestCase):
         self.assertIsNone(s.waiting_since)
 
 
+class EpisodesTest(unittest.TestCase):
+    t0 = utc(2026, 11, 16, 8, 0)
+
+    def test_episodes_answered_by_whatsapp_and_call_and_open(self):
+        from pipeline.reply_tracker import wait_episodes
+        eps = wait_episodes([
+            msg("inbound", self.t0),
+            msg("inbound", self.t0 + timedelta(minutes=2), "hello??"),
+            msg("outbound", self.t0 + timedelta(minutes=10), "hi", agent="Fatma"),
+            msg("inbound", self.t0 + timedelta(minutes=20), "شكرا"),          # banal: no new wait
+            msg("inbound", self.t0 + timedelta(minutes=30), "how to withdraw?"),
+            msg("inbound", self.t0 + timedelta(minutes=90), "any update?"),
+        ], call_times=[self.t0 + timedelta(minutes=45)])
+        self.assertEqual(len(eps), 3)
+        self.assertEqual((eps[0].kind, eps[0].agent, eps[0].end - eps[0].start), ("whatsapp", "Fatma", timedelta(minutes=10)))
+        self.assertEqual((eps[1].kind, eps[1].end - eps[1].start), ("call", timedelta(minutes=15)))
+        self.assertIsNone(eps[2].end)
+
+    def test_median(self):
+        from pipeline.reply_tracker import median
+        self.assertEqual(median([5, 1, 3]), 3)
+        self.assertEqual(median([1, 2, 3, 4]), 2.5)
+        self.assertIsNone(median([]))
+
+
 class LadderTest(unittest.TestCase):
     now = utc(2026, 11, 16, 9, 0)
 

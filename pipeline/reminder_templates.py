@@ -37,6 +37,8 @@ AMBER_BG, AMBER_FG = "#FFF4E0", "#B45309"
 RED_BG, RED_FG = "#FDECEC", "#C62828"
 FONT = "'Segoe UI', Tahoma, Arial, sans-serif"
 
+MAX_ESCALATION_CARDS = 25  # per section; the summary by agent always counts everyone
+
 LINES = {
     "96897245526": ("عُمان", "Oman", "🇴🇲"),
     "905318880855": ("تركيا", "Turkey", "🇹🇷"),
@@ -130,6 +132,9 @@ def _shell(*, preheader: str, accent: str, icon: str, title_ar: str, title_en: s
   <div style="font-size:11px;color:{MUTED};margin-top:12px" dir="ltr">Fiper · automatic reply reminders</div>
 </td></tr></table>
 </body></html>"""
+
+
+email_shell = _shell  # shared by pipeline/report_templates.py
 
 
 def _customer_card(item: dict, tz: tzinfo, tz_label: str, *, show_agent: bool = False) -> str:
@@ -302,19 +307,26 @@ def escalation(items: list[dict], tz: tzinfo, tz_label: str, escalate_after_min:
     for stage in sorted({i.get("esc_stage", 0) for i in items}):
         group = sorted((i for i in items if i.get("esc_stage", 0) == stage), key=lambda i: -i["elapsed_min"])
         h_ar, h_en, colour = _stage_heading(stage, followup_hours)
+        shown, hidden = group[:MAX_ESCALATION_CARDS], len(group) - MAX_ESCALATION_CARDS
+        more_html = (
+            f"<p style='font-size:13px;color:{MUTED};margin:4px 0 0' dir='rtl'>و{hidden} عميل آخر في هذا القسم "
+            f"(مُحتسبون في الملخص أعلاه). <span dir='ltr'>+{hidden} more, counted in the summary above.</span></p>"
+            if hidden > 0 else ""
+        )
         sections_html.append(
             f"<div style='margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid {colour};"
             f"font-size:15px;font-weight:700;color:{colour}' dir='rtl'>{_e(h_ar)} ({len(group)})"
             f"<div dir='ltr' align='right' style='font-size:12px;font-weight:400;color:{MUTED}'>{_e(h_en)}</div></div>"
-            + "".join(_customer_card({**i, "stage": 2}, tz, tz_label, show_agent=True) for i in group)
+            + "".join(_customer_card({**i, "stage": 2}, tz, tz_label, show_agent=True) for i in shown)
+            + more_html
         )
         text_sections.append(
             f"— {h_ar} ({len(group)}) —\n" + "\n\n".join(
                 f"{idx}) {i.get('name') or 'عميل'} {phone_display(i.get('phone'))} — {i.get('agent') or 'UNASSIGNED'}\n"
                 f"⏳ {wait_ar(i['elapsed_min'])} ({local_time(i.get('since'), tz)}) · 🔔 {i.get('reminders', 0)}\n"
                 f"💬 {short(i.get('body'), 120)}"
-                for idx, i in enumerate(group, 1)
-            )
+                for idx, i in enumerate(shown[:10], 1)
+            ) + (f"\n… +{len(group) - 10}" if len(group) > 10 else "")
         )
     cards = "".join(sections_html)
     shadow_note = (

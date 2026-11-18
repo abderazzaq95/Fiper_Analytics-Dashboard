@@ -30,6 +30,11 @@ _BANAL_MESSAGES = {
     "مشكور",  # مشكور
     "مشكوره",  # مشكوره
     "حسنا",  # حسنا
+    # Acknowledgements that close a conversation (seen in Fiper's data).
+    "طيب", "طيب تمام", "الحمدلله", "الحمد لله", "ان شاء الله", "إن شاء الله", "انشاء الله", "انشالله",
+    "ماشي", "حاضر", "خلاص", "اوكي تمام", "تمام تمام", "يعطيك العافية", "الله يعطيك العافية",
+    "جزاك الله خير", "جزاك الله خيرا", "الله يسلمك", "الله يحفظك", "بارك الله فيك", "شكرا لك", "شكرا جزيلا",
+    "ok thanks", "ok thank you", "noted", "sure", "alright", "fine",
 }
 _BANAL_PREFIXES = (
     "ok", "okay", "thanks", "thank you", "done", "yes", "no",
@@ -37,6 +42,8 @@ _BANAL_PREFIXES = (
     "ايوه", "أيوه", "اوكي", "أوكي",
     "شكرا", "شكراً", "شكرا استاذ",
     "مشكور", "مشكوره", "تسلم", "حسنا",
+    "طيب", "الحمدلله", "الحمد لله", "ان شاء الله", "إن شاء الله", "انشاء الله", "ماشي", "حاضر", "يعطيك العافية",
+    "الله يعطيك العافية", "جزاك الله", "الله يحفظك", "الله يسلمك",
 )
 _MEDIA_PLACEHOLDERS = {"[reaction]", "[sticker]", "[image]", "[video]", "reaction", "sticker", "image", "video"}
 
@@ -188,6 +195,55 @@ def compute_wait_state(messages: list[dict], call_times: list[datetime] | None =
             if kind == "outbound" and msg and msg.get("agent_name"):
                 last_agent = msg.get("agent_name")
     return WaitState(waiting_since, last_inbound, last_contact, last_agent)
+
+
+@dataclass
+class Episode:
+    start: datetime          # first meaningful customer message of the wait
+    end: datetime | None     # first agent contact after it (None = still waiting)
+    kind: str | None         # "whatsapp" | "call" | None
+    agent: str | None        # agent who answered on WhatsApp (None for calls / unanswered)
+
+
+def wait_episodes(messages: list[dict], call_times: list[datetime] | None = None) -> list[Episode]:
+    """Every "customer waited -> agent answered" episode in one timeline.
+
+    Same rules as compute_wait_state: banal customer messages never open a
+    wait; any agent WhatsApp message or Maqsam call closes it.
+    """
+    events: list[tuple[datetime, str, dict | None]] = []
+    for m in messages:
+        dt = parse_dt(m.get("sent_at"))
+        direction = (m.get("direction") or "").lower()
+        if dt and direction in ("inbound", "outbound"):
+            events.append((dt, direction, m))
+    for ct in call_times or []:
+        if ct:
+            events.append((ct, "call", None))
+    order = {"inbound": 0, "outbound": 1, "call": 1}
+    events.sort(key=lambda e: (e[0], order[e[1]]))
+
+    episodes: list[Episode] = []
+    start = None
+    for dt, kind, msg in events:
+        if kind == "inbound":
+            if start is None and not is_banal_message(msg.get("body")):
+                start = dt
+        elif start is not None:
+            agent = msg.get("agent_name") if kind == "outbound" and msg else None
+            episodes.append(Episode(start, dt, "whatsapp" if kind == "outbound" else "call", agent))
+            start = None
+    if start is not None:
+        episodes.append(Episode(start, None, None, None))
+    return episodes
+
+
+def median(values: list[float]) -> float | None:
+    vals = sorted(v for v in values if v is not None)
+    if not vals:
+        return None
+    mid = len(vals) // 2
+    return vals[mid] if len(vals) % 2 else (vals[mid - 1] + vals[mid]) / 2
 
 
 # ── Which reminder step is due? ───────────────────────────────────────────────
