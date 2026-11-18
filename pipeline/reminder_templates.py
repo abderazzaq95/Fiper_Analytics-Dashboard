@@ -16,13 +16,14 @@ from datetime import datetime, tzinfo
 
 
 def _logo_url() -> str:
-    # Served by this app (static/email/fiper-logo.png). RENDER_EXTERNAL_URL is
-    # set automatically on Render; EMAIL_LOGO_URL overrides it.
+    # White-text logo for the coloured header, served by this app
+    # (static/email/fiper-logo-white.png). RENDER_EXTERNAL_URL is set
+    # automatically on Render; EMAIL_LOGO_URL overrides it.
     explicit = os.getenv("EMAIL_LOGO_URL", "").strip()
     if explicit:
         return explicit
     base = os.getenv("RENDER_EXTERNAL_URL", "https://fiper-analytics-dashboard.onrender.com").rstrip("/")
-    return f"{base}/static/email/fiper-logo.png"
+    return f"{base}/static/email/fiper-logo-white.png"
 
 # Brand (matches static/index.html)
 BLUE = "#0774FF"
@@ -107,17 +108,18 @@ def _shell(*, preheader: str, accent: str, icon: str, title_ar: str, title_en: s
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{BG}">
 <tr><td align="center" style="padding:24px 12px">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#FFFFFF;border:1px solid {BORDER};border-radius:14px;overflow:hidden">
-    <tr><td style="background:#FFFFFF;padding:16px 24px;border-bottom:1px solid {BORDER}">
+    <tr><td style="{header_bg}padding:20px 24px;color:#FFFFFF">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-        <td align="left" dir="ltr"><img src="{_e(_logo_url())}" width="130" height="48" alt="Fiper"
-            style="display:block;border:0;outline:none;width:130px;height:48px;font-family:{FONT};font-size:22px;font-weight:700;color:{NAVY}"></td>
-        <td align="right" style="font-size:12px;color:{MUTED}" dir="rtl">تنبيهات المبيعات<br><span dir="ltr">Sales alerts</span></td>
+        <td align="right" valign="middle" dir="rtl" style="color:#FFFFFF">
+          {label_html}
+          <div style="font-size:22px;font-weight:700">{icon} {_e(title_ar)}</div>
+          <div style="font-size:14px;opacity:.9;margin-top:2px" dir="ltr" align="right">{_e(title_en)}</div>
+        </td>
+        <td align="left" valign="middle" dir="ltr" width="120" style="padding-right:12px">
+          <img src="{_e(_logo_url())}" width="108" height="40" alt="Fiper"
+               style="display:block;border:0;outline:none;width:108px;height:40px;font-family:{FONT};font-size:20px;font-weight:700;color:#FFFFFF">
+        </td>
       </tr></table>
-    </td></tr>
-    <tr><td style="{header_bg}padding:20px 24px;color:#FFFFFF" dir="rtl">
-      {label_html}
-      <div style="font-size:22px;font-weight:700">{icon} {_e(title_ar)}</div>
-      <div style="font-size:14px;opacity:.9;margin-top:2px" dir="ltr" align="right">{_e(title_en)}</div>
     </td></tr>
     <tr><td style="padding:22px 24px" dir="rtl">{body}</td></tr>
     <tr><td style="padding:16px 24px;background:{BG};border-top:1px solid {BORDER};font-size:12px;color:{MUTED}" dir="rtl">

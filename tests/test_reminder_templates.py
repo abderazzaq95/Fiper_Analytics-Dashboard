@@ -67,7 +67,7 @@ class TemplatesTest(unittest.TestCase):
 
     def test_logo_and_no_flag_emoji_in_email(self):
         _, _, html = T.agent_reminder("Fatma", [item()], 0, TZ, "UTC+2")
-        self.assertIn("/static/email/fiper-logo.png", html)
+        self.assertIn("/static/email/fiper-logo-white.png", html)
         self.assertIn('alt="Fiper"', html)
         self.assertNotIn("🇴🇲", html)
         self.assertIn("خط عُمان", html)
