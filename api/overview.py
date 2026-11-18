@@ -5,7 +5,9 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from pipeline.time_ranges import since_iso
 from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
+from pipeline.swr_cache import SWRCache, ttl_for
 load_dotenv()
+_CACHE = SWRCache("overview", 300)
 router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 
@@ -163,7 +165,8 @@ def overview(
     wa_line: str = Query("all"),
 ):
     try:
-        data = _overview_inner(range, wa_line)
+        data = _CACHE.get(f"{range}:{wa_line}", lambda: _overview_inner(range, wa_line), ttl=ttl_for(range),
+                          keep=lambda d: bool(d.get("calls", {}).get("total") or d.get("messages", {}).get("total")))
         if (
             not data.get("calls", {}).get("total")
             and not data.get("messages", {}).get("total")

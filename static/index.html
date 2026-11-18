@@ -903,7 +903,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
       <div class="jfilter-label" data-en="Search" data-ar="بحث">Search</div>
       <input class="jfilter-input" id="jSearch" type="text"
         placeholder="Phone number…"
-        data-placeholder-en="Phone number…" data-placeholder-ar="رقم Ø§Ù„Ù‡Ø§ØªÙâ€¦"
+        data-placeholder-en="Phone number…" data-placeholder-ar="رقم الهاتف…"
         oninput="jFilterChange('phone_search',this.value)">
     </div>
     <div class="jfilter-group">
@@ -1324,14 +1324,21 @@ function detectCountry(phone) {
   }
   return {en:'Other', ar:'أخرى', flag:'🌍'};
 }
-function renderGeo(leads) {
+function renderGeo(leadsData) {
+  // Server sends lead counts per first 4 phone digits (geo_prefixes); older
+  // cached payloads still carry the full lead list.
   const counts = {};
-  for (const l of leads) {
-    const g = detectCountry(l.phone);
-    if (!g) continue;
+  const add = (phone, n) => {
+    const g = detectCountry(phone);
+    if (!g) return;
     const key = g.en;
     if (!counts[key]) counts[key] = { en: g.en, ar: g.ar, flag: g.flag, count: 0 };
-    counts[key].count++;
+    counts[key].count += n;
+  };
+  if (leadsData && leadsData.geo_prefixes) {
+    for (const [prefix, n] of Object.entries(leadsData.geo_prefixes)) add(prefix, n);
+  } else {
+    for (const l of (leadsData?.leads || [])) add(l.phone, 1);
   }
   const sorted = Object.values(counts).sort((a,b)=>b.count-a.count);
   const total  = sorted.reduce((s,c)=>s+c.count, 0);
@@ -1390,9 +1397,9 @@ function renderKPI(ov, ch) {
 
   document.getElementById('kpiGrid').innerHTML = `
     <div class="kpi-card${_fiCls()}">
-      <div class="kpi-label" data-en="Unique Leads" data-ar="عملاء فريدون">${lang==='ar'?'عملاء ÙØ±ÙŠØ¯ÙˆÙ†':'Unique Leads'}</div>
+      <div class="kpi-label" data-en="Unique Leads" data-ar="عملاء فريدون">${lang==='ar'?'عملاء فريدون':'Unique Leads'}</div>
       <div class="kpi-value">${fmt(ov.leads.total)}</div>
-      <div class="kpi-sub">${fmt(ov.leads.converted)} ${lang==='ar'?'محول':'converted'} · ${lang==='ar'?'Ø¨Ø§Ù„Ù‡Ø§ØªÙ':'by phone'}</div>
+      <div class="kpi-sub">${fmt(ov.leads.converted)} ${lang==='ar'?'محول':'converted'} · ${lang==='ar'?'بالهاتف':'by phone'}</div>
       <span class="kpi-badge badge-blue">${pct(ov.leads.conversion_rate)} CVR</span>
     </div>
     <div class="kpi-card${_fiCls()}" style="animation-delay:.05s">
@@ -1415,7 +1422,7 @@ function renderKPI(ov, ch) {
       <span class="kpi-badge badge-green">WhatsApp</span>
     </div>
     <div class="kpi-card ${ov.alerts.open>0?'red':''}${_fiCls()}" style="animation-delay:.2s">
-      <div class="kpi-label" data-en="Open Alerts" data-ar="التنبيهات المفتوحة">${lang==='ar'?'التنبيهات Ø§Ù„Ù…ÙØªÙˆØ­Ø©':'Open Alerts'}</div>
+      <div class="kpi-label" data-en="Open Alerts" data-ar="التنبيهات المفتوحة">${lang==='ar'?'التنبيهات المفتوحة':'Open Alerts'}</div>
       <div class="kpi-value" style="color:${ov.alerts.open>0?'var(--red)':'var(--navy)'}">${fmt(ov.alerts.open)}</div>
       <div class="kpi-sub">${fmt(ov.alerts.high)} ${lang==='ar'?'عالية الخطورة':'high severity'}</div>
       <span class="kpi-badge ${ov.alerts.open>0?'badge-red':'badge-green'}">${ov.alerts.open>0?(lang==='ar'?'يحتاج إجراء':'Action needed'):(lang==='ar'?'بخير':'All clear')}</span>
@@ -1456,7 +1463,7 @@ function renderChannels(ch, quality) {
     </div>
     <div class="ch-row"><span class="ch-row-label" data-en="Total Leads" data-ar="إجمالي العملاء">${lang==='ar'?'إجمالي العملاء':'Total Leads'}</span><span class="ch-row-val">${fmt(ch.whatsapp.leads)}</span></div>
     <div class="ch-row"><span class="ch-row-label" data-en="Active Chats" data-ar="المحادثات النشطة">${lang==='ar'?'المحادثات النشطة':'Active Chats'}</span><span class="ch-row-val">${fmt(ch.whatsapp.messages)}</span></div>
-    <div class="ch-row"><span class="ch-row-label" data-en="Stored Messages" data-ar="الرسائل المحفوظة">${lang==='ar'?'الرسائل Ø§Ù„Ù…Ø­ÙÙˆØ¸Ø©':'Stored Messages'}</span><span class="ch-row-val">${fmt(ch.whatsapp.stored_messages ?? ch.whatsapp.messages)}</span></div>
+    <div class="ch-row"><span class="ch-row-label" data-en="Stored Messages" data-ar="الرسائل المحفوظة">${lang==='ar'?'الرسائل المحفوظة':'Stored Messages'}</span><span class="ch-row-val">${fmt(ch.whatsapp.stored_messages ?? ch.whatsapp.messages)}</span></div>
     <div class="ch-row"><span class="ch-row-label" data-en="Avg Response Time" data-ar="متوسط وقت الرد">${lang==='ar'?'متوسط وقت الرد':'Avg Response Time'}</span><span class="ch-row-val">${ch.whatsapp.avg_response_time_min ? fmt(ch.whatsapp.avg_response_time_min,1)+'m' : '—'}</span></div>
     <div class="ch-row"><span class="ch-row-label" data-en="Conversion Rate" data-ar="معدل التحويل">${lang==='ar'?'معدل التحويل':'Conversion Rate'}</span><span class="ch-row-val"><span class="pill ${ch.whatsapp.conversion_rate>0?'pill-green':'pill-gray'}">${pct(ch.whatsapp.conversion_rate)}</span></span></div>`;
 
@@ -1483,7 +1490,7 @@ const CHART_OPTS = {
 function renderFunnel(leadsData) {
   destroyChart('funnel');
   const f = leadsData.funnel || {};
-  const labels = Object.keys(f).map(l => lang==='ar' ? ({new:'جديد',engaged:'منخرط',converted:'محول',lost:'Ù…ÙÙ‚ÙˆØ¯',callback:'متابعة'}[l]||l) : l.charAt(0).toUpperCase()+l.slice(1));
+  const labels = Object.keys(f).map(l => lang==='ar' ? ({new:'جديد',engaged:'منخرط',converted:'محول',lost:'مفقود',callback:'متابعة'}[l]||l) : l.charAt(0).toUpperCase()+l.slice(1));
   const values = Object.values(f);
   const colors = {new:'#0774FF',engaged:'#8B5CF6',converted:'#26CF4B',lost:'#FF0003',callback:'#FF8F3C'};
   charts.funnel = new Chart(document.getElementById('funnelChart').getContext('2d'), {
@@ -1508,10 +1515,10 @@ function renderOutcomes(quality) {
     completed:   {en:'Completed',  ar:'مكتمل',   color:'#26CF4B'},
     no_answer:   {en:'No Answer',  ar:'لا رد',    color:'#FF0003'},
     busy:        {en:'Busy',       ar:'مشغول',    color:'#FF8F3C'},
-    failed:      {en:'Failed',     ar:'ÙØ´Ù„',      color:'#2D3C58'},
+    failed:      {en:'Failed',     ar:'فشل',      color:'#2D3C58'},
     abandoned:   {en:'Abandoned',  ar:'تخلى',     color:'#8D9097'},
-    in_progress: {en:'In Progress',ar:'Ø¬Ø§Ø±Ù',     color:'#0774FF'},
-    unknown:     {en:'Unknown',    ar:'غير Ù…Ø¹Ø±ÙˆÙ', color:'#E9EDFF'},
+    in_progress: {en:'In Progress',ar:'جارٍ',     color:'#0774FF'},
+    unknown:     {en:'Unknown',    ar:'غير معروف', color:'#E9EDFF'},
   };
   const keys   = Object.keys(outcomes);
   const labels = keys.map(k => (OUTCOME_META[k]?.[lang==='ar'?'ar':'en'] || k));
@@ -1540,7 +1547,7 @@ function renderSentiment(quality) {
   const s = quality?.sentiment || {};
   const pos=s.positive||0, neu=s.neutral||0, neg=s.negative||0, tot=pos+neu+neg;
   if (!tot) {
-    wrap.innerHTML = `<div class="empty-state" style="height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center"><div class="empty-icon">💬</div><div class="empty-text" style="font-size:12px">${lang==='ar'?'ÙÙŠ انتظار بيانات':'Pending webhook data'}</div></div>`;
+    wrap.innerHTML = `<div class="empty-state" style="height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center"><div class="empty-icon">💬</div><div class="empty-text" style="font-size:12px">${lang==='ar'?'في انتظار بيانات':'Pending webhook data'}</div></div>`;
   } else {
     if (!document.getElementById('sentimentChart')) {
       wrap.innerHTML = '<canvas id="sentimentChart"></canvas>';
@@ -1564,7 +1571,7 @@ function renderSentiment(quality) {
 const TOPIC_LABELS = {
   pricing:            {en:'Pricing',           ar:'التسعير'},
   product_fit:        {en:'Product Fit',        ar:'ملاءمة المنتج'},
-  competitor:         {en:'Competitor',          ar:'Ù…Ù†Ø§ÙØ³'},
+  competitor:         {en:'Competitor',          ar:'منافس'},
   follow_up:          {en:'Follow-up',           ar:'متابعة'},
   trading_education:  {en:'Trading Education',   ar:'تعليم التداول'},
   profit_expectations:{en:'Profit Expectations', ar:'توقعات الربح'},
@@ -1576,7 +1583,7 @@ const TOPIC_LABELS = {
   no_answer:             {en:'No Answer',             ar:'لا إجابة'},
   objection_handling:    {en:'Objection Handling',   ar:'معالجة الاعتراضات'},
   deposit:               {en:'Deposit',               ar:'الإيداع'},
-  leverage:              {en:'Leverage',              ar:'Ø§Ù„Ø±Ø§ÙØ¹Ø© المالية'},
+  leverage:              {en:'Leverage',              ar:'الرافعة المالية'},
 };
 
 function riskDetailsInlineHtml(flag, maxRows=3) {
@@ -1696,7 +1703,7 @@ function renderQualityRisk(quality, ov) {
     :(lang==='ar'?'مختلط':'Mixed');
   const overallColor=pos>neg&&pos>neu?'var(--green)':neg>pos?'var(--red)':'var(--warn)';
   const bySev=quality?.alerts?.by_severity||{};
-  const RECS={HIGH:{en:'Immediate action required — escalate to a senior agent or supervisor.',ar:'يتطلب تدخلاً فوريØ§Ù‹ — تصعيد إلى وكيل أقدم أو Ù…Ø´Ø±Ù الآن.'},MED:{en:'Follow up within 24 hours to prevent escalation.',ar:'متابعة خلال 24 ساعة لتجنب التصعيد.'},LOW:{en:'Monitor and address during regular workflow.',ar:'راقب وعالج ضمن سير العمل المعتاد.'}};
+  const RECS={HIGH:{en:'Immediate action required — escalate to a senior agent or supervisor.',ar:'يتطلب تدخلاً فورياً — تصعيد إلى وكيل أقدم أو مشرف الآن.'},MED:{en:'Follow up within 24 hours to prevent escalation.',ar:'متابعة خلال 24 ساعة لتجنب التصعيد.'},LOW:{en:'Monitor and address during regular workflow.',ar:'راقب وعالج ضمن سير العمل المعتاد.'}};
   const sevCards=['HIGH','MED','LOW'].map(sev=>{
     const count=bySev[sev]||0;
     const color=sev==='HIGH'?'var(--red)':sev==='MED'?'var(--warn)':'var(--blue)';
@@ -1772,7 +1779,7 @@ function _renderLeadsRows() {
   }
 
   const statusPillCls={new:'pill-blue',engaged:'pill-warn',converted:'pill-green',lost:'pill-gray',callback:'pill-blue'};
-  const statusLabels={new:{en:'New',ar:'جديد'},engaged:{en:'Engaged',ar:'منخرط'},converted:{en:'Converted',ar:'محول'},lost:{en:'Lost',ar:'Ù…ÙÙ‚ÙˆØ¯'},callback:{en:'Callback',ar:'معاودة'}};
+  const statusLabels={new:{en:'New',ar:'جديد'},engaged:{en:'Engaged',ar:'منخرط'},converted:{en:'Converted',ar:'محول'},lost:{en:'Lost',ar:'مفقود'},callback:{en:'Callback',ar:'معاودة'}};
   const chIcon={whatsapp:'💬',maqsam:'📞'};
   el.innerHTML=list.map(l=>{
     const score=l.score;
@@ -1780,17 +1787,17 @@ function _renderLeadsRows() {
     const sKey=l.status||'new';
     const statusPill=`<span class="pill ${statusPillCls[sKey]||'pill-gray'}" style="font-size:10px">${lang==='ar'?(statusLabels[sKey]?.ar||sKey):(statusLabels[sKey]?.en||sKey)}</span>`;
     const subPhone=l.name&&l.phone?`<span style="font-size:11px;color:var(--text-light)">${fmtPhone(l.phone)}</span>`:'';
-    const summary=l.summary?`<div class="lead-summary">${l.summary}</div>`:'';
+    const summary=l.summary?`<div class="lead-summary">${esc(l.summary)}</div>`:'';
     return`<div class="lead-row">
       <div class="score-badge" style="background:${bc}" title="AI Score">${score!=null?Math.round(score):'—'}</div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <span class="agent-name-cell">${l.name||l.phone||'—'}</span>${subPhone}
+          <span class="agent-name-cell">${esc(l.name||l.phone||'—')}</span>${subPhone}
           <span>${chIcon[l.channel]||''}</span>${statusPill}
         </div>${summary}
       </div>
       <div style="text-align:right;flex-shrink:0">
-        ${l.assigned_agent?`<div style="font-size:11px;color:var(--text-light)">👤 ${l.assigned_agent}</div>`:''}
+        ${l.assigned_agent?`<div style="font-size:11px;color:var(--text-light)">👤 ${esc(l.assigned_agent)}</div>`:''}
         ${l.last_message_at?`<div style="font-size:11px;color:var(--text-light);margin-top:2px">${ago(l.last_message_at)}</div>`:''}
       </div>
     </div>`;
@@ -1825,8 +1832,8 @@ function renderHotLeads(leadsData) {
     <div class="hot-lead-row">
       <div class="hot-score-badge hot-pulse">${Math.round(l.score)}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-weight:700;color:var(--navy)">${l.name || fmtPhone(l.phone)}</div>
-        <div style="font-size:11px;color:var(--text-light)">${fmtPhone(l.phone)} - Agent: ${l.assigned_agent || '-'}</div>
+        <div style="font-weight:700;color:var(--navy)">${esc(l.name || fmtPhone(l.phone))}</div>
+        <div style="font-size:11px;color:var(--text-light)">${fmtPhone(l.phone)} - Agent: ${esc(l.assigned_agent || '-')}</div>
       </div>
       <div style="text-align:right;flex-shrink:0">
         <div style="font-size:10px;font-weight:700;color:var(--text-light);text-transform:uppercase">Last contact</div>
@@ -2134,9 +2141,9 @@ const _ALERT_TYPE_AR = {
   poor_treatment:      'معالجة سيئة',
   beginner_risk:       'خطر المبتدئ',
   profit_expectations: 'توقعات أرباح غير واقعية',
-  weak_engagement:     'ØªÙØ§Ø¹Ù„ Ø¶Ø¹ÙŠÙ',
+  weak_engagement:     'تفاعل ضعيف',
 };
-const _ALERT_SEV_AR = { HIGH: 'عالي', MED: 'متوسط', LOW: 'Ù…Ù†Ø®ÙØ¶' };
+const _ALERT_SEV_AR = { HIGH: 'عالي', MED: 'متوسط', LOW: 'منخفض' };
 
 function _alertTypeLabel(type) {
   if (lang !== 'ar') return (type || 'alert').replace(/_/g,' ');
@@ -2229,12 +2236,12 @@ async function openAgentAlerts(agent) {
     }
   } catch(e) {
     console.error('[alerts] fetch error:', e);
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">${lang==='ar'?'ÙØ´Ù„ تحميل التنبيهات':'Failed to load alerts'}</div><div class="empty-sub">${esc(String(e))}</div></div>`;
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-text">${lang==='ar'?'فشل تحميل التنبيهات':'Failed to load alerts'}</div><div class="empty-sub">${esc(String(e))}</div></div>`;
     return;
   }
 
   if (!alerts.length) {
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">${lang==='ar'?'لا توجد تنبيهات Ù…ÙØªÙˆØ­Ø©':'No open alerts'}</div></div>`;
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">${lang==='ar'?'لا توجد تنبيهات مفتوحة':'No open alerts'}</div></div>`;
     return;
   }
 
@@ -2242,7 +2249,7 @@ async function openAgentAlerts(agent) {
     body.innerHTML = alerts.map(a => {
       const sev    = (a.severity || 'MED').toUpperCase();
       const sevCls = sev === 'HIGH' ? 'pill-red' : sev === 'LOW' ? 'pill-blue' : 'pill-warn';
-      const phone  = a.lead_phone ? fmtPhone(a.lead_phone) : (lang==='ar'?'عميل غير Ù…Ø¹Ø±ÙˆÙ':'Unknown lead');
+      const phone  = a.lead_phone ? fmtPhone(a.lead_phone) : (lang==='ar'?'عميل غير معروف':'Unknown lead');
       let created  = '—';
       try { created = a.created_at ? new Date(a.created_at).toLocaleString() : '—'; } catch(_){}
       const typeLabel = _alertTypeLabel(a.type);
@@ -2281,18 +2288,18 @@ function openRiskFlagDetails(flag) {
 
   const label = _translateTag(flag).replace(/_/g, ' ');
   const items = (_riskFlagDetails && _riskFlagDetails[flag]) || [];
-  title.textContent = `${label} · ${lang==='ar'?'Ã˜Â§Ã™â€žÃ˜ÂªÃ™ÂÃ˜Â§Ã˜ÂµÃ™Å Ã™â€ž':'Details'}`;
+  title.textContent = `${label} · ${lang==='ar'?'التفاصيل':'Details'}`;
   modal.classList.add('open');
 
   if (!items.length) {
-    body.innerHTML = `<div class="empty-state"><div class="empty-icon">Ã¢Å¡Â Ã¯Â¸Â</div><div class="empty-text">${lang==='ar'?'Ù„Ø§ ØªÙˆØ¬Ø¯ Ã˜ÂªÃ™ÂÃ˜Â§Ã˜ÂµÃ™Å Ã™â€ž Ù„Ù‡Ø°Ø§ Ø§Ù„Ø®Ø·Ø±':'No detail rows for this risk flag'}</div></div>`;
+    body.innerHTML = `<div class="empty-state"><div class="empty-icon">âš ï¸</div><div class="empty-text">${lang==='ar'?'لا توجد تفاصيل لهذا الخطر':'No detail rows for this risk flag'}</div></div>`;
     return;
   }
 
   body.innerHTML = items.map(item => {
-    const phone = item.lead_phone ? fmtPhone(item.lead_phone) : (lang==='ar'?'Ø±Ù‚Ù… ØºÙŠØ± Ã™â€¦Ã˜Â¹Ã˜Â±Ã™Ë†Ã™Â':'Unknown number');
+    const phone = item.lead_phone ? fmtPhone(item.lead_phone) : (lang==='ar'?'رقم غير معروف':'Unknown number');
     const leadName = item.lead_name ? ` · ${esc(item.lead_name)}` : '';
-    const agent = item.agent_name || (lang==='ar'?'ØºÙŠØ± Ã™â€¦Ã˜Â¹Ã˜Â±Ã™Ë†Ã™Â':'unknown');
+    const agent = item.agent_name || (lang==='ar'?'غير معروف':'unknown');
     const source = item.source || 'analysis';
     const when = item.analyzed_at ? new Date(item.analyzed_at).toLocaleString() : '—';
     const msgWhen = item.message_at ? new Date(item.message_at).toLocaleString() : '';
@@ -2876,10 +2883,10 @@ function renderAlerts(quality) {
   const el = document.getElementById('alertsList');
   const wasExpanded = document.getElementById('alertsRest')?.style.display === 'block';
   if (!list.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text" data-en="All clear — no open alerts" data-ar="لا توجد تنبيهات مفتوحة">${lang==='ar'?'لا توجد تنبيهات Ù…ÙØªÙˆØ­Ø©':'All clear — no open alerts'}</div><div class="empty-sub" data-en="System is operating normally" data-ar="النظام يعمل بشكل طبيعي">${lang==='ar'?'النظام يعمل بشكل طبيعي':'System is operating normally'}</div></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text" data-en="All clear — no open alerts" data-ar="لا توجد تنبيهات مفتوحة">${lang==='ar'?'لا توجد تنبيهات مفتوحة':'All clear — no open alerts'}</div><div class="empty-sub" data-en="System is operating normally" data-ar="النظام يعمل بشكل طبيعي">${lang==='ar'?'النظام يعمل بشكل طبيعي':'System is operating normally'}</div></div>`;
     return;
   }
-  const typeLabels = {no_reply:lang==='ar'?'لا رد':'No Reply',weak_engagement:lang==='ar'?'ØªÙØ§Ø¹Ù„ Ø¶Ø¹ÙŠÙ':'Weak Engagement',negative_sentiment:lang==='ar'?'مشاعر سلبية':'Negative Sentiment',poor_treatment:lang==='ar'?'معاملة سيئة':'Poor Treatment',beginner_risk:lang==='ar'?'خطر مبتدئ':'Beginner Risk',slow_response:lang==='ar'?'رد بطيء':'Slow Response',stale_callback:lang==='ar'?'معاودة متأخرة':'Stale Callback',profit_expectations:lang==='ar'?'توقعات Ù…ÙØ±Ø·Ø©':'Profit Expectations'};
+  const typeLabels = {no_reply:lang==='ar'?'لا رد':'No Reply',weak_engagement:lang==='ar'?'تفاعل ضعيف':'Weak Engagement',negative_sentiment:lang==='ar'?'مشاعر سلبية':'Negative Sentiment',poor_treatment:lang==='ar'?'معاملة سيئة':'Poor Treatment',beginner_risk:lang==='ar'?'خطر مبتدئ':'Beginner Risk',slow_response:lang==='ar'?'رد بطيء':'Slow Response',stale_callback:lang==='ar'?'معاودة متأخرة':'Stale Callback',profit_expectations:lang==='ar'?'توقعات مفرطة':'Profit Expectations'};
   const ALERT_LIMIT = 5;
   const mkAlert = a => {
     const leadPhone = a.lead_phone ? fmtPhone(a.lead_phone) : '';
@@ -2973,6 +2980,9 @@ function normalizeOverview(ov, ch, leads, prev = null) {
   if ((fixed.leads.avg_score || 0) === 0 && (prev?.leads?.avg_score || 0) > 0) {
     fixed.leads.avg_score = prev.leads.avg_score;
   }
+  if ((fixed.leads.avg_score || 0) === 0 && leads?.avg_score) {
+    fixed.leads.avg_score = leads.avg_score;
+  }
   if ((fixed.leads.avg_score || 0) === 0 && leads?.leads?.length) {
     const scored = leads.leads.map(l => l.score).filter(s => s != null);
     if (scored.length) fixed.leads.avg_score = scored.reduce((a, b) => a + Number(b), 0) / scored.length;
@@ -3001,7 +3011,7 @@ function renderAll(ov, ch, leads, agents, quality, traffic) {
   renderFunnel(leads);
   renderScoreDist(leads);
   renderLeadsList(leads);
-  renderGeo(allLeads);
+  renderGeo(leads);
   // Sections that need quality/agents data — skip if not yet loaded
   if (quality) { renderOutcomes(quality); renderSentiment(quality); renderTopics(quality); renderFAQ(quality); renderQualityRisk(quality, ov); renderAlerts(quality); }
   else { renderQualityLoading(); }
@@ -3025,7 +3035,7 @@ const TOPIC_AR = {
   pricing:            'التسعير',
   product_fit:        'ملاءمة المنتج',
   trading_education:  'تعليم التداول',
-  competitor:         'Ù…Ù†Ø§ÙØ³',
+  competitor:         'منافس',
   follow_up:          'متابعة',
   not_decision_maker: 'ليس صاحب القرار',
   account_info:       'معلومات الحساب',
@@ -3033,7 +3043,7 @@ const TOPIC_AR = {
   profit_expectations:'توقعات الأرباح',
   technical:          'تقني',
   beginner_risk:      'خطر المبتدئين',
-  unanswered:         'لم ÙŠÙØ¬Ø¨',
+  unanswered:         'لم يُجب',
   slow_response:      'رد بطيء',
   stale_callback:     'معاودة متأخرة',
   negative_sentiment: 'مشاعر سلبية',
@@ -3065,7 +3075,7 @@ function _translateTitle(ev) {
     if (ev.title === 'WhatsApp Conversation Updated') return 'تحديث محادثة واتساب';
   }
   if (ev.type === 'ai')      return 'تحليل الذكاء الاصطناعي';
-  if (ev.type === 'account') return ev.title === 'Account Opened' ? 'ÙØªØ­ الحساب' : 'حالة الحساب';
+  if (ev.type === 'account') return ev.title === 'Account Opened' ? 'فتح الحساب' : 'حالة الحساب';
   if (ev.type === 'next_action') return 'متابعة مطلوبة';
   return ev.title;
 }
@@ -3104,10 +3114,10 @@ function _renderEvent(ev) {
 
   if (ev.type === 'call') {
     const outLabel = lang==='ar'
-      ? {completed:'مكتملة',no_answer:'لا رد',busy:'مشغول',failed:'ÙØ§Ø´Ù„Ø©',abandoned:'مهجورة',in_progress:'جارية',callback:'معاودة الاتصال',not_interested:'غير مهتم',ongoing:'جارية'}[ev.outcome]||ev.outcome
+      ? {completed:'مكتملة',no_answer:'لا رد',busy:'مشغول',failed:'فاشلة',abandoned:'مهجورة',in_progress:'جارية',callback:'معاودة الاتصال',not_interested:'غير مهتم',ongoing:'جارية'}[ev.outcome]||ev.outcome
       : ev.outcome;
     details += `<div class="tl-details">`;
-    details += `<b>${lang==='ar'?'الوكيل':'Agent'}:</b> ${ev.agent} &nbsp;|&nbsp; `;
+    details += `<b>${lang==='ar'?'الوكيل':'Agent'}:</b> ${esc(ev.agent)} &nbsp;|&nbsp; `;
     details += `<b>${lang==='ar'?'المدة':'Duration'}:</b> ${ev.duration} &nbsp;|&nbsp; `;
     details += `<b>${lang==='ar'?'النتيجة':'Outcome'}:</b> ${outLabel}`;
     if (ev.sentiment) details += ` &nbsp;|&nbsp; ${SENTIMENT_EMOJI[ev.sentiment]||''} ${lang==='ar'?(SENTIMENT_AR[ev.sentiment]||ev.sentiment):ev.sentiment}`;
@@ -3121,12 +3131,12 @@ function _renderEvent(ev) {
     if (ev.summary) {
       const uid = 'sum_' + Math.random().toString(36).slice(2,8);
       const needsMore = ev.summary.length > 200;
-      const short = needsMore ? ev.summary.slice(0,200) + '…' : ev.summary;
+      const short = esc(needsMore ? ev.summary.slice(0,200) + '…' : ev.summary);
       details += `<div class="tl-preview">` +
         `<span id="${uid}_s">${short}` +
         (needsMore ? ` <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid}_s').style.display='none';document.getElementById('${uid}_f').style.display='inline'">${lang==='ar'?'اقرأ المزيد':'Read more'}</a>` : '') +
         `</span>` +
-        (needsMore ? `<span id="${uid}_f" style="display:none">${ev.summary} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid}_f').style.display='none';document.getElementById('${uid}_s').style.display='inline'">${lang==='ar'?'أقل':'Read less'}</a></span>` : '') +
+        (needsMore ? `<span id="${uid}_f" style="display:none">${esc(ev.summary)} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid}_f').style.display='none';document.getElementById('${uid}_s').style.display='inline'">${lang==='ar'?'أقل':'Read less'}</a></span>` : '') +
         `</div>`;
     }
   }
@@ -3138,20 +3148,20 @@ function _renderEvent(ev) {
       ? (lang==='ar'?'من العميل':'From lead')
       : (lang==='ar'?'من الوكيل':'From agent');
     details += `<div class="tl-details">${dirLabel}`;
-    if (ev.agent && ev.direction !== 'inbound') details += ` — ${ev.agent}`;
+    if (ev.agent && ev.direction !== 'inbound') details += ` — ${esc(ev.agent)}`;
     if (ev.total)  details += ` &nbsp;|&nbsp; ${ev.total} ${lang==='ar'?'رسائل':'messages total'}`;
     details += `</div>`;
     if (ev.preview) {
       const uid2 = 'prv_' + Math.random().toString(36).slice(2,8);
       const needsMore2 = ev.preview.length > 160;
-      const short2 = ev.activity_only
+      const short2 = esc(ev.activity_only
         ? (needsMore2 ? ev.preview.slice(0,160) + '…' : ev.preview)
-        : (needsMore2 ? '"' + ev.preview.slice(0,160) + '…"' : `"${ev.preview}"`);
+        : (needsMore2 ? '"' + ev.preview.slice(0,160) + '…"' : `"${ev.preview}"`));
       details += `<div class="tl-preview">` +
         `<span id="${uid2}_s">${short2}` +
         (needsMore2 ? ` <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid2}_s').style.display='none';document.getElementById('${uid2}_f').style.display='inline'">${lang==='ar'?'اقرأ المزيد':'Read more'}</a>` : '') +
         `</span>` +
-        (needsMore2 ? `<span id="${uid2}_f" style="display:none">${ev.activity_only ? ev.preview : '"' + ev.preview + '"'} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid2}_f').style.display='none';document.getElementById('${uid2}_s').style.display='inline'">${lang==='ar'?'أقل':'Read less'}</a></span>` : '') +
+        (needsMore2 ? `<span id="${uid2}_f" style="display:none">${esc(ev.activity_only ? ev.preview : '"' + ev.preview + '"')} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid2}_f').style.display='none';document.getElementById('${uid2}_s').style.display='inline'">${lang==='ar'?'أقل':'Read less'}</a></span>` : '') +
         `</div>`;
     }
   }
@@ -3159,7 +3169,7 @@ function _renderEvent(ev) {
   if (ev.type === 'ai') {
     if (ev.unreliable) {
       const reason = ev.unreliable_reason === 'missing_outbound'
-        ? (lang==='ar'?'التحليل جزئي لأن ردود الوكيل ÙÙŠ واتساب غير Ù…Ø­ÙÙˆØ¸Ø©.':'Partial analysis: WhatsApp agent replies are not stored.')
+        ? (lang==='ar'?'التحليل جزئي لأن ردود الوكيل في واتساب غير محفوظة.':'Partial analysis: WhatsApp agent replies are not stored.')
         : (lang==='ar'?'التحليل غير متاح — المكالمة قصيرة جداً':'Analysis unavailable — call too short');
       details += `<div class="tl-details tl-unreliable">` +
         `⚠️ ${reason}` +
@@ -3178,12 +3188,12 @@ function _renderEvent(ev) {
       if (ev.summary) {
         const uid3 = 'ais_' + Math.random().toString(36).slice(2,8);
         const nm3 = ev.summary.length > 200;
-        const sh3 = nm3 ? ev.summary.slice(0,200) + '…' : ev.summary;
+        const sh3 = esc(nm3 ? ev.summary.slice(0,200) + '…' : ev.summary);
         details += `<div class="tl-preview" style="margin-top:6px">` +
           `<span id="${uid3}_s">${sh3}` +
           (nm3?` <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid3}_s').style.display='none';document.getElementById('${uid3}_f').style.display='inline'">${lang==='ar'?'اقرأ المزيد':'Read more'}</a>`:'') +
           `</span>` +
-          (nm3?`<span id="${uid3}_f" style="display:none">${ev.summary} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid3}_f').style.display='none';document.getElementById('${uid3}_s').style.display='inline'">${lang==='ar'?'أقل':'Read less'}</a></span>`:'') +
+          (nm3?`<span id="${uid3}_f" style="display:none">${esc(ev.summary)} <a href="#" style="color:var(--blue);font-size:10px;font-style:normal;font-weight:700" onclick="event.preventDefault();document.getElementById('${uid3}_f').style.display='none';document.getElementById('${uid3}_s').style.display='inline'">${lang==='ar'?'أقل':'Read less'}</a></span>`:'') +
           `</div>`;
       }
       if (!ev.summary && ev.summary_status === 'missing_language') {
@@ -3197,12 +3207,12 @@ function _renderEvent(ev) {
       ? `<span style="color:var(--green);font-size:10px"> ✓ ${lang==='ar'?'محلول':'Resolved'}</span>` : '';
     details += `<div class="tl-details">`;
     details += `<b>${ev.severity}</b> ${resolved}`;
-    if (ev.message) details += `<br><span style="color:var(--body)">${ev.message}</span>`;
+    if (ev.message) details += `<br><span style="color:var(--body)">${esc(ev.message)}</span>`;
     details += `</div>`;
   }
 
   if (ev.type === 'next_action') {
-    details += `<div class="tl-details tl-unreliable">⚠️ ${ev.message || (lang==='ar'?'تحتاج متابعة.':'Follow-up needed.')}</div>`;
+    details += `<div class="tl-details tl-unreliable">⚠️ ${esc(ev.message || (lang==='ar'?'تحتاج متابعة.':'Follow-up needed.'))}</div>`;
   }
 
   if (ev.type === 'account') {
@@ -3241,7 +3251,7 @@ function _renderJourneyLead(lead, index) {
       <span class="jc-pill">${cov.summaries || 0}/${requiredSummaries} ${lang==='ar'?'ملخصات مكالمات > 30ث':'summaries for calls >30s'}</span>
       <span class="jc-pill">${cov.transcripts || 0}/${requiredSummaries} ${lang==='ar'?'نصوص مكالمات':'transcripts'}</span>
       <span class="jc-pill">${storedInbound} ${lang==='ar'?'داخل':'in'} / ${storedOutbound} ${lang==='ar'?'خارج':'out'} WhatsApp</span>
-      ${cov.whatsapp_outbound_missing ? `<span class="jc-pill warn">⚠️ ${lang==='ar'?'ردود الوكيل ÙÙŠ واتساب غير Ù…Ø­ÙÙˆØ¸Ø©':'WhatsApp agent replies unavailable'}</span>` : ''}
+      ${cov.whatsapp_outbound_missing ? `<span class="jc-pill warn">⚠️ ${lang==='ar'?'ردود الوكيل في واتساب غير محفوظة':'WhatsApp agent replies unavailable'}</span>` : ''}
     </div>`;
 
   const subStats = [
@@ -3251,7 +3261,7 @@ function _renderJourneyLead(lead, index) {
   ].filter(Boolean).join(' &nbsp;·&nbsp; ');
 
   const agentBadge = lead.assigned_agent && lead.assigned_agent !== '—'
-    ? `<span style="background:#e8f0ff;color:var(--blue);font-size:10px;font-weight:700;padding:3px 10px;border-radius:12px;display:flex;align-items:center;gap:4px;white-space:nowrap">👤 ${lead.assigned_agent}</span>`
+    ? `<span style="background:#e8f0ff;color:var(--blue);font-size:10px;font-weight:700;padding:3px 10px;border-radius:12px;display:flex;align-items:center;gap:4px;white-space:nowrap">👤 ${esc(lead.assigned_agent)}</span>`
     : '';
 
   const isConverted = lead.status === 'converted';
@@ -3265,7 +3275,7 @@ function _renderJourneyLead(lead, index) {
           style="background:var(--green);color:#fff;border:none;padding:8px 18px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px">
           ✓ ${lang==='ar'?'تحديد كمحوّل':'Mark as Converted'}
         </button>
-        <span style="font-size:11px;color:var(--text-light)">${lang==='ar'?'يحدّث حالة العميل ÙÙŠ Supabase':'Updates lead status to "converted" in Supabase'}</span>
+        <span style="font-size:11px;color:var(--text-light)">${lang==='ar'?'يحدّث حالة العميل في Supabase':'Updates lead status to "converted" in Supabase'}</span>
       </div>`;
 
   return `
@@ -3273,7 +3283,7 @@ function _renderJourneyLead(lead, index) {
       <div class="journey-header" onclick="toggleJourney(${index})">
         <div class="journey-score" style="background:${scoreColor}">${lead.score}</div>
         <div class="journey-meta">
-          <div class="phone">${fmtPhone(lead.phone)}${lead.name ? ' — ' + lead.name : ''}</div>
+          <div class="phone">${fmtPhone(lead.phone)}${lead.name ? ' — ' + esc(lead.name) : ''}</div>
           <div class="sub">${subStats}</div>
         </div>
         <div class="journey-badges">
@@ -3440,7 +3450,7 @@ async function applyJourneyFilters() {
   await loadJourneyV2();
   if (btn) {
     btn.disabled = false;
-    if (span) { span.dataset.en='Apply Filters'; span.dataset.ar='تطبيق Ø§Ù„ÙÙ„Ø§ØªØ±'; }
+    if (span) { span.dataset.en='Apply Filters'; span.dataset.ar='تطبيق الفلاتر'; }
     applyLang();
   }
 }
@@ -3545,7 +3555,7 @@ async function loadJourneyV2() {
       if (!wrap.querySelector('.journey-loading')) {
         const loading = document.createElement('div');
         loading.className = 'journey-loading';
-        loading.textContent = lang === 'ar' ? 'Ø¬Ø§Ø±Ù تحديث الرحلة...' : 'Refreshing journey...';
+        loading.textContent = lang === 'ar' ? 'جارٍ تحديث الرحلة...' : 'Refreshing journey...';
         wrap.prepend(loading);
       }
     }
@@ -3580,12 +3590,12 @@ async function loadJourneyV2() {
       applyLang();
     } else {
       _syncJourneyPagination(0, 1, 1);
-      wrap.innerHTML = `<div class="card journey-empty">${lang==='ar'?'لا توجد نتائج تطابق Ø§Ù„ÙÙ„Ø§ØªØ±':'No leads match the current filters'}</div>`;
+      wrap.innerHTML = `<div class="card journey-empty">${lang==='ar'?'لا توجد نتائج تطابق الفلاتر':'No leads match the current filters'}</div>`;
     }
   } catch(e) {
     console.error('Journey v2 failed:', e);
     if (!_journeyLastGood?.leads?.length) {
-      wrap.innerHTML = `<div class="card journey-empty" style="color:var(--red)">${lang==='ar'?'ÙØ´Ù„ تحميل رحلة العميل':'Failed to load journey data'}</div>`;
+      wrap.innerHTML = `<div class="card journey-empty" style="color:var(--red)">${lang==='ar'?'فشل تحميل رحلة العميل':'Failed to load journey data'}</div>`;
     }
   } finally {
     if (wrap) {
@@ -3759,7 +3769,7 @@ async function loadAll(bgRefresh = false) {
   } catch(e) {
     if (!bgRefresh) {
       console.error('Load failed:', e);
-      document.getElementById('kpiGrid').innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:32px;color:var(--red)">${lang==='ar'?'ÙØ´Ù„ التحميل: ':'Load failed: '}${e.message}</div>`;
+      document.getElementById('kpiGrid').innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:32px;color:var(--red)">${lang==='ar'?'فشل التحميل: ':'Load failed: '}${e.message}</div>`;
       setWaLineState('error', 'Load failed');
     }
   }

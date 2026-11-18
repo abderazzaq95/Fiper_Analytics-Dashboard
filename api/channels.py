@@ -5,7 +5,9 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from pipeline.time_ranges import since_iso, period_start_utc
 from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
+from pipeline.swr_cache import SWRCache, ttl_for
 load_dotenv()
+_CACHE = SWRCache("channels", 300)
 router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 BATCH_SIZE = 100
@@ -58,7 +60,7 @@ def channels(
     wa_line: str = Query("all"),
 ):
     try:
-        return _channels_inner(range, wa_line)
+        return _CACHE.get(f"{range}:{wa_line}", lambda: _channels_inner(range, wa_line), ttl=ttl_for(range))
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/channels error ({range}): {e}", exc_info=True)
@@ -201,7 +203,7 @@ _EMPTY_TRAFFIC = {
 def channels_traffic(wa_line: str = Query("all")):
     """Multi-period traffic breakdown: today / this week / this month."""
     try:
-        return _channels_traffic_inner(wa_line)
+        return _CACHE.get(f"traffic:{wa_line}", lambda: _channels_traffic_inner(wa_line), ttl=300)
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/channels/traffic error: {e}", exc_info=True)
@@ -213,27 +215,36 @@ def _channels_traffic_inner(wa_line: str = "all"):
     start_week = period_start_utc("week")
     start_month = period_start_utc("month")
 
+    one_line = bool(wa_line and wa_line.lower() not in ("all", "*", "any"))
     result: dict = {}
     for label, cutoff_dt in [("today", start_today), ("week", start_week), ("month", start_month)]:
         cutoff = cutoff_dt.isoformat()
-        wa_rows = _paginate(
-            lambda cutoff=cutoff: supabase.table("leads")
-            .select("id,phone,status,channel,whatsapp_business_number")
-            .eq("channel", "whatsapp")
-            .gte("last_message_at", cutoff)
-        )
-        if wa_line and wa_line.lower() not in ("all", "*", "any"):
-            wa_rows = [r for r in wa_rows if matches_business_line(r, wa_line)]
-        wa = len(wa_rows)
+        if one_line:
+            # A single WhatsApp line needs row-level matching.
+            wa_rows = _paginate(
+                lambda cutoff=cutoff: supabase.table("leads")
+                .select("id,phone,status,channel,whatsapp_business_number")
+                .eq("channel", "whatsapp")
+                .gte("last_message_at", cutoff)
+            )
+            wa = len([r for r in wa_rows if matches_business_line(r, wa_line)])
+            msg_rows = _paginate(
+                lambda cutoff=cutoff: supabase.table("messages")
+                .select("id,whatsapp_business_number")
+                .gte("sent_at", cutoff)
+            )
+            msgs = len([m for m in msg_rows if matches_business_line(m, wa_line)])
+        else:
+            # All lines: let the database count (was: download every row to count it).
+            wa = _exact_count(
+                lambda cutoff=cutoff: supabase.table("leads").select("id", count="exact")
+                .eq("channel", "whatsapp").gte("last_message_at", cutoff).limit(1)
+            )
+            msgs = _exact_count(
+                lambda cutoff=cutoff: supabase.table("messages").select("id", count="exact")
+                .gte("sent_at", cutoff).limit(1)
+            )
         mq = _unique_call_leads_count(cutoff)
-        msg_rows = _paginate(
-            lambda cutoff=cutoff: supabase.table("messages")
-            .select("id,direction,lead_id,whatsapp_business_number")
-            .gte("sent_at", cutoff)
-        )
-        if wa_line and wa_line.lower() not in ("all", "*", "any"):
-            msg_rows = [m for m in msg_rows if matches_business_line(m, wa_line)]
-        msgs = len(msg_rows)
         cls = _exact_count(
             lambda cutoff=cutoff: supabase.table("calls")
             .select("id", count="exact")

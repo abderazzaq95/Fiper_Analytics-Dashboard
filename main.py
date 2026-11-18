@@ -1487,6 +1487,22 @@ def _require_email_debug_token(token: str):
         raise HTTPException(status_code=403, detail="Invalid email debug token")
 
 
+def warm_dashboard_cache():
+    """Keep the dashboard's most-viewed ranges warm so pages load instantly.
+    Each call returns cached data and, when it is stale, rebuilds it in the background."""
+    from api import overview as _ov, channels as _ch, leads as _ld, quality as _q, agents as _ag
+    for rng in ("today", "week"):
+        for fn in (_ov.overview, _ch.channels, _ld.leads, _q.quality, _ag.agents):
+            try:
+                fn(range=rng, wa_line="all") if fn is not _ag.agents else fn(range=rng, wa_line="all", refresh="0")
+            except Exception as e:
+                log.warning(f"cache warm {fn.__name__}/{rng} failed: {e}")
+    try:
+        _ch.channels_traffic(wa_line="all")
+    except Exception as e:
+        log.warning(f"cache warm traffic failed: {e}")
+
+
 def run_reply_reminders():
     """Scheduled: track waiting customers and send the reminder ladder."""
     try:
@@ -1578,6 +1594,16 @@ async def lifespan(app: FastAPI):
         max_instances=1,
         coalesce=True,
         next_run_time=datetime.now(timezone.utc) + timedelta(minutes=5),
+    )
+    scheduler.add_job(
+        warm_dashboard_cache,
+        "interval",
+        minutes=5,
+        id="dashboard_cache_warm",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=45),
     )
     scheduler.add_job(
         run_reply_reminders,

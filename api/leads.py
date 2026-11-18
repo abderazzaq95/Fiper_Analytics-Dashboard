@@ -5,8 +5,10 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from pipeline.time_ranges import since_iso
 from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
+from pipeline.swr_cache import SWRCache, ttl_for
 
 load_dotenv()
+_CACHE = SWRCache("leads", 300)
 router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 BATCH = 100
@@ -24,7 +26,7 @@ def leads(
     wa_line: str = Query("all"),
 ):
     try:
-        return _leads_inner(range, wa_line)
+        return _CACHE.get(f"{range}:{wa_line}", lambda: _leads_inner(range, wa_line), ttl=ttl_for(range))
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/leads error ({range}): {e}", exc_info=True)
@@ -192,30 +194,61 @@ def _leads_inner(range_: str, wa_line: str = "all"):
     all_leads = _merge_by_phone(all_leads)
     all_leads.sort(key=lambda l: l.get("score") or 0, reverse=True)
 
-    # Join AI summaries
-    try:
-        analyses = (
-            supabase.table("ai_analysis")
-            .select("lead_id,summary")
-            .execute()
-            .data
-        ) or []
-    except Exception:
-        analyses = []
-    summary_map = {a["lead_id"]: a.get("summary") for a in analyses}
-    for lead in all_leads:
-        lead["summary"] = summary_map.get(lead["id"])
-
     status_counts: dict = {}
     for l in all_leads:
         status = l.get("status") or "new"
         status_counts[status] = status_counts.get(status, 0) + 1
+
+    # The page lists only the top leads; everything else is sent as aggregates
+    # (the full list was ~1.4 MB per load for a week).
+    top = all_leads[:LIST_LIMIT]
+    _attach_summaries(top)
 
     return {
         "range": range_,
         "total": len(all_leads),
         "funnel": status_counts,
         "score_distribution": _bucket_scores(all_leads),
-        "leads": all_leads,
+        "avg_score": _avg_score(all_leads),
+        "geo_prefixes": _geo_prefixes(all_leads),
+        "leads": top,
         "hot_leads": _hot_leads(wa_line),
     }
+
+
+LIST_LIMIT = 50
+
+
+def _avg_score(rows):
+    scores = [r["score"] for r in rows if r.get("score") is not None]
+    return round(sum(scores) / len(scores), 1) if scores else 0
+
+
+def _geo_prefixes(rows):
+    """Lead count per first 4 phone digits; the page maps prefixes to countries."""
+    counts: dict[str, int] = {}
+    for r in rows:
+        digits = "".join(ch for ch in str(r.get("phone") or "") if ch.isdigit())
+        if digits.startswith("00"):
+            digits = digits[2:]
+        if digits:
+            counts[digits[:4]] = counts.get(digits[:4], 0) + 1
+    return counts
+
+
+def _attach_summaries(rows):
+    """Latest AI summary per listed lead. (Before: the whole ai_analysis table was
+    read without paging, so Supabase's 1000-row cap dropped most summaries.)"""
+    ids = list({i for r in rows for i in (r.get("lead_ids") or [r.get("id")]) if i})
+    latest: dict[str, tuple[str, str]] = {}
+    try:
+        for i in range(0, len(ids), BATCH):
+            for a in (supabase.table("ai_analysis").select("lead_id,summary,analyzed_at")
+                      .in_("lead_id", ids[i:i + BATCH]).execute().data or []):
+                if a.get("summary") and (a.get("analyzed_at") or "") >= latest.get(a["lead_id"], ("", ""))[0]:
+                    latest[a["lead_id"]] = (a.get("analyzed_at") or "", a["summary"])
+    except Exception:
+        pass
+    for r in rows:
+        best = max((latest[i] for i in (r.get("lead_ids") or [r.get("id")]) if i in latest), default=None)
+        r["summary"] = best[1] if best else None

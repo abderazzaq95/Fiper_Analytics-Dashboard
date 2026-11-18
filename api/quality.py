@@ -9,8 +9,10 @@ from datetime import datetime, timedelta, timezone
 from pipeline.time_ranges import since_iso
 from collections import Counter
 from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line, resolve_agent_name
+from pipeline.swr_cache import SWRCache, ttl_for
 
 load_dotenv()
+_CACHE = SWRCache("quality", 300)
 router = APIRouter()
 supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -177,7 +179,7 @@ def quality(
     wa_line: str = Query("all"),
 ):
     try:
-        return _quality_inner(range, wa_line)
+        return _CACHE.get(f"{range}:{wa_line}", lambda: _quality_inner(range, wa_line), ttl=ttl_for(range))
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/quality error ({range}): {e}", exc_info=True)
