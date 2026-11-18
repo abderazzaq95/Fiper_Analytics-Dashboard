@@ -24,7 +24,6 @@ REMINDER_MODE:
 """
 from __future__ import annotations
 
-import html
 import logging
 import os
 import re
@@ -33,6 +32,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from pipeline import email_notifications as notify
+from pipeline import reminder_templates as templates
 from pipeline.reply_tracker import (
     Ladder,
     Schedule,
@@ -375,87 +375,28 @@ def _short(text: str | None, limit: int = 180) -> str:
     return value if len(value) <= limit else value[: limit - 1] + "…"
 
 
+def _tpl_item(item: dict) -> dict:
+    """Engine item -> template input (see pipeline/reminder_templates.py)."""
+    r = item["row"]
+    return {
+        "name": r.get("customer_name"),
+        "phone": r.get("phone"),
+        "line": r.get("business_line"),
+        "elapsed_min": item["elapsed"],
+        "since": parse_dt(r.get("waiting_since")),
+        "body": r.get("last_inbound_body"),
+        "stage": item["stage"],
+        "agent": r.get("agent_name"),
+        "reminders": r.get("reminder_count") or 0,
+    }
+
+
 def _agent_texts(agent: str, items: list[dict], other_waiting: int) -> tuple[str, str, str]:
-    second = any(i["stage"] == 2 for i in items)
-    title_en = "Still waiting — please reply now" if second else "Customers waiting for your reply"
-    title_ar = "ما زالوا بانتظار ردك — يرجى الرد الآن" if second else "عملاء بانتظار ردك"
-    lines = []
-    for i in items:
-        r = i["row"]
-        line = f" · {_line_label(r)} line" if _line_label(r) else ""
-        lines.append(
-            f"• {_customer_label(r)}{line}\n"
-            f"  waiting {fmt_minutes(i['elapsed'])} (since {_local(r['waiting_since'])} {TZ_LABEL})\n"
-            f"  \"{_short(r.get('last_inbound_body'))}\""
-        )
-    extra = f"\n(+{other_waiting} more customer(s) waiting for you)" if other_waiting else ""
-    text = (
-        f"⏰ {title_en}\n{title_ar}\n\n"
-        f"Hello {agent},\n\n" + "\n\n".join(lines) + extra +
-        "\n\nPlease reply in ManyContacts or call the customer.\n"
-        "يرجى الرد عبر ManyContacts أو الاتصال بالعميل."
-    )
-    rows_html = "".join(
-        "<tr>"
-        f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(_customer_label(i['row']))}</td>"
-        f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(_line_label(i['row']) or '-')}</td>"
-        f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(fmt_minutes(i['elapsed']))}<br>"
-        f"<small>since {html.escape(_local(i['row']['waiting_since']))} {html.escape(TZ_LABEL)}</small></td>"
-        f"<td style='padding:8px;border:1px solid #e6eaf2;white-space:pre-wrap'>{html.escape(_short(i['row'].get('last_inbound_body'), 400))}</td>"
-        "</tr>"
-        for i in items
-    )
-    body_html = f"""
-    <h2>{html.escape(title_en)}</h2>
-    <p dir="rtl">{html.escape(title_ar)}</p>
-    <p>Hello {html.escape(agent)},</p>
-    <table style="border-collapse:collapse;font-size:14px">
-      <tr><th align="left">Customer</th><th align="left">Line</th><th align="left">Waiting</th><th align="left">Last message</th></tr>
-      {rows_html}
-    </table>
-    {f"<p>+{other_waiting} more customer(s) waiting for you.</p>" if other_waiting else ""}
-    <p>Please reply in ManyContacts or call the customer.</p>
-    <p dir="rtl">يرجى الرد عبر ManyContacts أو الاتصال بالعميل.</p>
-    """
-    subject = f"Fiper — {len(items)} customer(s) waiting for your reply"
-    return subject, text, body_html
+    return templates.agent_reminder(agent, [_tpl_item(i) for i in items], other_waiting, SCHEDULE.tz, TZ_LABEL)
 
 
 def _escalation_texts(items: list[dict], shadow: bool) -> tuple[str, str, str]:
-    prefix = "[SHADOW] " if shadow else ""
-    lines = []
-    for i in items:
-        r = i["row"]
-        lines.append(
-            f"• {_customer_label(r)} — agent: {r.get('agent_name') or 'UNASSIGNED'}\n"
-            f"  waiting {fmt_minutes(i['elapsed'])} working time (since {_local(r['waiting_since'])} {TZ_LABEL}), "
-            f"reminders sent: {r.get('reminder_count') or 0}\n"
-            f"  \"{_short(r.get('last_inbound_body'))}\""
-        )
-    text = f"{prefix}🚨 Customers still unanswered\n\n" + "\n\n".join(lines)
-    rows_html = "".join(
-        "<tr>"
-        f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(_customer_label(i['row']))}</td>"
-        f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(i['row'].get('agent_name') or 'UNASSIGNED')}</td>"
-        f"<td style='padding:8px;border:1px solid #e6eaf2'>{html.escape(fmt_minutes(i['elapsed']))}<br>"
-        f"<small>since {html.escape(_local(i['row']['waiting_since']))} {html.escape(TZ_LABEL)}</small></td>"
-        f"<td style='padding:8px;border:1px solid #e6eaf2'>{i['row'].get('reminder_count') or 0}</td>"
-        f"<td style='padding:8px;border:1px solid #e6eaf2;white-space:pre-wrap'>{html.escape(_short(i['row'].get('last_inbound_body'), 400))}</td>"
-        "</tr>"
-        for i in items
-    )
-    body_html = f"""
-    <h2>{prefix}Customers still unanswered</h2>
-    <p>These customers have waited longer than {fmt_minutes(LADDER.escalate_min)} of working time
-       (or nobody owns the chat).</p>
-    <table style="border-collapse:collapse;font-size:14px">
-      <tr><th align="left">Customer</th><th align="left">Agent</th><th align="left">Waiting</th>
-          <th align="left">Reminders</th><th align="left">Last message</th></tr>
-      {rows_html}
-    </table>
-    """
-    subject = f"{prefix}Fiper escalation — {len(items)} customer(s) unanswered"
-    return subject, text, body_html
+    return templates.escalation([_tpl_item(i) for i in items], SCHEDULE.tz, TZ_LABEL, LADDER.escalate_min, shadow)
 
 
 # ── Delivery ──────────────────────────────────────────────────────────────────
@@ -514,7 +455,7 @@ def _deliver_to_agent(agent: str, items: list[dict], other_waiting: int, now: da
     if mode() == "shadow":
         for i in items:
             _log(i["row"], agent, "all", None, "shadow", subject, text, {**meta, "stage": i["stage"]})
-        _shadow_buffer.append({"agent": agent, "text": text, "at": now})
+        _shadow_buffer.append({"agent": agent, "items": [_tpl_item(i) for i in items], "other": other_waiting, "at": now})
         return True
 
     recent = [t for t in _agent_send_log[agent] if now - t < timedelta(hours=1)]
@@ -565,17 +506,9 @@ def _flush_shadow_digest(now: datetime, force: bool = False) -> None:
     if not recipients:
         _shadow_buffer.clear()
         return
-    blocks = "".join(
-        f"<h3>To {html.escape(b['agent'])} at {html.escape(_local(b['at']))}</h3>"
-        f"<pre style='white-space:pre-wrap;font-family:inherit;background:#f6f8fb;padding:10px'>{html.escape(b['text'])}</pre>"
-        for b in _shadow_buffer
-    )
-    body = (
-        "<h2>[SHADOW] Reminders that WOULD have been sent to agents</h2>"
-        "<p>Nothing below was sent to agents. Set REMINDER_MODE=live on Render to start sending.</p>" + blocks
-    )
+    subject, body = templates.shadow_digest(list(_shadow_buffer), SCHEDULE.tz, TZ_LABEL)
     try:
-        notify._send_email(recipients, f"[SHADOW] Fiper reminders preview — {len(_shadow_buffer)} message(s)", body)
+        notify._send_email(recipients, subject, body)
     except Exception as exc:
         log.error(f"[reminders] shadow digest failed: {exc}")
     _shadow_buffer.clear()
