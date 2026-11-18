@@ -62,6 +62,11 @@ AGENT_CONTACT_ALIASES = {
     "meqbali": "maitha almoqbali",
     "bashir": "bashir hallak",
     "saif talib": "saif ghaleb",
+    # Spelling variants seen in ManyContacts assignments (Nov 2026).
+    "joseph kesrwany": "joseph kesserwany",
+    "mohamed hussein": "mohammed hussein",  # 'mohamad husein' after normalization
+    "abdulatif hamoudi": "hammoudi abdellatif",
+    "alaa al eish": "alaa eddin alesh",
 }
 
 

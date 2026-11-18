@@ -189,6 +189,18 @@ def _load_call_times(phones: list[str], since: datetime) -> dict[str, list[datet
     return calls_by_phone
 
 
+def _canonical_agent(name: str | None) -> str | None:
+    """Same person, one name: 'joseph kesrwany' / 'Joseph kesserwany' etc. map to
+    the contact-sheet name when the sheet knows them (also used for delivery)."""
+    if not name:
+        return None
+    try:
+        contact = notify._agent_contact(name)
+    except Exception:
+        contact = None
+    return ((contact or {}).get("name") or "").strip() or name
+
+
 def _pick_agent(conv: dict, last_agent: str | None) -> str | None:
     """Current owner: assigned agent on the most recently updated WhatsApp row."""
     rows = sorted(
@@ -199,8 +211,8 @@ def _pick_agent(conv: dict, last_agent: str | None) -> str | None:
     for r in rows:
         agent = _clean_agent(r.get("assigned_agent"))
         if agent:
-            return agent
-    return _clean_agent(last_agent)
+            return _canonical_agent(agent)
+    return _canonical_agent(_clean_agent(last_agent))
 
 
 def _pick_name(conv: dict) -> str:
