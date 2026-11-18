@@ -104,8 +104,7 @@ function applyCustomRange() {
 }
 
 // ── Team filter ──────────────────────────────────────────────────────────────
-let _teams = [], _teamName = '', _teamSet = null;
-try { _teamName = localStorage.getItem('fiper_team') || ''; } catch (e) {}
+let _teams = [], _teamSet = null;
 function inTeam(name) { return !_teamSet || _teamSet.has(String(name || '').trim().toLowerCase()); }
 function applyTeam() {
   const team = _teams.find(t => t.name === _teamName);
@@ -117,16 +116,21 @@ function setTeam(name) {
   try { localStorage.setItem('fiper_team', name); } catch (e) {}
   applyTeam();
   renderWaiting();
-  if (_cache) renderAll(..._cache);
+  showCurrentView();
 }
 async function loadTeams() {
   try {
     const r = await fetch(`${API}/api/teams`);
     if (!r.ok) return;
     _teams = (await r.json()).teams || [];
+    const saved = _teamName;
     applyTeam();
     renderTeamSelect();
-    if (_teamSet) { renderWaiting(); if (_cache) renderAll(..._cache); }
+    renderWaiting();
+    if (saved && !_teamName) {
+      try { localStorage.removeItem('fiper_team'); } catch (e) {}
+      showCurrentView();
+    }
   } catch (e) { console.warn('teams:', e); }
 }
 function renderTeamSelect() {
@@ -171,6 +175,9 @@ async function loadWaiting() {
     renderWaiting();
   } catch (e) { console.warn('waiting:', e); }
 }
+function inLine(item) {
+  return !waLine || waLine === 'all' || String(item.line_number || '').replace(/\D/g, '') === String(waLine).replace(/\D/g, '');
+}
 function setWaitingFilter(agent) { _waitingFilter = _waitingFilter === agent ? undefined : agent; renderWaiting(); }
 function setWaitingSearch(value) { _waitingSearch = value.trim().toLowerCase(); renderWaiting(); }
 function sortWaiting(key) {
@@ -199,7 +206,7 @@ function renderWaiting() {
   if (!list || !_waiting) return;
   const d = _waiting;
   const extra = d.working_time ? (Date.now() - _waitingAt) / 60000 : 0;
-  const all = d.items.map(i => ({...i, live: i.elapsed_min + extra})).filter(i => inTeam(i.agent));
+  const all = d.items.map(i => ({...i, live: i.elapsed_min + extra})).filter(i => inTeam(i.agent) && inLine(i));
   document.getElementById('navWaitingBadge').textContent = all.length || '';
   const over2 = all.filter(i => i.live >= 120).length;
   const oldest = all.reduce((m, i) => Math.max(m, i.live), 0);
@@ -296,14 +303,28 @@ function togglePassword() {
   const field = document.getElementById('loginPass');
   field.type = field.type === 'password' ? 'text' : 'password';
 }
-function buildLoginArt() {
-  const levels = ['g', 'g', 'o', 'm', 'g', 'o', 'b', 'g', 'o', 'g', 'm'];
-  document.getElementById('loginHeat').innerHTML = Array.from({length: 8}, (_, r) =>
-    `<div class="hr">${Array.from({length: 22}, (_, c) => `<span class="${levels[(r * 7 + c * 3 + r * c) % levels.length]}"></span>`).join('')}</div>`).join('');
+const _kpiNumbers = new Map();
+function animateKpis() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  document.querySelectorAll('#kpiGrid .kpi-card').forEach(card => {
+    const label = card.querySelector('.kpi-label')?.textContent, value = card.querySelector('.kpi-value');
+    const match = value?.textContent.trim().match(/^([\d,]+(?:\.\d+)?)(.*)$/);
+    if (!match) return;
+    const target = Number(match[1].replace(/,/g, '')), digits = (match[1].split('.')[1] || '').length;
+    const from = _kpiNumbers.get(label) ?? 0;
+    _kpiNumbers.set(label, target);
+    if (from === target) return;
+    const started = performance.now();
+    const tick = now => {
+      const p = Math.min(1, (now - started) / 450), eased = 1 - Math.pow(1 - p, 3);
+      value.textContent = (from + (target - from) * eased).toLocaleString('en', {minimumFractionDigits: digits, maximumFractionDigits: digits}) + match[2];
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
 }
 function startDashboardShell() { applyTeam(); loadTeams(); loadWaiting(); }
 buildPages();
-buildLoginArt();
 applyChartTheme();
 showPage('sec-' + (location.hash.slice(1) || 'overview'));
 window.addEventListener('hashchange', () => showPage('sec-' + (location.hash.slice(1) || 'overview')));

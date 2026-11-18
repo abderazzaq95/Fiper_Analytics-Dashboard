@@ -515,32 +515,28 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   .jfilter-bar{gap:8px}
 }
 </style>
-<link rel="stylesheet" href="/static/dashboard.css?v=5"/>
+<link rel="stylesheet" href="/static/dashboard.css?v=7"/>
 </head>
 <body>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11 12 3l9 8"/><path d="M5 10v10h14V10"/></symbol><symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol><symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 21h4"/></symbol><symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M17 11a4 4 0 0 0 0-7"/><path d="M22 21a6 6 0 0 0-4-5.6"/></symbol><symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.7 7.1L3 21l1.9-6.3A8 8 0 1 1 21 12z"/></symbol><symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16v4M17 18h4"/></symbol><symbol id="i-funnel" viewBox="0 0 24 24"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></symbol><symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></symbol><symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H15a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h6.5"/></symbol><symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z"/></symbol><symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></symbol><symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol><symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/></symbol></svg>
 <!-- Login -->
-<div id="loginOverlay" class="login">
-  <div class="login-art">
-    <img class="login-logo" src="/static/email/fiper-logo-white.png" alt="Fiper"/>
-    <div class="login-heat" id="loginHeat" aria-hidden="true"></div>
-    <div>
-      <div class="login-caption" data-en="Every customer answered." data-ar="كل عميل يحصل على رد.">Every customer answered.</div>
-      <div class="login-caption-sub" data-en="WhatsApp, calls and agent performance in one place." data-ar="واتساب والمكالمات وأداء الفريق في مكان واحد.">WhatsApp, calls and agent performance in one place.</div>
-    </div>
-  </div>
-  <div class="login-side">
-    <form class="login-form" id="loginBox" onsubmit="event.preventDefault();doLogin()">
-      <img class="login-mobile" src="/static/brand/fiper-logo-dark.png" alt="Fiper"/>
-      <h1 data-en="Sign in" data-ar="تسجيل الدخول">Sign in</h1>
-      <p class="sub" data-en="Fiper Intelligence Dashboard" data-ar="لوحة ذكاء الأعمال">Fiper Intelligence Dashboard</p>
-      <label class="field"><span data-en="Username" data-ar="اسم المستخدم">Username</span><input id="loginUser" class="input" type="text" autocomplete="username" required/></label>
-      <label class="field"><span data-en="Password" data-ar="كلمة المرور">Password</span><span class="pass-wrap"><input id="loginPass" class="input" type="password" autocomplete="current-password" required/><button class="pass-eye" type="button" onclick="togglePassword()" aria-label="Show password"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg></button></span></label>
-      <div id="loginErr" role="alert"></div>
-      <button id="loginBtn" class="btn primary block" type="submit" data-en="Sign in" data-ar="دخول">Sign in</button>
-    </form>
-  </div>
+<div id="busyBar" aria-hidden="true"></div>
+<div id="loginOverlay" class="login" style="display:none">
+  <svg class="login-flow" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <path d="M-80 690C210 450 420 760 700 520S1160 180 1520 330"/><path d="M-80 760C230 520 470 820 760 590S1190 260 1520 410"/>
+    <path d="M-80 825C260 610 510 870 820 660S1230 340 1520 490"/><path d="M-80 610C170 400 390 650 650 455S1120 95 1520 245"/>
+  </svg>
+  <form class="login-card" id="loginBox" onsubmit="event.preventDefault();doLogin()">
+    <img src="/static/email/fiper-logo-white.png" alt="Fiper"/>
+    <span class="login-kicker"><i></i><span data-en="Intelligence Dashboard" data-ar="لوحة ذكاء الأعمال">Intelligence Dashboard</span></span>
+    <h1 data-en="Welcome back" data-ar="مرحباً بعودتك">Welcome back</h1>
+    <p data-en="Sign in to see your team's live results." data-ar="سجّل الدخول لمتابعة نتائج فريقك مباشرة.">Sign in to see your team's live results.</p>
+    <label class="login-field"><span data-en="Username" data-ar="اسم المستخدم">Username</span><input id="loginUser" type="text" autocomplete="username" required/></label>
+    <label class="login-field"><span data-en="Password" data-ar="كلمة المرور">Password</span><span class="pass-wrap"><input id="loginPass" type="password" autocomplete="current-password" required/><button class="pass-eye" type="button" onclick="togglePassword()" aria-label="Show password"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg></button></span></label>
+    <div id="loginErr" role="alert"></div>
+    <button id="loginBtn" type="submit" data-en="Sign in" data-ar="دخول">Sign in</button>
+  </form>
 </div>
 
 <aside class="side" id="side" aria-label="Main menu">
@@ -959,24 +955,19 @@ let charts = {};
 let allLeads = [];
 let waLine = localStorage.getItem('fiper_wa_line') || 'all';
 let _cache = null;      // last fetched data for current range
-let _lastGoodAgents  = null;
-let _lastGoodQuality = null;
-let _lastGoodOv      = null;
-let _lastGoodCh      = null;
-let _lastGoodLeads   = null;
-let _lastGoodTraffic = null;
-let _rangeCache = {};   // range → {status, data} — instant switching
-let _lastRenderedData = null;
+let _rangeCache = {};   // period + filters -> {data, raw, at}: instant switching
+let _teamName = '';
+try { _teamName = localStorage.getItem('fiper_team') || ''; } catch (e) {}
 let _hasRenderedOnce = false;
 let _qualityAlertList = [];
 let _riskFlagDetails = {};
 
 // ── Persistent cache (survives page refresh) ──────────────────────────────────
-const _CACHE_VER = 'v9';
+const _CACHE_VER = 'v10';
 const _CACHE_TTL = 12 * 60 * 60 * 1000; // 12h
 
-function _storageKey(r, line = waLine) { return `fiper_${_CACHE_VER}_${r}_${line || 'all'}`; }
-function _cacheKey(r, line = waLine) { return `${r}__${line || 'all'}`; }
+function _storageKey(r, line = waLine, team = _teamName) { return `fiper_${_CACHE_VER}_${r}_${line || 'all'}_${team}`; }
+function _cacheKey(r, line = waLine, team = _teamName) { return `${r}__${line || 'all'}__${team}`; }
 
 function _saveCache(r, data) {
   if (String(r).startsWith('custom:')) return;  // do not fill browser storage with date ranges
@@ -993,21 +984,11 @@ function _loadCache(r) {
   } catch(e) { return null; }
 }
 
+
 function _applyStoredCache(r) {
   const stored = _loadCache(r);
   if (!stored) return false;
-  const [ov, ch, leads, agents, quality, traffic] = stored;
-  if (hasOverview(ov))     _lastGoodOv      = ov;
-  if (hasChannels(ch))     _lastGoodCh      = ch;
-  if (hasLeadsData(leads)) _lastGoodLeads   = leads;
-  if (hasAgents(agents))   _lastGoodAgents  = agents;
-  if (hasQuality(quality)) _lastGoodQuality = quality;
-  if (hasTraffic(traffic)) _lastGoodTraffic = traffic;
-  const safeQuality = hasQuality(quality) ? quality : (_lastGoodQuality || null);
-  const safeStored = [ov, ch, leads, agents, safeQuality, traffic];
-  _cache = safeStored;
-  _lastRenderedData = safeStored;
-  _rangeCache[_cacheKey(r)] = { status: {}, data: safeStored };
+  _rangeCache[_cacheKey(r)] = { data: stored, raw: '', at: 0 };
   return true;
 }
 
@@ -1050,30 +1031,22 @@ function setRange(r) {
   range = r;
   markRange(r.startsWith('custom:') ? 'custom' : r);
   document.getElementById('customRange').hidden = !r.startsWith('custom:');
-  if (r !== 'today') document.getElementById('hotLeadsSection').style.display = 'none';
-  const cached = _rangeCache[_cacheKey(r)];
-  if (cached) {
-    // Render instantly from cache, then silently refresh in the background
-    _pipelineStatus = cached.status;
-    _cache = cached.data;
+  showCurrentView();
+}
+
+// Date, team and line all end here: show known numbers at once, then refresh quietly.
+function showCurrentView() {
+  const key = _cacheKey(range);
+  if (_rangeCache[key] || _applyStoredCache(range)) {
+    const entry = _rangeCache[key];
+    _cache = entry.data;
     renderAll(..._cache);
     loadJourneyV2();
-    _silentRefresh();
-  } else if (_applyStoredCache(r)) {
-    // Restore from localStorage so no zeros flash while fresh data loads
-    renderAll(..._cache);
-    loadJourneyV2();
-    _silentRefresh();
+    if (Date.now() - entry.at > 20000) loadAll(true);
+    else { _loadSeq++; setDataLoading(''); setWaLineState('ready', T('Loaded', 'تم التحميل')); }
   } else {
     loadAll();
   }
-}
-
-async function _silentRefresh() {
-  const dot = document.getElementById('liveDot');
-  if (dot) dot.className = 'live-dot refreshing';
-  try { await loadAll(true); } catch(e) { console.warn('bg refresh:', e); }
-  if (dot) dot.className = 'live-dot on';
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1088,134 +1061,15 @@ const ago   = ts => {
   if (diff < 86400) return lang==='ar' ? `منذ ${Math.round(diff/3600)} س` : `${Math.round(diff/3600)}h ago`;
   return lang==='ar' ? `منذ ${Math.round(diff/86400)} ي` : `${Math.round(diff/86400)}d ago`;
 };
-async function get(path) {
-  const sep = path.includes('?') ? '&' : '?';
-  const wa = waLine ? `&wa_line=${encodeURIComponent(waLine)}` : '';
-  const r = await fetch(`${API}${path}${sep}range=${range}${wa}&_=${Date.now()}`, {cache:'no-store'});
-  if (!r.ok) throw new Error(r.status);
-  return r.json();
+function viewParams(r = range) {
+  const p = new URLSearchParams({ range: r, wa_line: waLine || 'all' });
+  if (_teamName) p.set('team', _teamName);
+  return p;
 }
-function hasAgents(data) {
-  return Array.isArray(data?.agents) && data.agents.length > 0;
-}
-function hasOverview(data) {
-  return !!data && (
-    (data.calls?.total || 0) > 0 ||
-    (data.messages?.total || 0) > 0 ||
-    (data.messages?.stored_total || 0) > 0 ||
-    (data.messages?.inbound || 0) > 0 ||
-    (data.messages?.outbound || 0) > 0 ||
-    (data.leads?.total || 0) > 0
-  );
-}
-function hasChannels(data) {
-  return !!data && (
-    (data.whatsapp?.leads || 0) > 0 ||
-    (data.whatsapp?.messages || 0) > 0 ||
-    (data.whatsapp?.stored_messages || 0) > 0 ||
-    (data.maqsam?.leads || 0) > 0 ||
-    (data.maqsam?.calls || 0) > 0
-  );
-}
-function hasLeadsData(data) {
-  return !!data && ((data.total || 0) > 0 || (data.leads || []).length > 0);
-}
-function hasQuality(data) {
-  const outcomes = data?.call_outcomes || {};
-  const sentiment = data?.sentiment || {};
-  return Object.keys(outcomes).length > 0 ||
-    Object.keys(data?.top_topics || {}).length > 0 ||
-    Object.keys(data?.top_risk_flags || {}).length > 0 ||
-    (Array.isArray(data?.faq_topics) && data.faq_topics.length > 0) ||
-    ((sentiment.positive || 0) + (sentiment.neutral || 0) + (sentiment.negative || 0)) > 0 ||
-    ((data?.alerts?.total || 0) > 0) ||
-    ((data?.avg_treatment_score || 0) > 0);
-}
-function hasTraffic(data) {
-  return !!data && ['today','week','month'].some(p =>
-    (data[p]?.whatsapp?.leads || 0) > 0 ||
-    (data[p]?.whatsapp?.messages || 0) > 0 ||
-    (data[p]?.maqsam?.leads || 0) > 0 ||
-    (data[p]?.maqsam?.calls || 0) > 0
-  );
-}
-function keepIfBad(next, prev, isGood) {
-  return isGood(next) ? next : (prev || next);
-}
-// Field-level merges: keep cached non-zero values when fresh data has zeros
-function mergeOv(fresh, prev) {
-  if (!fresh || !prev) return fresh || prev;
-  return {
-    ...fresh,
-    alerts: {
-      ...fresh.alerts,
-      // Alert counts are exact per selected range/line. Preserve 0 instead of
-      // carrying stale non-zero values from another WhatsApp line.
-      open: fresh.alerts?.open ?? prev.alerts?.open ?? 0,
-      high: fresh.alerts?.high ?? prev.alerts?.high ?? 0,
-    },
-    messages: {
-      ...fresh.messages,
-      inbound:      fresh.messages?.inbound      || prev.messages?.inbound      || 0,
-      outbound:     fresh.messages?.outbound     || prev.messages?.outbound     || 0,
-      stored_total: fresh.messages?.stored_total || prev.messages?.stored_total || 0,
-    },
-    leads: {
-      ...fresh.leads,
-      total:     fresh.leads?.total     || prev.leads?.total     || 0,
-      avg_score: fresh.leads?.avg_score || prev.leads?.avg_score || 0,
-    },
-    calls: {
-      ...fresh.calls,
-      total:               fresh.calls?.total               || prev.calls?.total               || 0,
-      avg_duration_seconds: fresh.calls?.avg_duration_seconds || prev.calls?.avg_duration_seconds || 0,
-    },
-  };
-}
-function mergeCh(fresh, prev) {
-  if (!fresh || !prev) return fresh || prev;
-  return {
-    ...fresh,
-    whatsapp: {
-      ...fresh.whatsapp,
-      leads:           fresh.whatsapp?.leads           || prev.whatsapp?.leads           || 0,
-      messages:        fresh.whatsapp?.messages        || prev.whatsapp?.messages        || 0,
-      stored_messages: fresh.whatsapp?.stored_messages || prev.whatsapp?.stored_messages || 0,
-    },
-    maqsam: {
-      ...fresh.maqsam,
-      leads:                     fresh.maqsam?.leads                     || prev.maqsam?.leads                     || 0,
-      calls:                     fresh.maqsam?.calls                     || prev.maqsam?.calls                     || 0,
-      avg_call_duration_seconds: fresh.maqsam?.avg_call_duration_seconds || prev.maqsam?.avg_call_duration_seconds || 0,
-    },
-  };
-}
-function mergeTraffic(fresh, prev) {
-  if (!fresh || !prev) return fresh || prev;
-  const out = {};
-  for (const p of ['today','week','month']) {
-    const f = fresh[p] || {}, pv = prev[p] || {};
-    out[p] = {
-      whatsapp: { leads: f.whatsapp?.leads || pv.whatsapp?.leads || 0, messages: f.whatsapp?.messages || pv.whatsapp?.messages || 0 },
-      maqsam:   { leads: f.maqsam?.leads   || pv.maqsam?.leads   || 0, calls:    f.maqsam?.calls     || pv.maqsam?.calls     || 0 },
-    };
-  }
-  return out;
-}
-function mergeLeads(fresh, prev) {
-  if (!fresh || !prev) return fresh || prev;
-  return {
-    ...fresh,
-    total: fresh.total || prev.total || 0,
-    leads: (fresh.leads?.length ? fresh.leads : null) || prev.leads || [],
-    funnel: {
-      new:       fresh.funnel?.new       ?? prev.funnel?.new       ?? 0,
-      engaged:   fresh.funnel?.engaged   ?? prev.funnel?.engaged   ?? 0,
-      converted: fresh.funnel?.converted ?? prev.funnel?.converted ?? 0,
-      lost:      fresh.funnel?.lost      ?? prev.funnel?.lost      ?? 0,
-    },
-    score_distribution: (Object.values(fresh.score_distribution || {}).some(v => v > 0) ? fresh.score_distribution : null) || prev.score_distribution || {},
-  };
+async function get(path, r = range) {
+  const res = await fetch(`${API}${path}?${viewParams(r)}`, {cache:'no-store'});
+  if (!res.ok) throw new Error(res.status);
+  return res.json();
 }
 function renderAgentsLoading() {
   const el = document.getElementById('agentTable');
@@ -1379,11 +1233,7 @@ function renderKPI(ov, ch) {
 
 // ── Channels ──────────────────────────────────────────────────────────────────
 function renderChannels(ch, quality) {
-  // Compute answer rate from quality call outcomes
-  const outcomes = quality?.call_outcomes || {};
-  const completed = outcomes.completed || 0;
-  const pickupBase = completed + (outcomes.no_answer || 0) + (outcomes.busy || 0);
-  const answerRate = pickupBase ? Math.round(completed / pickupBase * 1000) / 10 : 0;
+  const answerRate = ch?.maqsam?.pickup_rate || 0;
   const ar_color = answerRate > 50 ? 'var(--green)' : answerRate > 30 ? 'var(--warn)' : 'var(--red)';
 
   // Update answer rate card
@@ -1609,31 +1459,6 @@ function renderTopics(quality) {
     : `<div style="text-align:center;padding:16px;color:var(--text-light);font-size:12px">No risk flags detected</div>`;
 }
 
-function renderTraffic(traffic) {
-  const el = document.getElementById('trafficTable');
-  if (!el) return;  // table removed: it did not follow the selected dates
-  if (!traffic) { el.innerHTML=''; return; }
-  const pLabels = {today:{en:'Today',ar:'اليوم'},week:{en:'This Week',ar:'هذا الأسبوع'},month:{en:'This Month',ar:'هذا الشهر'}};
-  function trendArrow(todayV,ydayV) {
-    if(!ydayV) return['→','trend-flat'];
-    const r=todayV/ydayV;
-    return r>1.15?['↑','trend-up']:r<0.85?['↓','trend-dn']:['→','trend-flat'];
-  }
-  const rows=[
-    {ch:'whatsapp',icon:'💬',label:{en:'WA Leads',ar:'عملاء واتساب'},metric:'leads'},
-    {ch:'whatsapp',icon:'💬',label:{en:'WA Messages',ar:'رسائل واتساب'},metric:'messages'},
-    {ch:'maqsam',icon:'📞',label:{en:'Maqsam Leads',ar:'عملاء مقسم'},metric:'leads'},
-    {ch:'maqsam',icon:'📞',label:{en:'Maqsam Calls',ar:'مكالمات مقسم'},metric:'calls'},
-  ];
-  const periods=['today','week','month'];
-  const thead=`<tr><th>${lang==='ar'?'القناة':'Channel'}</th>${periods.map(p=>`<th style="text-align:right">${lang==='ar'?pLabels[p].ar:pLabels[p].en}</th>`).join('')}<th style="text-align:center">${lang==='ar'?'الاتجاه':'Trend'}</th></tr>`;
-  const tbody=rows.map(r=>{
-    const vals=periods.map(p=>traffic[p]?.[r.ch]?.[r.metric]||0);
-    const[arrow,cls]=trendArrow(vals[0],vals[1]-vals[0]);
-    return`<tr><td class="agent-name-cell">${r.icon} ${lang==='ar'?r.label.ar:r.label.en}</td>${vals.map(v=>`<td style="text-align:right;font-weight:700;color:var(--navy)">${fmt(v)}</td>`).join('')}<td style="text-align:center"><span class="trend-arrow ${cls}">${arrow}</span></td></tr>`;
-  }).join('');
-  el.innerHTML=`<table class="traffic-tbl"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
-}
 
 // ── Quality & Risk Panel ──────────────────────────────────────────────────────
 function renderQualityRisk(quality, ov) {
@@ -1709,7 +1534,7 @@ function _renderLeadsRows() {
   const leadsData = _leadsData;
   if (!leadsData) return;
   const el   = document.getElementById('leadsList');
-  const all  = (leadsData.leads||[]).filter(l=>inTeam(l.assigned_agent)).slice(0,25);
+  const all  = (leadsData.leads||[]).slice(0,25);
   const list = _leadsExpanded ? all : all.slice(0, LEADS_DEFAULT);
 
   const countEl = document.getElementById('leadsCount');
@@ -1765,7 +1590,7 @@ let hotLeadsExpanded = false;
 let hotLeadsCache = [];
 // ── Peak Hours ────────────────────────────────────────────────────────────────
 function renderHotLeads(leadsData) {
-  const hot = (leadsData.hot_leads || []).filter(l => inTeam(l.assigned_agent));
+  const hot = leadsData.hot_leads || [];
   hotLeadsCache = hot;
   const section = document.getElementById('hotLeadsSection');
   // Hot leads are a live list, so they only belong to Today.
@@ -1897,7 +1722,7 @@ function sparkline(trend) {
 let agentSortKey = 'calls_handled', agentSortAsc = false;
 let _agentAlertDetails = {};
 function renderAgents(data) {
-  const agents = (data.agents || []).filter(a => inTeam(a.agent));
+  const agents = (data.agents || []).slice();
   _agentAlertDetails = {};
   const isAr = lang === 'ar';
   document.getElementById('agentCount').textContent = `(${agents.length} ${isAr ? 'وكيل' : 'agents'})`;
@@ -2052,35 +1877,6 @@ function sortAgents(key) {
 // All requests fire simultaneously; each row updates the moment its data arrives.
 // WA Chats / Msgs Sent show "—" until their detail fetch completes so the user
 // never sees stale wrong numbers.
-function _syncAllAgentDetails(agentsList) {
-  if (!agentsList?.length) return;
-  const toSync = agentsList.filter(a => a.agent && !a._wa_synced);
-  if (!toSync.length) return;
-  const currentRange = range;
-  // Stagger requests 1.5 s apart — avoids flooding the backend when all agents
-  // sync simultaneously and competing with any open modal's own detail fetch.
-  toSync.forEach((agent, i) => {
-    setTimeout(() => {
-      // Skip if the modal is currently open for this agent — it fetches its own detail
-      if (agent.agent === _apCurrentAgent) return;
-      const url = `${API}/api/agents/detail?agent=${encodeURIComponent(agent.agent)}&range=${encodeURIComponent(currentRange)}&wa_line=all`;
-      fetch(url).then(r => r.ok ? r.json() : null).then(data => {
-        if (!data?.stats || !_cache?.[3]?.agents) return;
-        const s = data.stats;
-        const idx = _cache[3].agents.findIndex(a => a.agent === agent.agent);
-        if (idx < 0) return;
-        const a = _cache[3].agents[idx];
-        // Only update WA-specific fields — calls/leads are accurate from the
-        // agents cache and the modal; overwriting them with a possibly-degraded
-        // background response causes the intermittent "0 Calls" display bug.
-        if (s.wa_chats      != null) a.wa_chats      = s.wa_chats;
-        if (s.messages_sent != null) a.messages_sent = s.messages_sent;
-        a._wa_synced = true;
-        renderAgents(_cache[3]);
-      }).catch(() => {});
-    }, i * 1500);
-  });
-}
 
 // ── Alert i18n helpers ────────────────────────────────────────────────────────
 const _ALERT_TYPE_AR = {
@@ -2225,9 +2021,8 @@ function setWaLine(value) {
   localStorage.setItem('fiper_wa_line', waLine);
   const sel = document.getElementById('waLineSelect');
   if (sel && sel.value !== waLine) sel.value = waLine;
-  setWaLineState('loading', 'Loading...');
-  loadAll();
-  Promise.resolve(loadJourneyV2()).catch(() => {});
+  renderWaiting();
+  showCurrentView();
 }
 
 function openRiskFlagDetails(flag) {
@@ -2829,7 +2624,7 @@ function durSec(s) {
 }
 
 function renderAlerts(quality) {
-  const list = (quality?.alerts?.list||[]).filter(a=>!a.resolved && inTeam(a.agent_name));
+  const list = (quality?.alerts?.list||[]).filter(a=>!a.resolved);
   const el = document.getElementById('alertsList');
   const wasExpanded = document.getElementById('alertsRest')?.style.display === 'block';
   if (!list.length) {
@@ -2887,7 +2682,8 @@ function normalizeChannels(ov, ch) {
   return fixed;
 }
 
-function normalizeOverview(ov, ch, leads, prev = null) {
+function normalizeOverview(ov, ch, leads) {
+  const prev = null;
   const fixed = ov || {};
   fixed.leads = fixed.leads || {};
   fixed.messages = fixed.messages || {};
@@ -2949,27 +2745,28 @@ function normalizeOverview(ov, ch, leads, prev = null) {
   return fixed;
 }
 
-function renderAll(ov, ch, leads, agents, quality, traffic) {
+function renderQualityParts(quality, ov) {
+  renderOutcomes(quality); renderSentiment(quality); renderTopics(quality);
+  renderFAQ(quality); renderQualityRisk(quality, ov); renderAlerts(quality);
+}
+function renderAll(ov, ch, leads, agents, quality) {
   ch = normalizeChannels(ov, ch);
-  ov = normalizeOverview(ov, ch, leads, _lastGoodOv);
+  ov = normalizeOverview(ov, ch, leads);
   allLeads = leads.leads || [];
   renderHotLeads(leads);
   renderKPI(ov, ch);
   renderChannels(ch, quality);
-  renderTraffic(traffic);
   renderHourlyChart(ov);
   renderFunnel(leads);
   renderScoreDist(leads);
   renderLeadsList(leads);
   renderGeo(leads);
-  // Sections that need quality/agents data — skip if not yet loaded
-  if (quality) { renderOutcomes(quality); renderSentiment(quality); renderTopics(quality); renderFAQ(quality); renderQualityRisk(quality, ov); renderAlerts(quality); }
-  else { renderQualityLoading(); }
-  if (agents)  { renderAgents(agents); _syncAllAgentDetails(agents.agents || []); }
-  else { renderAgentsLoading(); }
+  if (quality) renderQualityParts(quality, ov); else renderQualityLoading();
+  if (agents) renderAgents(agents); else renderAgentsLoading();
   document.getElementById('lastUpdText').textContent = (lang==='ar'?'تحديث: ':'Updated: ') + new Date().toLocaleTimeString();
   _hasRenderedOnce = true;
   applyLang();
+  animateKpis();
 }
 
 // ── Lead Journey Tracker ──────────────────────────────────────────────────────
@@ -3559,6 +3356,7 @@ async function loadJourneyV2() {
 function _journeyParams(page=1, limit=20, filters=jFilters) {
   const p = new URLSearchParams({ page, limit, sort_by:filters.sort_by, range });
   if (waLine && waLine !== 'all') p.set('wa_line', waLine);
+  if (_teamName) p.set('team', _teamName);
   if (filters.phone_search)     p.set('phone_search', filters.phone_search);
   if (filters.countries.length) p.set('country', filters.countries.join(','));
   if (filters.min_score > 0)    p.set('min_score', filters.min_score);
@@ -3636,93 +3434,74 @@ async function exportJourneyCSV() {
 
 // ── Load all ──────────────────────────────────────────────────────────────────
 // bgRefresh=true: silent background update, doesn't reset journey or show errors
+let _loadSeq = 0, _prefetching = false;
+function setDataLoading(mode) {
+  document.body.classList.toggle('is-loading', mode === 'full');
+  document.body.classList.toggle('is-refreshing', mode === 'refresh');
+}
+function fetchView(r) {
+  return { ov: get('/api/overview', r), ch: get('/api/channels', r), leads: get('/api/leads', r),
+           agents: get('/api/agents', r), quality: get('/api/quality', r) };
+}
 async function loadAll(bgRefresh = false) {
+  const seq = ++_loadSeq, r = range, key = _cacheKey(r);
+  setDataLoading(bgRefresh ? 'refresh' : 'full');
+  if (!bgRefresh) setWaLineState('loading', T('Loading…', 'جار التحميل…'));
+  fetch(`${API}/api/status`).then(res => res.ok ? res.json() : {}).then(v => { _pipelineStatus = v; }).catch(() => {});
   try {
-    if (!bgRefresh) {
-      setWaLineState('loading', 'Loading...');
+    const p = fetchView(r);
+    const [ov, ch, leads] = await Promise.all([p.ov, p.ch, p.leads]);
+    if (seq !== _loadSeq) return;
+    const known = _rangeCache[key];
+    const rawStart = JSON.stringify([ov, ch, leads]);
+    if (!known || !known.raw.startsWith(rawStart.slice(0, -1))) {
+      _cache = [ov, ch, leads, known?.data?.[3] || null, known?.data?.[4] || null];
+      renderAll(..._cache);
     }
-    const previous = _rangeCache[_cacheKey(range)]?.data || _cache || _lastRenderedData;
-    // Phase 1 — fast APIs: render KPIs, charts, leads immediately
-    const statusP  = fetch(`${API}/api/status`).then(r => r.ok ? r.json() : Promise.resolve({}));
-    const ovP      = get('/api/overview');
-    const chP      = get('/api/channels');
-    const leadsP   = get('/api/leads');
-    const trafficP = Promise.resolve({});
-    const [status, ovRaw, chRaw, leadsRaw, trafficRaw] = await Promise.all([statusP, ovP, chP, leadsP, trafficP]);
-    _pipelineStatus = status;
-    // Field-level merge: keep cached non-zero values when fresh data has zeros
-    const prevOv      = previous?.[0] || _lastGoodOv;
-    const prevCh      = previous?.[1] || _lastGoodCh;
-    const prevLeads   = previous?.[2] || _lastGoodLeads;
-    const prevTraffic = previous?.[5] || _lastGoodTraffic;
-    const ov      = hasOverview(ovRaw)   ? mergeOv(ovRaw, prevOv)           : (prevOv      || ovRaw);
-    const ch      = hasChannels(chRaw)   ? mergeCh(chRaw, prevCh)           : (prevCh      || chRaw);
-    const leads   = hasLeadsData(leadsRaw) ? mergeLeads(leadsRaw, prevLeads) : (prevLeads   || leadsRaw);
-    const traffic = hasTraffic(trafficRaw) ? mergeTraffic(trafficRaw, prevTraffic) : (prevTraffic || trafficRaw);
-    if (hasOverview(ov))     _lastGoodOv      = ov;
-    if (hasChannels(ch))     _lastGoodCh      = ch;
-    if (hasLeadsData(leads)) _lastGoodLeads   = leads;
-    if (hasTraffic(traffic)) _lastGoodTraffic = traffic;
-    const partialData = [
-      ov,
-      ch,
-      leads,
-      hasAgents(previous?.[3]) ? previous[3] : (_lastGoodAgents || null),
-      hasQuality(previous?.[4]) ? previous[4] : (_lastGoodQuality || null),
-      traffic
-    ];
-    _cache = partialData;
-    _lastRenderedData = partialData;
-    renderAll(...partialData);
     if (!bgRefresh) loadJourneyV2();
-
-    // Phase 2 — start heavier agents/quality calls after the first render.
-    const agentsP  = get('/api/agents');
-    const qualityP = get('/api/quality');
-    const [agentsRaw, qualityRaw] = await Promise.all([agentsP, qualityP]);
-    const agents = hasAgents(agentsRaw) ? agentsRaw : (_lastGoodAgents || agentsRaw);
-    const quality = hasQuality(qualityRaw)
-      ? qualityRaw
-      : (hasQuality(previous?.[4]) ? previous[4] : (_lastGoodQuality || null));
-    if (hasAgents(agentsRaw)) _lastGoodAgents = agentsRaw;
-    if (hasQuality(qualityRaw)) _lastGoodQuality = qualityRaw;
-    // Carry over previously-synced WA stats so a background refresh never
-    // clears accurate numbers back to '…'
-    const prevAgentMap = Object.fromEntries(
-      (previous?.[3]?.agents || []).map(a => [a.agent, a])
-    );
-    (agents.agents || []).forEach(a => {
-      const prev = prevAgentMap[a.agent];
-      if (prev?._wa_synced) {
-        a._wa_synced    = true;
-        a.wa_chats      = prev.wa_chats;
-        a.messages_sent = prev.messages_sent;
-      }
-    });
-    const fullData = [ov, ch, leads, agents, quality, traffic];
-    _cache = fullData;
-    _lastRenderedData = fullData;
-    _rangeCache[_cacheKey(range)] = { status, data: fullData };
-    _saveCache(range, fullData);
-    renderAgents(agents);
-    _syncAllAgentDetails(agents.agents || []);
-    renderAlerts(quality);
-    renderSentiment(quality);
-    renderTopics(quality);
-    renderChannels(ch, quality);
+    const [agents, quality] = await Promise.all([p.agents, p.quality]);
+    if (seq !== _loadSeq) return;
+    const data = [ov, ch, leads, agents, quality];
+    const raw = JSON.stringify(data);
+    const changed = !known || known.raw !== raw;
+    _rangeCache[key] = { data, raw, at: Date.now() };
+    _cache = data;
+    _saveCache(r, data);
+    if (changed) {
+      renderAgents(agents);
+      renderChannels(normalizeChannels(ov, ch), quality);
+      renderQualityParts(quality, ov);
+      applyLang();
+    }
     document.getElementById('lastUpdText').textContent =
       (lang==='ar' ? 'تحديث: ' : 'Updated: ') + new Date().toLocaleTimeString();
-    if (!bgRefresh) {
-      setWaLineState('ready', 'Loaded');
-    }
-    applyLang();
-  } catch(e) {
-    if (!bgRefresh) {
-      console.error('Load failed:', e);
-      document.getElementById('kpiGrid').innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:32px;color:var(--red)">${lang==='ar'?'فشل التحميل: ':'Load failed: '}${e.message}</div>`;
-      setWaLineState('error', 'Load failed');
+    setWaLineState('ready', T('Loaded', 'تم التحميل'));
+    setDataLoading('');
+    prefetchPeriods();
+  } catch (e) {
+    if (seq !== _loadSeq) return;
+    setDataLoading('');
+    console.error('Load failed:', e);
+    setWaLineState('error', T('Load failed', 'فشل التحميل'));
+    if (!bgRefresh && !_cache) {
+      document.getElementById('kpiGrid').innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:32px;color:var(--red)">${esc(T('Could not load the data. Please refresh.', 'تعذر تحميل البيانات. يرجى التحديث.'))}</div>`;
     }
   }
+}
+// Load the other common periods quietly so the date buttons switch instantly.
+async function prefetchPeriods() {
+  if (_prefetching) return;
+  _prefetching = true;
+  try {
+    for (const r of ['today', 'yesterday', 'week', 'month']) {
+      const key = _cacheKey(r);
+      if (_rangeCache[key]?.at && Date.now() - _rangeCache[key].at < 120000) continue;
+      const p = fetchView(r);
+      const data = await Promise.all([p.ov, p.ch, p.leads, p.agents, p.quality]);
+      if (key === _cacheKey(r)) _rangeCache[key] = { data, raw: JSON.stringify(data), at: Date.now() };
+    }
+  } catch (e) { console.warn('prefetch:', e); }
+  _prefetching = false;
 }
 
 // ── Top nav smooth scroll + active tracking ───────────────────────────────────
@@ -3827,7 +3606,7 @@ function _initDashboard() {
   applyLang();
   const waSel = document.getElementById('waLineSelect');
   if (waSel) waSel.value = waLine;
-  if (_applyStoredCache(range)) renderAll(..._cache);
+  if (_applyStoredCache(range)) { _cache = _rangeCache[_cacheKey(range)].data; renderAll(..._cache); }
   loadAll();
   connectSSE();
 }
@@ -3845,6 +3624,6 @@ function _initDashboard() {
   _showLogin();
 })();
 </script>
-<script src="/static/dashboard.js?v=5"></script>
+<script src="/static/dashboard.js?v=7"></script>
 </body>
 </html>

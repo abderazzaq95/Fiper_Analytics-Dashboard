@@ -1,21 +1,18 @@
 from fastapi import APIRouter, Query
 from fastapi.responses import Response
-from supabase import create_client
 from collections import defaultdict
-import os
 import re
 import csv
 import io
 from dotenv import load_dotenv
-from datetime import datetime, timedelta, timezone
-from pipeline.time_ranges import since_iso, until_iso, RANGE_PATTERN
-from api.period import only_active
+from pipeline.time_ranges import RANGE_PATTERN
+from api import dataset
 from pipeline import agent_names
-from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
+from pipeline.whatsapp import matches_business_line
 
 load_dotenv()
 router = APIRouter()
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
+supabase = dataset.db
 
 _CC_PREFIXES = sorted([
     ('9665', 'SA'), ('968', 'OM'), ('966', 'SA'), ('971', 'AE'),
@@ -34,14 +31,6 @@ _BAD_FIPER_NAMES = re.compile(
     r'\b(Fiverr|Viber|Faiber|Fiber|Fighter|financial brokerage company|financial brokerage)\b',
     re.IGNORECASE,
 )
-
-
-def _since(range_: str) -> str:
-    return since_iso(range_)
-
-
-def _until(range_: str) -> str:
-    return until_iso(range_)
 
 
 def _detect_cc(phone: str) -> str:
@@ -152,6 +141,7 @@ def _merge_by_phone(raw_leads: list[dict]) -> list[dict]:
     for phone, group in phone_groups.items():
         if len(group) == 1:
             lead = dict(group[0])
+            lead["assigned_agent"] = agent_names.display(lead.get("assigned_agent"))
             lead["lead_ids"] = [lead["id"]]
             lead["channels"] = [lead.get("channel") or ""]
             merged.append(lead)
@@ -203,6 +193,7 @@ def leads_journey_v2(
     limit: int = Query(20, ge=1, le=5000),
     range: str = Query("week", pattern=RANGE_PATTERN),
     wa_line: str = Query("all"),
+    team: str = Query(""),
     phone_search: str = Query(""),
     country: str = Query(""),
     min_score: int = Query(0, ge=0, le=100),
@@ -215,9 +206,9 @@ def leads_journey_v2(
     lang: str = Query("en"),
 ):
     try:
-        return _inner(page, limit, range, phone_search, country,
-                      wa_line, min_score, max_score, channel, outcome,
-                      agent, high_risk_only, sort_by, lang)
+        args = (page, limit, range, phone_search, country, wa_line, min_score, max_score,
+                channel, outcome, agent, high_risk_only, sort_by, lang, team)
+        return dataset.view(range, team).cached(("journey", args), lambda _: _inner(*args))
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/leads/journey/v2 error: {e}", exc_info=True)
@@ -225,14 +216,10 @@ def leads_journey_v2(
 
 
 def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_score,
-           channel, outcome, agent, high_risk_only, sort_by, lang="en"):
-    since = _since(range)
-    until = _until(range)
-
-    # ── 1. Collect active lead IDs from selected range ────────────────────────
-    call_rows = _paginate(
-        lambda: supabase.table("calls").select("lead_id,called_at").gte("called_at", since).lt("called_at", until)
-    )
+           channel, outcome, agent, high_risk_only, sort_by, lang="en", team=""):
+    # ── 1. Active leads of the selected period and team ──────────────────────
+    view = dataset.view(range, team)
+    call_rows = view.calls
     call_lead_ids: set[str] = set()
     call_counts: dict[str, int] = defaultdict(int)
     for c in call_rows:
@@ -241,11 +228,7 @@ def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_sc
             call_lead_ids.add(lid)
             call_counts[lid] += 1
 
-    msg_lead_rows = _paginate(
-        lambda: supabase.table("leads").select(add_whatsapp_line_select("id,channel"))
-        .gte("last_message_at", since)
-    )
-    msg_lead_rows = only_active(msg_lead_rows, range)
+    msg_lead_rows = view.activity
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         msg_lead_rows = [
             r for r in msg_lead_rows
@@ -253,20 +236,13 @@ def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_sc
             or (str(r.get("channel") or "").lower() == "whatsapp" and not r.get("whatsapp_business_number"))
         ]
     msg_lead_ids = {r["id"] for r in msg_lead_rows}
-    all_active_ids = list(call_lead_ids | msg_lead_ids)
+    all_active_ids = call_lead_ids | msg_lead_ids
 
     if not all_active_ids:
         return {"leads": [], "total": 0, "page": page, "pages": 1, "meta": {"agents": []}}
 
-    # ── 2. Fetch lead details ─────────────────────────────────────────────────
-    raw_leads: list[dict] = []
-    for batch in _chunks(all_active_ids, 500):
-        raw_leads += (
-            supabase.table("leads")
-            .select(add_whatsapp_line_select("id,phone,name,score,status,assigned_agent,channel,last_message_at"))
-            .in_("id", batch)
-            .execute().data or []
-        )
+    # ── 2. Lead details ──────────────────────────────────────────────────────
+    raw_leads = [view.period.leads[i] for i in all_active_ids if i in view.period.leads]
 
     # ── 3. Merge leads sharing the same phone into one card ───────────────────
     all_leads = _merge_by_phone(raw_leads)
@@ -286,29 +262,9 @@ def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_sc
         for sid in merged["lead_ids"]:
             raw_to_primary[sid] = merged["id"]
 
-    # ── 4. Fetch ai_analysis for all raw lead IDs ─────────────────────────────
-    raw_lead_ids = [l["id"] for l in raw_leads]
-    ai_select = (
-        "lead_id,outcome,risk_flags,sentiment,treatment_score,topics,summary,"
-        "summary_en,summary_ar,analyzed_at,source"
-    )
-    analyses_raw: list[dict] = []
-    for batch in _chunks(raw_lead_ids, 500):
-        try:
-            rows = (
-                supabase.table("ai_analysis")
-                .select(ai_select)
-                .in_("lead_id", batch)
-                .execute().data or []
-            )
-        except Exception:
-            rows = (
-                supabase.table("ai_analysis")
-                .select("lead_id,outcome,risk_flags,sentiment,treatment_score,topics,summary,analyzed_at,source")
-                .in_("lead_id", batch)
-                .execute().data or []
-            )
-        analyses_raw += rows
+    # ── 4. Analyses of the period (filters); the page loads full history below ─
+    raw_lead_ids = {l["id"] for l in raw_leads}
+    analyses_raw = [a for a in view.period.analyses if a.get("lead_id") in raw_lead_ids]
 
     # Map analyses to merged primary IDs
     analysis_by_lead: dict[str, list] = defaultdict(list)
@@ -392,6 +348,15 @@ def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_sc
             sub_to_primary[sid] = lid
             all_page_sub_ids.append(sid)
     all_page_sub_ids = list(set(all_page_sub_ids))
+    ai_select = "lead_id,outcome,risk_flags,sentiment,treatment_score,topics,summary,summary_en,summary_ar,analyzed_at,source"
+    try:
+        analyses_raw = supabase.table("ai_analysis").select(ai_select).in_("lead_id", all_page_sub_ids).execute().data or []
+    except Exception:
+        analyses_raw = (
+            supabase.table("ai_analysis")
+            .select("lead_id,outcome,risk_flags,sentiment,treatment_score,topics,summary,analyzed_at,source")
+            .in_("lead_id", all_page_sub_ids).execute().data or []
+        )
     page_primary_set = {l["id"] for l in page_leads}
     page_phones = list({l.get("phone") for l in page_leads if l.get("phone")})
 
@@ -652,15 +617,9 @@ def _inner(page, limit, range, phone_search, country, wa_line, min_score, max_sc
 
 
 def _export_rows_light(range, wa_line, phone_search, country, min_score, max_score,
-                       channel, outcome, agent, high_risk_only, sort_by):
-    since = _since(range)
-    until = _until(range)
-
-    call_rows = _paginate(
-        lambda: supabase.table("calls")
-        .select("lead_id,outcome,called_at")
-        .gte("called_at", since).lt("called_at", until)
-    )
+                       channel, outcome, agent, high_risk_only, sort_by, team=""):
+    view = dataset.view(range, team)
+    call_rows = view.calls
     call_lead_ids: set[str] = set()
     call_counts: dict[str, int] = defaultdict(int)
     answered_counts: dict[str, int] = defaultdict(int)
@@ -673,30 +632,17 @@ def _export_rows_light(range, wa_line, phone_search, country, min_score, max_sco
         if (c.get("outcome") or "") == "completed":
             answered_counts[lid] += 1
 
-    msg_lead_rows = _paginate(
-        lambda: supabase.table("leads").select(add_whatsapp_line_select("id,channel"))
-        .gte("last_message_at", since)
-    )
-    msg_lead_rows = only_active(msg_lead_rows, range)
+    msg_lead_rows = view.activity
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         msg_lead_rows = [
             r for r in msg_lead_rows
             if matches_business_line(r, wa_line)
             or (str(r.get("channel") or "").lower() == "whatsapp" and not r.get("whatsapp_business_number"))
         ]
-    msg_lead_ids = {r["id"] for r in msg_lead_rows if r.get("id")}
-    all_active_ids = list(call_lead_ids | msg_lead_ids)
+    all_active_ids = call_lead_ids | {r["id"] for r in msg_lead_rows if r.get("id")}
     if not all_active_ids:
         return []
-
-    raw_leads: list[dict] = []
-    for batch in _chunks(all_active_ids, 500):
-        raw_leads += (
-            supabase.table("leads")
-            .select(add_whatsapp_line_select("id,phone,name,score,status,assigned_agent,channel,last_message_at"))
-            .in_("id", batch)
-            .execute().data or []
-        )
+    raw_leads = [view.period.leads[i] for i in all_active_ids if i in view.period.leads]
     all_leads = _merge_by_phone(raw_leads)
     if wa_line and wa_line.lower() not in ("all", "*", "any"):
         all_leads = [
@@ -820,6 +766,7 @@ def _export_rows_light(range, wa_line, phone_search, country, min_score, max_sco
 def leads_journey_v2_export(
     range: str = Query("week", pattern=RANGE_PATTERN),
     wa_line: str = Query("all"),
+    team: str = Query(""),
     phone_search: str = Query(""),
     country: str = Query(""),
     min_score: int = Query(0, ge=0, le=100),
@@ -832,7 +779,7 @@ def leads_journey_v2_export(
 ):
     rows = _export_rows_light(
         range, wa_line, phone_search, country, min_score, max_score,
-        channel, outcome, agent, high_risk_only, sort_by,
+        channel, outcome, agent, high_risk_only, sort_by, team,
     )
     if not rows:
         return Response("No data to export", status_code=404, media_type="text/plain; charset=utf-8")

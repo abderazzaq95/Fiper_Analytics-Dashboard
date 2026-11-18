@@ -16,7 +16,7 @@ from supabase import create_client
 from dotenv import load_dotenv
 
 from pipeline import whatsapp, maqsam, ai_analyzer, alert_engine, email_notifications, reminders
-from api import overview, agents, leads, channels, quality, journey, journey_v2, auth, workspace
+from api import overview, agents, leads, channels, quality, journey, journey_v2, auth, workspace, dataset
 
 load_dotenv()
 
@@ -1487,18 +1487,6 @@ def _require_email_debug_token(token: str):
         raise HTTPException(status_code=403, detail="Invalid email debug token")
 
 
-def warm_dashboard_cache():
-    """Keep the dashboard's most-viewed ranges warm so pages load instantly.
-    Each call returns cached data and, when it is stale, rebuilds it in the background."""
-    from api import overview as _ov, channels as _ch, leads as _ld, quality as _q, agents as _ag
-    for rng in ("today", "week"):
-        for fn in (_ov.overview, _ch.channels, _ld.leads, _q.quality, _ag.agents):
-            try:
-                fn(range=rng, wa_line="all") if fn is not _ag.agents else fn(range=rng, wa_line="all", refresh="0")
-            except Exception as e:
-                log.warning(f"cache warm {fn.__name__}/{rng} failed: {e}")
-
-
 def run_reply_reminders():
     """Scheduled: track waiting customers and send the reminder ladder."""
     try:
@@ -1514,22 +1502,6 @@ async def lifespan(app: FastAPI):
         await whatsapp.fetch_users()
     except Exception as e:
         log.warning(f"Could not pre-load agent cache: {e}")
-
-    # Pre-populate agents API cache in a background thread so first user request is fast
-    import time
-    def _warm_agents_cache():
-        try:
-            from api.agents import _agents_inner, _agents_cache
-            log.info("Warming /api/agents cache…")
-            for rng in ("week", "today"):
-                data = _agents_inner(rng, "all")
-                _agents_cache[f"{rng}:all"] = (time.time(), data)
-            log.info("Done warming /api/agents cache")
-        except Exception as e:
-            log.warning(f"Agents cache warmup failed: {e}")
-
-    import asyncio as _asyncio
-    _asyncio.get_event_loop().run_in_executor(None, _warm_agents_cache)
 
     scheduler.add_job(
         run_maqsam_realtime_sync,
@@ -1592,14 +1564,14 @@ async def lifespan(app: FastAPI):
         next_run_time=datetime.now(timezone.utc) + timedelta(minutes=5),
     )
     scheduler.add_job(
-        warm_dashboard_cache,
+        dataset.warm,
         "interval",
-        minutes=5,
+        minutes=1,
         id="dashboard_cache_warm",
         replace_existing=True,
         max_instances=1,
         coalesce=True,
-        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=45),
+        next_run_time=datetime.now(timezone.utc) + timedelta(seconds=2),
     )
     scheduler.add_job(
         run_reply_reminders,
@@ -3281,6 +3253,7 @@ def waiting_now():
             "name": w.get("name"),
             "phone": reminder_templates.phone_display(w.get("phone")),
             "line": reminder_templates.line_labels(w.get("line"))[1],
+            "line_number": w.get("line"),
             "agent": w.get("agent"),
             "elapsed_min": round(w["elapsed_min"], 1),
             "since": w["since"].isoformat() if w.get("since") else None,

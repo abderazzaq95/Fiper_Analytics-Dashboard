@@ -9,7 +9,7 @@ import re
 import requests
 from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException, Query
-from supabase import create_client
+from api import dataset
 
 from pipeline import agent_names
 from pipeline.swr_cache import SWRCache
@@ -17,7 +17,7 @@ from pipeline.swr_cache import SWRCache
 load_dotenv()
 log = logging.getLogger("fiper.workspace")
 router = APIRouter()
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
+supabase = dataset.db
 _TEAMS = SWRCache("teams", 3600)
 
 

@@ -1,49 +1,38 @@
 from fastapi import APIRouter, Query
-from supabase import create_client
-import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
-from pipeline.time_ranges import since_iso, until_iso, RANGE_PATTERN
-from api.period import only_active
+from pipeline.time_ranges import RANGE_PATTERN
+from api import dataset
 from pipeline import agent_names
-from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line
-from pipeline.swr_cache import SWRCache, ttl_for
+from pipeline.whatsapp import matches_business_line
+from pipeline.swr_cache import SWRCache
 
 load_dotenv()
 _CACHE = SWRCache("leads", 300)
 router = APIRouter()
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
+supabase = dataset.db
 BATCH = 100
 PAGE = 1000
 EMPTY_SCORE_BUCKETS = {"0-25": 0, "26-50": 0, "51-75": 0, "76-100": 0}
 
 
-def _since(range_: str) -> str:
-    return since_iso(range_)
-
-
-def _until(range_: str) -> str:
-    return until_iso(range_)
+def _empty(range_: str) -> dict:
+    return {"range": range_, "total": 0, "funnel": {}, "score_distribution": dict(EMPTY_SCORE_BUCKETS),
+            "avg_score": 0, "geo_prefixes": {}, "leads": [], "hot_leads": []}
 
 
 @router.get("/api/leads")
 def leads(
     range: str = Query("week", pattern=RANGE_PATTERN),
     wa_line: str = Query("all"),
+    team: str = Query(""),
 ):
     try:
-        return _CACHE.get(f"{range}:{wa_line}", lambda: _leads_inner(range, wa_line), ttl=ttl_for(range))
+        return dataset.view(range, team, wa_line).cached("leads", _leads_inner)
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/leads error ({range}): {e}", exc_info=True)
-        return {
-            "range": range,
-            "total": 0,
-            "funnel": {},
-            "score_distribution": _score_distribution(),
-            "leads": [],
-            "hot_leads": _hot_leads(),
-        }
+        return _empty(range)
 
 
 def _bucket_scores(rows):
@@ -97,138 +86,55 @@ def _with_agent_names(rows):
     return rows
 
 
-def _score_distribution():
-    score_buckets = dict(EMPTY_SCORE_BUCKETS)
-    offset = 0
+def _fetch_hot_leads() -> list[dict]:
+    since = (datetime.now(timezone.utc) - timedelta(days=HOT_LEAD_MAX_AGE_DAYS)).isoformat()
+    rows = (
+        supabase.table("leads")
+        .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at,whatsapp_business_number")
+        .gte("score", 80)
+        .eq("status", "new")
+        .gte("last_message_at", since)
+        .order("score", desc=True)
+        .limit(200)
+        .execute()
+        .data
+    ) or []
+    return _with_agent_names(rows)
 
+
+def _hot_leads(view: dataset.View) -> list[dict]:
     try:
-        while True:
-            rows = (
-                supabase.table("leads")
-                .select("score")
-                .not_.is_("score", "null")
-                .range(offset, offset + PAGE - 1)
-                .execute()
-                .data
-            ) or []
-
-            page_buckets = _bucket_scores(rows)
-            for key, value in page_buckets.items():
-                score_buckets[key] += value
-
-            if len(rows) < PAGE:
-                break
-            offset += PAGE
-    except Exception:
-        return dict(EMPTY_SCORE_BUCKETS)
-
-    return score_buckets
-
-
-def _hot_leads(wa_line: str = "all"):
-    try:
-        rows = (
-            supabase.table("leads")
-            .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at,whatsapp_business_number")
-            .gte("score", 80)
-            .eq("status", "new")
-            .gte("last_message_at", (datetime.now(timezone.utc) - timedelta(days=HOT_LEAD_MAX_AGE_DAYS)).isoformat())
-            .order("score", desc=True)
-            .limit(50)
-            .execute()
-            .data
-        ) or []
-        if wa_line and wa_line.lower() not in ("all", "*", "any"):
-            rows = [r for r in rows if matches_business_line(r, wa_line)]
-        return _with_agent_names(rows)
+        rows = _CACHE.get("hot", _fetch_hot_leads, ttl=120)
     except Exception:
         return []
+    if view.wa_line != "all":
+        rows = [row for row in rows if matches_business_line(row, view.wa_line)]
+    return [row for row in rows if view.has_agent(row.get("assigned_agent"))][:50]
 
 
-def _leads_inner(range_: str, wa_line: str = "all"):
-    since = _since(range_)
-    until = _until(range_)
-
-    # Activity-based filtering: WA leads by last_message_at, Maqsam leads by calls
-    wa_leads: list[dict] = []
-    offset = 0
-    while True:
-        batch = (
-            supabase.table("leads")
-            .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at,whatsapp_business_number")
-            .eq("channel", "whatsapp")
-            .gte("last_message_at", since)
-            .order("score", desc=True)
-            .range(offset, offset + PAGE - 1)
-            .execute()
-            .data
-        ) or []
-        wa_leads.extend(batch)
-        if len(batch) < PAGE:
-            break
-        offset += PAGE
-    wa_leads = only_active(wa_leads, range_)
-    if wa_line and wa_line.lower() not in ("all", "*", "any"):
-        wa_leads = [l for l in wa_leads if matches_business_line(l, wa_line)]
-
-    # Maqsam: find leads that had a call in the period — paginate to avoid 1000-row cap
-    call_rows: list[dict] = []
-    offset = 0
-    while True:
-        batch = (
-            supabase.table("calls")
-            .select("lead_id")
-            .gte("called_at", since).lt("called_at", until)
-            .range(offset, offset + PAGE - 1)
-            .execute()
-            .data
-        ) or []
-        call_rows.extend(batch)
-        if len(batch) < PAGE:
-            break
-        offset += PAGE
-    maqsam_ids = list({c["lead_id"] for c in call_rows if c.get("lead_id")})
-
-    maqsam_leads = []
-    for i in range(0, len(maqsam_ids), BATCH):
-        chunk = (
-            supabase.table("leads")
-            .select("id,name,phone,channel,status,score,assigned_agent,last_message_at,created_at,whatsapp_business_number")
-            .in_("id", maqsam_ids[i:i + BATCH])
-            .execute()
-            .data
-        ) or []
-        maqsam_leads.extend(chunk)
-
-    # Deduplicate and sort by score
-    seen: set = set()
-    all_leads = []
-    for lead in wa_leads + maqsam_leads:
-        if lead["id"] not in seen:
-            seen.add(lead["id"])
-            all_leads.append(lead)
-    all_leads = _with_agent_names(_merge_by_phone(all_leads))
-    all_leads.sort(key=lambda l: l.get("score") or 0, reverse=True)
+def _leads_inner(view: dataset.View) -> dict:
+    call_leads = [view.leads[i] for i in {c.get("lead_id") for c in view.calls} if i in view.leads]
+    unique = {lead["id"]: lead for lead in [*view.activity, *call_leads]}
+    all_leads = _with_agent_names(_merge_by_phone(list(unique.values())))
+    all_leads.sort(key=lambda lead: lead.get("score") or 0, reverse=True)
 
     status_counts: dict = {}
-    for l in all_leads:
-        status = l.get("status") or "new"
+    for lead in all_leads:
+        status = lead.get("status") or "new"
         status_counts[status] = status_counts.get(status, 0) + 1
 
-    # The page lists only the top leads; everything else is sent as aggregates
-    # (the full list was ~1.4 MB per load for a week).
+    # The page lists only the top leads; everything else is sent as aggregates.
     top = all_leads[:LIST_LIMIT]
     _attach_summaries(top)
-
     return {
-        "range": range_,
+        "range": view.period.range,
         "total": len(all_leads),
         "funnel": status_counts,
         "score_distribution": _bucket_scores(all_leads),
         "avg_score": _avg_score(all_leads),
         "geo_prefixes": _geo_prefixes(all_leads),
         "leads": top,
-        "hot_leads": _hot_leads(wa_line),
+        "hot_leads": _hot_leads(view),
     }
 
 

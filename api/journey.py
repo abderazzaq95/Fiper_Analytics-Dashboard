@@ -1,12 +1,11 @@
 from fastapi import APIRouter, Query, HTTPException
-from supabase import create_client
+from api import dataset
 from collections import defaultdict
-import os
 from dotenv import load_dotenv
 
 load_dotenv()
 router = APIRouter()
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
+supabase = dataset.db
 
 _OUTCOME_COLOR = {
     "completed": "green",

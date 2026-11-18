@@ -1,26 +1,19 @@
 from fastapi import APIRouter, Query
-from supabase import create_client
-import os
 from dotenv import load_dotenv
-from datetime import datetime, timedelta, timezone
 from pipeline.time_ranges import since_iso, until_iso, RANGE_PATTERN
-from api.period import only_active
+from api import dataset
 from collections import defaultdict
 import re
-import threading
-import time
 from pipeline import agent_names
-from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line, resolve_agent_name
+from pipeline.swr_cache import SWRCache, ttl_for
+from pipeline.whatsapp import add_whatsapp_line_select, resolve_agent_name
 
 load_dotenv()
 router = APIRouter()
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
+supabase = dataset.db
 BATCH_SIZE = 100
 
-# Server-side cache for /api/agents — keyed by (range, wa_line), TTL 5 minutes.
-# Prevents the 45-request aggregation from running on every page load/refresh.
-_agents_cache: dict[str, tuple[float, dict]] = {}
-_AGENTS_CACHE_TTL = 300  # seconds
+_DETAIL_CACHE = SWRCache("agent-detail", 300)
 
 
 def _paginate(build_query) -> list:
@@ -53,14 +46,13 @@ def _norm(name: str | None) -> str | None:
     return agent_names.display(name)
 
 
-def _safe_reply_stats(range_: str, wa_line: str = "all") -> dict:
+def _safe_reply_stats(view: dataset.View) -> dict:
     """First-reply figures, defined exactly like the email reports."""
     try:
-        from pipeline import reports  # lazy: pulls in the notification stack
-        return reports.reply_stats(range_, wa_line)
+        return view.reply_stats()
     except Exception as exc:
         import logging
-        logging.getLogger("fiper").warning(f"reply stats unavailable ({range_}): {exc}")
+        logging.getLogger("fiper").warning(f"reply stats unavailable ({view.period.range}): {exc}")
         return {"team": {}, "agents": {}}
 
 
@@ -132,221 +124,18 @@ def _message_agent_name(
     return None
 
 
-_agents_refreshing: set[str] = set()
-_agents_refresh_lock = threading.Lock()
-
-
-def _refresh_agents_in_background(cache_key: str, range: str, wa_line: str) -> None:
-    """Rebuild one cache entry in a background thread (at most one per key)."""
-    with _agents_refresh_lock:
-        if cache_key in _agents_refreshing:
-            return
-        _agents_refreshing.add(cache_key)
-
-    def work():
-        import logging
-        try:
-            data = _agents_inner(range, wa_line)
-            if data.get("agents"):
-                _agents_cache[cache_key] = (time.time(), data)
-        except Exception as exc:
-            logging.getLogger("fiper").warning(f"/api/agents background refresh failed ({cache_key}): {exc}")
-        finally:
-            with _agents_refresh_lock:
-                _agents_refreshing.discard(cache_key)
-
-    threading.Thread(target=work, name=f"agents-refresh-{cache_key}", daemon=True).start()
-
-
 @router.get("/api/agents")
 def agents(
     range: str = Query("week", pattern=RANGE_PATTERN),
     wa_line: str = Query("all"),
-    refresh: str = Query("0"),
+    team: str = Query(""),
 ):
-    import logging, time
-    log = logging.getLogger("fiper")
-    cache_key = f"{range}:{wa_line}"
-    now_ts = time.time()
-
-    # Return cached result if still fresh (skip cache when refresh=1).
-    # If it is older than the TTL, still answer instantly with it and rebuild
-    # it in the background (stale-while-revalidate): a week of agent stats
-    # takes minutes to compute, nobody should wait for that on page load.
-    if refresh != "1":
-        cached = _agents_cache.get(cache_key)
-        if cached:
-            cached_at, cached_data = cached
-            if now_ts - cached_at < _AGENTS_CACHE_TTL:
-                return cached_data
-            _refresh_agents_in_background(cache_key, range, wa_line)
-            return {**cached_data, "stale_seconds": int(now_ts - cached_at)}
-
     try:
-        data = _agents_inner(range, wa_line)
-        if not data.get("agents"):
-            fallback = _agents_lightweight(range, wa_line)
-            if fallback.get("agents"):
-                _agents_cache[cache_key] = (now_ts, fallback)
-                return fallback
-        _agents_cache[cache_key] = (now_ts, data)
-        return data
+        return dataset.view(range, team, wa_line).cached("agents", _agents_inner)
     except Exception as e:
-        log.error(f"/api/agents error ({range}): {e}", exc_info=True)
-        # Try lightweight fallback before giving up
-        try:
-            fallback = _agents_lightweight(range, wa_line)
-            if fallback.get("agents"):
-                _agents_cache[cache_key] = (now_ts, fallback)
-                return fallback
-        except Exception as fallback_error:
-            log.error(
-                f"/api/agents lightweight fallback error ({range}): {fallback_error}",
-                exc_info=True,
-            )
+        import logging
+        logging.getLogger("fiper").error(f"/api/agents error ({range}): {e}", exc_info=True)
         return {"range": range, "agents": []}
-
-
-def _agents_lightweight(range: str, wa_line: str = "all"):
-    since = _since(range)
-    until = _until(range)
-    calls = _paginate(
-        lambda: supabase.table("calls")
-        .select("agent_name,lead_id,duration_seconds,called_at")
-        .gte("called_at", since).lt("called_at", until)
-    )
-    messages = _paginate(
-        lambda: supabase.table("messages")
-        .select("agent_name,direction,sent_at,lead_id,whatsapp_business_number")
-        .gte("sent_at", since).lt("sent_at", until)
-    )
-    if wa_line and wa_line.lower() not in ("all", "*", "any"):
-        messages = [m for m in messages if matches_business_line(m, wa_line)]
-    alerts = _paginate(
-        lambda: supabase.table("alerts")
-        .select("agent_name,lead_id,severity,type,message,resolved,created_at")
-        .eq("resolved", False)
-        .gte("created_at", since).lt("created_at", until)
-    )
-    if wa_line and wa_line.lower() not in ("all", "*", "any"):
-        alert_lead_ids = list({a.get("lead_id") for a in alerts if a.get("lead_id")})
-        lead_rows = []
-        for idx in range(0, len(alert_lead_ids), 100):
-            lead_rows.extend(
-                supabase.table("leads")
-                .select("id,channel,whatsapp_business_number")
-                .in_("id", alert_lead_ids[idx:idx + 100])
-                .execute().data or []
-            )
-        lead_map = {r["id"]: r for r in lead_rows}
-        alerts = [a for a in alerts if matches_business_line(lead_map.get(a.get("lead_id") or ""), wa_line)]
-
-    active_lead_ids = {
-        row.get("lead_id")
-        for row in [*calls, *messages, *alerts]
-        if row.get("lead_id")
-    }
-    lead_rows = []
-    active_ids = list(active_lead_ids)
-    idx = 0
-    while idx < len(active_ids):
-        lead_rows.extend(
-            supabase.table("leads")
-            .select("id,assigned_agent,channel,whatsapp_business_number")
-            .in_("id", active_ids[idx:idx + 100])
-            .execute().data or []
-        )
-        idx += 100
-    lead_agent_map = {r["id"]: _agent_label(r.get("assigned_agent")) for r in lead_rows if r.get("id")}
-    lead_to_agent_fallback: dict[str, str] = {}
-    for m in messages:
-        lid = m.get("lead_id")
-        ag = _message_agent_name(m, lead_agent_map=lead_agent_map)
-        if lid and m.get("direction") == "outbound" and ag:
-            lead_to_agent_fallback.setdefault(lid, ag)
-    for c in calls:
-        lid = c.get("lead_id")
-        ag = _agent_label(c.get("agent_name"))
-        if lid and ag:
-            lead_to_agent_fallback.setdefault(lid, ag)
-
-    agents = sorted({
-        *(
-            _agent_label(c.get("agent_name"))
-            for c in calls
-            if _agent_label(c.get("agent_name"))
-        ),
-        *(
-            _message_agent_name(
-                m,
-                lead_agent_map=lead_agent_map,
-                lead_to_agent_fallback=lead_to_agent_fallback,
-            )
-            for m in messages
-            if _message_agent_name(
-                m,
-                lead_agent_map=lead_agent_map,
-                lead_to_agent_fallback=lead_to_agent_fallback,
-            )
-        ),
-        *(
-            _agent_label(a.get("agent_name"))
-            for a in alerts
-            if _agent_label(a.get("agent_name"))
-        ),
-    })
-
-    rows = []
-    for agent in agents:
-        agent_calls = [c for c in calls if _agent_label(c.get("agent_name")) == agent]
-        agent_msgs = [
-            m for m in messages
-            if _message_agent_name(
-                m,
-                lead_agent_map=lead_agent_map,
-                lead_to_agent_fallback=lead_to_agent_fallback,
-            ) == agent
-        ]
-        agent_alerts = [
-            a for a in alerts
-            if _agent_label(a.get("agent_name")) == agent
-        ]
-        completed_calls = [c for c in agent_calls if (c.get("duration_seconds") or 0) > 0]
-        lead_ids = {
-            item.get("lead_id")
-            for item in [*agent_calls, *agent_msgs, *agent_alerts]
-            if item.get("lead_id")
-        }
-        outbound_lw   = [m for m in agent_msgs if m.get("direction") == "outbound"]
-        wa_chats_lw   = len({m["lead_id"] for m in outbound_lw if m.get("lead_id")})
-        messages_sent_lw = len(outbound_lw)
-        rows.append({
-            "agent": agent,
-            "leads": len(lead_ids),
-            "calls_handled": len(completed_calls),
-            "wa_chats": wa_chats_lw,
-            "messages_sent": messages_sent_lw,
-            "avg_call_duration_seconds": round(
-                sum(c.get("duration_seconds") or 0 for c in completed_calls) / len(completed_calls)
-            ) if completed_calls else 0,
-            "avg_response_time_min": 0,
-            "avg_treatment_score": 0,
-            "sentiment": {"positive": 0, "neutral": 0, "negative": 0},
-            "open_alerts": len(agent_alerts),
-            "alert_details": [
-                {
-                    "lead_id": a.get("lead_id"),
-                    "severity": a.get("severity") or "MED",
-                    "type": a.get("type") or "alert",
-                    "message": a.get("message") or "",
-                    "created_at": a.get("created_at"),
-                }
-                for a in agent_alerts
-            ],
-            "quality_trend": [],
-        })
-    rows.sort(key=lambda x: x["calls_handled"], reverse=True)
-    return {"range": range, "agents": rows, "fallback": "lightweight"}
 
 
 def _fetch_in_parallel(table: str, select: str, id_field: str, ids: list[str], extra_filters=None) -> list[dict]:
@@ -378,63 +167,14 @@ def _fetch_in_parallel(table: str, select: str, id_field: str, ids: list[str], e
     return results
 
 
-def _agents_inner(range: str, wa_line: str = "all"):
-    from concurrent.futures import ThreadPoolExecutor, as_completed as cf_as_completed
-    since = _since(range)
-    until = _until(range)
-
-    # Fetch messages, calls, and alerts in parallel (3 independent queries)
-    def _fetch_messages():
-        return _paginate(lambda: supabase.table("messages")
-            .select(add_whatsapp_line_select("agent_name,direction,sent_at,lead_id"))
-            .gte("sent_at", since).lt("sent_at", until))
-
-    def _fetch_calls():
-        return _paginate(lambda: supabase.table("calls")
-            .select("agent_name,lead_id,duration_seconds,called_at")
-            .gte("called_at", since).lt("called_at", until))
-
-    def _fetch_alerts():
-        return _paginate(
-        lambda: supabase.table("alerts")
-            .select("id,agent_name,lead_id,severity,type,message,resolved,created_at")
-            .eq("resolved", False)
-            .gte("created_at", since).lt("created_at", until)
-            .order("created_at", desc=True)
-    )
-
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        f_msgs   = executor.submit(_fetch_messages)
-        f_calls  = executor.submit(_fetch_calls)
-        f_alerts = executor.submit(_fetch_alerts)
-        messages = f_msgs.result()
-        calls    = f_calls.result()
-        alerts   = f_alerts.result()
-
-    # Collect all active lead IDs
-    active_lead_ids = {
-        row.get("lead_id")
-        for row in [*messages, *calls, *alerts]
-        if row.get("lead_id")
-    }
-    active_ids = list(active_lead_ids)
-
-    # Fetch leads and analyses in parallel using threaded batch requests
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        f_leads    = executor.submit(_fetch_in_parallel, "leads",
-            "id,phone,name,assigned_agent,status,score,channel,whatsapp_business_number",
-            "id", active_ids)
-        f_analyses = executor.submit(_fetch_in_parallel, "ai_analysis",
-            "lead_id,sentiment,treatment_score,source,analyzed_at,outcome",
-            "lead_id", active_ids)
-        leads    = f_leads.result()
-        analyses = f_analyses.result()
-
-    if wa_line and wa_line.lower() not in ("all", "*", "any"):
-        messages = [m for m in messages if matches_business_line(m, wa_line)]
-        leads = [l for l in leads if matches_business_line(l, wa_line)]
-        alert_lead_map = {l["id"]: l for l in leads if l.get("id")}
-        alerts = [a for a in alerts if matches_business_line(alert_lead_map.get(a.get("lead_id") or ""), wa_line)]
+def _agents_inner(view: dataset.View) -> dict:
+    range = view.period.range
+    messages, calls = view.messages, view.calls
+    alerts = sorted((a for a in view.alerts if not a.get("resolved")),
+                    key=lambda a: a.get("created_at") or "", reverse=True)
+    active_ids = {row.get("lead_id") for row in [*messages, *calls, *alerts] if row.get("lead_id")}
+    leads = [view.leads[i] for i in active_ids if i in view.leads]
+    analyses = [a for a in view.analyses if a.get("lead_id") in active_ids]
 
     # ── Build lookup dicts (all agent keys normalized to Title Case) ──────────
 
@@ -545,7 +285,7 @@ def _agents_inner(range: str, wa_line: str = "all"):
     # All agents: WhatsApp (leads + messages) + Maqsam (calls)
     all_agents = set(agent_leads.keys()) | set(agent_msgs.keys()) | set(agent_calls.keys()) | set(agent_alerts.keys())
 
-    reply_stats = _safe_reply_stats(range, wa_line)
+    reply_stats = _safe_reply_stats(view)
     result = []
     for agent in all_agents:
         al = agent_leads.get(agent, [])
@@ -595,7 +335,7 @@ def _agents_inner(range: str, wa_line: str = "all"):
             for a in lead_analysis.get(lid, []):
                 ts = a.get("analyzed_at")
                 score = a.get("treatment_score")
-                if (ts and score is not None and since <= ts < until
+                if (ts and score is not None
                         and not (a.get("source") == "maqsam" and score == 0)):
                     daily_scores[ts[:10]].append(score)
         quality_trend = sorted(
@@ -624,8 +364,10 @@ def _agents_inner(range: str, wa_line: str = "all"):
             "quality_trend":            quality_trend,
         })
 
+    if view.members is not None:
+        result = [row for row in result if dataset.agent_key(row["agent"]) in view.members]
     result.sort(key=lambda x: x["calls_handled"], reverse=True)
-    if not result:
+    if not result and view.members is None:
         fallback_agents = set()
         fallback_agents.update(_agent_label(c.get("agent_name")) for c in calls if _agent_label(c.get("agent_name")))
         fallback_agents.update(
@@ -777,7 +519,8 @@ def agent_detail(
     wa_line: str = Query("all"),
 ):
     try:
-        return _agent_detail_inner(agent, range, wa_line)
+        return _DETAIL_CACHE.get(f"{agent}:{range}:{wa_line}", lambda: _agent_detail_inner(agent, range, wa_line),
+                                 ttl=ttl_for(range))
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/agents/detail error ({agent}): {e}", exc_info=True)
@@ -814,7 +557,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
                 .select("id,phone,name,assigned_agent,status,score,channel,whatsapp_business_number")\
                 .ilike("assigned_agent", nv).gte("last_message_at", since)\
                 .execute().data or []
-            return only_active(rows, range_)
+            return dataset.only_active(rows, range_)
         except Exception:
             return []
 
@@ -1084,7 +827,7 @@ def _agent_detail_inner(agent: str, range_: str, wa_line: str):
             "messages_sent":            messages_sent,
             "leads":                    len(agent_lead_ids),
             "avg_call_duration_seconds": avg_call_dur,
-            **_reply_fields(_safe_reply_stats(range_, "all"), target),
+            **_reply_fields(_safe_reply_stats(dataset.view(range_)), target),
             "avg_treatment_score":      round(sum(treatment_scores)/len(treatment_scores),1) if treatment_scores else 0,
             "sentiment": {
                 "positive": sentiments.count("positive"),

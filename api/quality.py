@@ -1,21 +1,19 @@
 from fastapi import APIRouter, Query
-from supabase import create_client
 import os
 import json
 import requests
 import re
+import threading
 from dotenv import load_dotenv
-from datetime import datetime, timedelta, timezone
 from pipeline.time_ranges import since_iso, until_iso, RANGE_PATTERN
+from api import dataset
 from collections import Counter
 from pipeline import agent_names
-from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line, resolve_agent_name
-from pipeline.swr_cache import SWRCache, ttl_for
+from pipeline.whatsapp import resolve_agent_name
 
 load_dotenv()
-_CACHE = SWRCache("quality", 300)
 router = APIRouter()
-supabase = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_SERVICE_KEY"))
+supabase = dataset.db
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
@@ -115,6 +113,32 @@ def _topic_fallback_title(topic: str, examples: list[dict]) -> str:
     return topic.replace('_', ' ').title()
 
 
+_AI_TITLES: dict[str, str] = {}
+_AI_TITLES_RUNNING: set[str] = set()
+
+
+def _topic_titles(topic_specs: list[dict]) -> dict[str, str]:
+    """Never wait for the AI while a page loads: use stored or simple titles now,
+    and improve missing ones in the background for the next refresh."""
+    titles = {
+        spec["key"]: _AI_TITLES.get(spec["key"]) or _topic_fallback_title(spec["key"], spec.get("examples") or [])
+        for spec in topic_specs
+    }
+    missing = [spec for spec in topic_specs if spec["key"] not in _AI_TITLES and spec["key"] not in _AI_TITLES_RUNNING]
+    if missing and GEMINI_API_KEY:
+        keys = {spec["key"] for spec in missing}
+        _AI_TITLES_RUNNING.update(keys)
+
+        def work():
+            try:
+                _AI_TITLES.update(_topic_titles_from_examples(missing))
+            finally:
+                _AI_TITLES_RUNNING.difference_update(keys)
+
+        threading.Thread(target=work, name="topic-titles", daemon=True).start()
+    return titles
+
+
 def _topic_titles_from_examples(topic_specs: list[dict]) -> dict[str, str]:
     titles: dict[str, str] = {}
     if GEMINI_API_KEY and topic_specs:
@@ -182,149 +206,44 @@ def _topic_titles_from_examples(topic_specs: list[dict]) -> dict[str, str]:
 def quality(
     range: str = Query("week", pattern=RANGE_PATTERN),
     wa_line: str = Query("all"),
+    team: str = Query(""),
 ):
     try:
-        return _CACHE.get(f"{range}:{wa_line}", lambda: _quality_inner(range, wa_line), ttl=ttl_for(range))
+        return dataset.view(range, team, wa_line).cached("quality", _quality_inner)
     except Exception as e:
         import logging
         logging.getLogger("fiper").error(f"/api/quality error ({range}): {e}", exc_info=True)
         return {"range": range, "alerts": {"total":0,"open":0,"by_severity":{"HIGH":0,"MED":0,"LOW":0},"list":[]}, "sentiment":{"positive":0,"neutral":0,"negative":0}, "top_topics":{}, "top_risk_flags":{}, "risk_flag_details":{}, "faq_topics":[], "avg_treatment_score":0, "call_outcomes":{}, "complaints_count":0, "avg_messages_per_lead":0}
 
 
-def _quality_inner(range: str, wa_line: str = "all"):
-    since = _since(range)
-    until = _until(range)
-
-    alerts = _paginate(
-        lambda: supabase.table("alerts")
-        .select("*")
-        .eq("resolved", False)
-        .gte("created_at", since).lt("created_at", until)
-        .order("created_at", desc=True)
-    )
-
-    # Enrich alerts with lead phone/name and resolve missing agent_name
-    lead_map = {}
-    alert_msg_map = {}
-    all_alert_lead_ids = list({a["lead_id"] for a in alerts if a.get("lead_id")})
-    if all_alert_lead_ids:
-        lead_rows = (
-            supabase.table("leads")
-            .select("id,phone,wa_contact_id,name,assigned_agent,channel,whatsapp_business_number")
-            .in_("id", all_alert_lead_ids)
-            .execute()
-            .data
-        ) or []
-        lead_map = {r["id"]: r for r in lead_rows}
-        if wa_line and wa_line.lower() not in ("all", "*", "any"):
-            alerts = [a for a in alerts if matches_business_line(lead_map.get(a.get("lead_id") or ""), wa_line)]
-        alert_msg_map = {}
-        try:
-            alert_msg_rows = (
-                supabase.table("messages")
-                .select("lead_id,direction,body,agent_name,sent_at")
-                .in_("lead_id", all_alert_lead_ids)
-                .order("sent_at", desc=True)
-                .limit(1000)
-                .execute()
-                .data
-            ) or []
-            for msg in alert_msg_rows:
-                lead_id = msg.get("lead_id")
-                if lead_id and lead_id not in alert_msg_map:
-                    alert_msg_map[lead_id] = msg
-        except Exception:
-            alert_msg_map = {}
-        for a in alerts:
-            lead = lead_map.get(a.get("lead_id") or "")
-            latest_msg = alert_msg_map.get(a.get("lead_id") or "", {})
-            current_agent = _lead_agent_name({"assigned_agent": a.get("agent_name")}, latest_msg)
-            fallback_agent = _lead_agent_name(lead, latest_msg) if lead else None
-            a["agent_name"] = current_agent or fallback_agent or a.get("agent_name")
-            a["agent_name"] = agent_names.display(a.get("agent_name"))
-            if lead:
-                a["lead_phone"] = _lead_phone(lead)
-                a["lead_name"]  = lead.get("name")
-
-    # For open no_reply alerts, fetch the latest unanswered inbound by phone.
-    # Some ManyContacts contacts exist as duplicate lead rows, so the alert may be
-    # attached to one lead_id while the newest inbound message is stored on another
-    # row with the same phone. Use all same-phone lead IDs for the detail display.
-    no_reply_open = [a for a in alerts if a.get("type") == "no_reply" and not a.get("resolved")]
-    duplicate_leads_by_phone: dict[str, list[str]] = {}
-    alert_phones = sorted({
-        _lead_phone(lead_map.get(a.get("lead_id") or "") or {})
-        for a in no_reply_open
-        if lead_map.get(a.get("lead_id") or "")
-    })
-    if alert_phones:
-        try:
-            duplicate_rows = (
-                supabase.table("leads")
-                .select("id,phone,wa_contact_id")
-                .in_("phone", alert_phones)
-                .execute()
-                .data
-            ) or []
-            for row in duplicate_rows:
-                phone = _lead_phone(row)
-                if phone and row.get("id"):
-                    duplicate_leads_by_phone.setdefault(phone, []).append(row["id"])
-        except Exception:
-            duplicate_leads_by_phone = {}
-
-    for a in no_reply_open:
-        lead_id = a.get("lead_id")
-        if not lead_id:
-            continue
-        lead = lead_map.get(lead_id) or {}
-        phone = _lead_phone(lead) if lead else None
-        candidate_ids = duplicate_leads_by_phone.get(phone or "") or [lead_id]
-        try:
-            msg = (
-                supabase.table("messages")
-                .select("body,sent_at")
-                .in_("lead_id", candidate_ids)
-                .eq("direction", "inbound")
-                .order("sent_at", desc=True)
-                .limit(1)
-                .execute()
-                .data
-            )
-            if msg:
-                body = (msg[0].get("body") or "").strip()
+def _quality_inner(view: dataset.View) -> dict:
+    period = view.period
+    range = period.range
+    alerts = sorted((dict(a) for a in view.alerts if not a.get("resolved")),
+                    key=lambda a: a.get("created_at") or "", reverse=True)
+    lead_map = period.leads
+    alert_msg_map = period.latest_message
+    for a in alerts:
+        lead = lead_map.get(a.get("lead_id") or "")
+        latest_msg = alert_msg_map.get(a.get("lead_id") or "", {})
+        current_agent = _lead_agent_name({"assigned_agent": a.get("agent_name")}, latest_msg)
+        fallback_agent = _lead_agent_name(lead, latest_msg) if lead else None
+        a["agent_name"] = agent_names.display(current_agent or fallback_agent or a.get("agent_name"))
+        if lead:
+            a["lead_phone"] = _lead_phone(lead)
+            a["lead_name"] = lead.get("name")
+        if a.get("type") == "no_reply" and lead:
+            # The newest inbound can sit on a duplicate lead row with the same phone.
+            latest_inbound = period.latest_inbound_by_phone.get(dataset.phone_key(_lead_phone(lead)))
+            if latest_inbound:
+                body = (latest_inbound.get("body") or "").strip()
                 a["last_message_body"] = body[:200] if body else None
-                a["message_at"] = msg[0].get("sent_at")
-        except Exception:
-            pass
+                a["message_at"] = latest_inbound.get("sent_at")
 
-    analyses = _paginate(
-        lambda: supabase.table("ai_analysis")
-        .select("lead_id,sentiment,topics,treatment_score,risk_flags,analyzed_at,source,summary")
-        .gte("analyzed_at", since).lt("analyzed_at", until)
-    )
-
-    topic_example_rows = []
-    try:
-        topic_example_rows = _paginate(
-        lambda: supabase.table("ai_analysis")
-            .select("lead_id,topics,summary")
-            .gte("analyzed_at", since).lt("analyzed_at", until)
-    )
-    except Exception:
-        topic_example_rows = []
-
-    calls = _paginate(
-        lambda: supabase.table("calls").select("id,outcome").gte("called_at", since).lt("called_at", until)
-    )
-
-    messages = _paginate(
-        lambda: supabase.table("messages")
-        .select("lead_id,whatsapp_business_number")
-        .gte("sent_at", since).lt("sent_at", until)
-    )
-    if wa_line and wa_line.lower() not in ("all", "*", "any"):
-        messages = [m for m in messages if matches_business_line(m, wa_line)]
+    analyses = view.analyses
+    topic_example_rows = analyses
+    calls = view.calls
+    messages = view.messages
 
     # Use explicit sentiment when available; derive from treatment_score otherwise.
     # WA analyses historically have NULL sentiment because the AI prompt didn't ask for it.
@@ -365,55 +284,8 @@ def _quality_inner(range: str, wa_line: str = "all"):
     topic_counter = Counter(all_topics)
     total_topic_count = sum(topic_counter.values())
     topic_specs = [{"key": topic, "count": count, "examples": []} for topic, count in topic_counter.most_common(10)]
-    analysis_lead_ids = list({a["lead_id"] for a in analyses if a.get("lead_id")})
-    analysis_lead_map = {}
-    if analysis_lead_ids:
-        try:
-            lead_rows = (
-                supabase.table("leads")
-                .select("id,phone,wa_contact_id,name,assigned_agent,channel,whatsapp_business_number")
-                .in_("id", analysis_lead_ids)
-                .execute()
-                .data
-            ) or []
-            analysis_lead_map = {r["id"]: r for r in lead_rows}
-        except Exception:
-            analysis_lead_map = {}
-
-    latest_message_map = {}
-    if analysis_lead_ids:
-        try:
-            msg_rows = (
-                supabase.table("messages")
-                .select("lead_id,direction,body,agent_name,sent_at")
-                .in_("lead_id", analysis_lead_ids)
-                .order("sent_at", desc=True)
-                .limit(1000)
-                .execute()
-                .data
-            ) or []
-            for msg in msg_rows:
-                lead_id = msg.get("lead_id")
-                if lead_id and lead_id not in latest_message_map:
-                    latest_message_map[lead_id] = msg
-        except Exception:
-            latest_message_map = {}
-
-    if wa_line and wa_line.lower() not in ("all", "*", "any") and analysis_lead_map:
-        analyses = [
-            a for a in analyses
-            if matches_business_line(analysis_lead_map.get(a.get("lead_id") or ""), wa_line)
-        ]
-        if topic_example_rows:
-            topic_example_rows = [
-                a for a in topic_example_rows
-                if matches_business_line(analysis_lead_map.get(a.get("lead_id") or ""), wa_line)
-            ]
-        if latest_message_map:
-            latest_message_map = {
-                lid: msg for lid, msg in latest_message_map.items()
-                if matches_business_line(analysis_lead_map.get(lid or ""), wa_line)
-            }
+    analysis_lead_map = lead_map
+    latest_message_map = alert_msg_map
 
     risk_flag_details: dict[str, list[dict]] = {}
     for analysis in sorted(analyses, key=lambda a: a.get("analyzed_at") or "", reverse=True):
@@ -525,7 +397,7 @@ def _quality_inner(range: str, wa_line: str = "all"):
 
     for spec in topic_specs:
         spec["examples"] = topic_examples.get(spec["key"], [])
-    topic_titles = _topic_titles_from_examples(topic_specs)
+    topic_titles = _topic_titles(topic_specs)
 
     faq_topics = [
         {
