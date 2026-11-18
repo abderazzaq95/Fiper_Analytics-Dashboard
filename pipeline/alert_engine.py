@@ -1,9 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from supabase import create_client
 import os
-import re
 from dotenv import load_dotenv
-from pipeline import email_notifications
+from pipeline import email_notifications, reminders
+from pipeline.reply_tracker import is_banal_message as _is_banal_no_reply_message
 
 load_dotenv()
 
@@ -12,6 +12,18 @@ supabase = create_client(
 )
 
 MAX_OPERATIONAL_ALERT_MINUTES = 4 * 60
+SLOW_RESPONSE_WINDOW_DAYS = int(os.getenv("SLOW_RESPONSE_WINDOW_DAYS", "7"))
+
+# Only alerts that mean "a customer is waiting for you" may notify an agent.
+# Everything else (slow_response, poor_treatment, negative_sentiment,
+# beginner_risk, profit_expectations, stale_callback) is coaching data for the
+# dashboard and supervisor reports — never an agent ping.
+AGENT_NOTIFY_ALERT_TYPES = {"no_reply"}
+
+
+def _legacy_agent_notifications_enabled() -> bool:
+    # Once the reply-reminder engine is live it owns all agent reminders.
+    return reminders.mode() != "live"
 
 
 def _paginate(build_query) -> list:
@@ -37,61 +49,7 @@ def _fmt_duration(minutes: float) -> str:
     h = (m % 1440) // 60
     return f"{days}d {h}h" if h else f"{days}d"
 
-_BANAL_NO_REPLY_MESSAGES = {
-    "ok",
-    "okay",
-    "yes",
-    "no",
-    "thanks",
-    "thank you",
-    "done",
-    "\u062a\u0645\u0627\u0645",  # تمام
-    "\u062a\u0645",  # تم
-    "\u0646\u0639\u0645",  # نعم
-    "\u0627\u064a",  # اي
-    "\u0625\u064a",  # إي
-    "\u0627\u064a\u0648\u0647",  # ايوه
-    "\u0623\u064a\u0648\u0647",  # أيوه
-    "\u0627\u0648\u0643\u064a",  # اوكي
-    "\u0623\u0648\u0643\u064a",  # أوكي
-    "\u0627\u0648\u0643",  # اوك
-    "\u0623\u0648\u0643",  # أوك
-    "\u0634\u0643\u0631\u0627",  # شكرا
-    "\u0634\u0643\u0631\u0627\u064b",  # شكراً
-    "\u0645\u0634\u0643\u0648\u0631",  # مشكور
-    "\u0645\u0634\u0643\u0648\u0631\u0647",  # مشكوره
-    "\u062d\u0633\u0646\u0627",  # حسنا
-}
 
-
-def _is_banal_no_reply_message(body: str | None) -> bool:
-    text = (body or "").strip()
-    if not text:
-        return True
-
-    normalized = " ".join(text.lower().replace("\u0640", "").split())
-    normalized = normalized.strip(" .,!\u061f?\u061b;:()[]{}\"'`~|/\\")
-
-    if normalized in {"[reaction]", "[sticker]", "[image]", "[video]", "reaction", "sticker", "image", "video"}:
-        return True
-    if normalized in _BANAL_NO_REPLY_MESSAGES:
-        return True
-    if re.fullmatch(r"[\d\u0660-\u0669]+", normalized):
-        return True
-    if len(normalized) <= 4 and not any(ch.isalnum() for ch in normalized):
-        return True
-
-    compact = re.sub(r"[\W_]+", " ", normalized, flags=re.UNICODE).strip()
-    banal_prefixes = (
-        "ok", "okay", "thanks", "thank you", "done", "yes", "no",
-        "\u062a\u0645", "\u062a\u0645\u0627\u0645", "\u0646\u0639\u0645", "\u0627\u064a", "\u0625\u064a",
-        "\u0627\u064a\u0648\u0647", "\u0623\u064a\u0648\u0647", "\u0627\u0648\u0643\u064a", "\u0623\u0648\u0643\u064a",
-        "\u0634\u0643\u0631\u0627", "\u0634\u0643\u0631\u0627\u064b", "\u0634\u0643\u0631\u0627 \u0627\u0633\u062a\u0627\u0630",
-        "\u0645\u0634\u0643\u0648\u0631", "\u0645\u0634\u0643\u0648\u0631\u0647", "\u062a\u0633\u0644\u0645", "\u062d\u0633\u0646\u0627",
-    )
-    if len(compact) <= 24 and any(compact == p or compact.startswith(p + " ") for p in banal_prefixes):
-        return True
-    return False
 def _upsert_alert(lead_id, agent_name, severity, alert_type, message):
     existing = (
         supabase.table("alerts")
@@ -117,6 +75,8 @@ def _upsert_alert(lead_id, agent_name, severity, alert_type, message):
     result = supabase.table("alerts").insert(alert).execute()
     if result.data:
         alert["id"] = result.data[0]["id"]
+    if alert_type not in AGENT_NOTIFY_ALERT_TYPES or not _legacy_agent_notifications_enabled():
+        return
     try:
         email_notifications.notify_agent_alert(alert)
     except Exception:
@@ -340,12 +300,19 @@ def check_negative_sentiment(leads_with_msgs: set):
 
 
 def check_slow_response():
-    """MED: agent average response time > 15 min (checked per lead conversation)."""
-    messages = (
-        supabase.table("messages")
+    """MED: agent average response time > 15 min (checked per lead conversation).
+
+    Only the last SLOW_RESPONSE_WINDOW_DAYS are considered, and all of those
+    messages are read (paginated). Reading an unpaginated, unordered sample
+    made the set of qualifying leads change every run, so alerts flipped
+    between resolved and re-created hundreds of times a day.
+    """
+    since = (datetime.now(timezone.utc) - timedelta(days=SLOW_RESPONSE_WINDOW_DAYS)).isoformat()
+    messages = _paginate(
+        lambda: supabase.table("messages")
         .select("lead_id,direction,sent_at,agent_name")
-        .execute()
-        .data
+        .gte("sent_at", since)
+        .order("sent_at", desc=False)
     )
     by_lead: dict[str, list[dict]] = {}
     for m in messages:
@@ -375,13 +342,11 @@ def check_slow_response():
                 f"Average response time is {_fmt_duration(sum(gaps)/len(gaps))} (threshold: 15 min)."
             )
 
-    open_alerts = (
-        supabase.table("alerts")
+    open_alerts = _paginate(
+        lambda: supabase.table("alerts")
         .select("id,lead_id")
         .eq("type", "slow_response")
         .eq("resolved", False)
-        .execute()
-        .data or []
     )
     resolved_ids = [
         alert["id"]

@@ -144,3 +144,35 @@ CREATE INDEX IF NOT EXISTS idx_leads_wa_line       ON leads(whatsapp_business_nu
 CREATE INDEX IF NOT EXISTS idx_notification_deliveries_alert ON notification_deliveries(alert_id);
 CREATE INDEX IF NOT EXISTS idx_notification_deliveries_channel_sent ON notification_deliveries(channel, sent_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notification_deliveries_agent_sent ON notification_deliveries(agent_name, sent_at DESC);
+
+-- ============================================================
+-- pending_replies
+-- One open row per customer phone waiting for an agent reply.
+-- Maintained by pipeline/reminders.py (see migrations/001_pending_replies.sql).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS pending_replies (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  phone              TEXT NOT NULL,
+  lead_id            UUID REFERENCES leads(id) ON DELETE SET NULL,
+  customer_name      TEXT,
+  agent_name         TEXT,
+  business_line      TEXT,
+  waiting_since      TIMESTAMPTZ NOT NULL,
+  last_inbound_at    TIMESTAMPTZ,
+  last_inbound_body  TEXT,
+  status             TEXT NOT NULL DEFAULT 'open',  -- open | answered | expired | dismissed
+  resolved_by        TEXT,
+  resolved_at        TIMESTAMPTZ,
+  reminder_count     INTEGER NOT NULL DEFAULT 0,
+  last_reminded_at   TIMESTAMPTZ,
+  escalated_at       TIMESTAMPTZ,
+  snoozed_until      TIMESTAMPTZ,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pending_replies_open_phone ON pending_replies(phone) WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS idx_pending_replies_status ON pending_replies(status);
+CREATE INDEX IF NOT EXISTS idx_pending_replies_agent  ON pending_replies(agent_name, waiting_since DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_lead_sent     ON messages(lead_id, sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_leads_phone            ON leads(phone);
+ALTER TABLE pending_replies ENABLE ROW LEVEL SECURITY;

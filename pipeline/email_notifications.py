@@ -853,12 +853,16 @@ def send_overnight_alert_catchup() -> int:
     Returns number of notifications sent.
     """
     from datetime import timezone as _tz
+    # The reply-reminder engine handles overnight customers itself when live.
+    if os.getenv("REMINDER_MODE", "shadow").strip().lower() == "live":
+        return 0
     cutoff = (datetime.now(_tz.utc) - timedelta(hours=20)).isoformat()
     try:
         alerts = (
             supabase.table("alerts")
             .select("id,lead_id,agent_name,severity,type,message,created_at")
             .eq("resolved", False)
+            .eq("type", "no_reply")  # coaching alerts never ping agents
             .gte("created_at", cutoff)
             .execute()
             .data or []

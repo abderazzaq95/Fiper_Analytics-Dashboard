@@ -15,7 +15,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from supabase import create_client
 from dotenv import load_dotenv
 
-from pipeline import whatsapp, maqsam, ai_analyzer, alert_engine, email_notifications
+from pipeline import whatsapp, maqsam, ai_analyzer, alert_engine, email_notifications, reminders
 from api import overview, agents, leads, channels, quality, journey, journey_v2
 
 load_dotenv()
@@ -1487,6 +1487,14 @@ def _require_email_debug_token(token: str):
         raise HTTPException(status_code=403, detail="Invalid email debug token")
 
 
+def run_reply_reminders():
+    """Scheduled: track waiting customers and send the reminder ladder."""
+    try:
+        reminders.run_cycle()
+    except Exception as e:
+        log.error(f"Reply reminders error: {_safe_error_message(e)}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Warm agent name cache on startup
@@ -1570,6 +1578,16 @@ async def lifespan(app: FastAPI):
         max_instances=1,
         coalesce=True,
         next_run_time=datetime.now(timezone.utc) + timedelta(minutes=5),
+    )
+    scheduler.add_job(
+        run_reply_reminders,
+        "interval",
+        minutes=int(os.getenv("REMINDER_INTERVAL_MINUTES", "5")),
+        id="reply_reminders",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=datetime.now(timezone.utc) + timedelta(minutes=1),
     )
     scheduler.add_job(
         check_whatsapp_webhook_health,
@@ -3212,6 +3230,20 @@ def debug_send_agent_alert(agent: str = Query("Jehad Qasim"), token: str = Query
             "contact": contact,
             "error": _safe_error_message(exc),
         }
+
+
+@app.get("/api/reminders/status")
+def reminders_status(token: str = Query("")):
+    """Waiting customers right now + reminder config (contains customer data)."""
+    _require_email_debug_token(token)
+    return reminders.status_snapshot()
+
+
+@app.post("/api/reminders/run")
+def reminders_run(token: str = Query("")):
+    """Run one reminder cycle immediately (respects REMINDER_MODE)."""
+    _require_email_debug_token(token)
+    return reminders.run_cycle()
 
 
 @app.post("/api/debug/email/test-notification")
