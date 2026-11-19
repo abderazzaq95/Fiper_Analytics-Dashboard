@@ -42,8 +42,8 @@ _lock = threading.Lock()
 
 
 def mode() -> str:
-    value = os.getenv("REMINDER_AI_MODE", "shadow").strip().lower()
-    return value if value in {"off", "shadow", "live"} else "shadow"
+    value = os.getenv("REMINDER_AI_MODE", "live").strip().lower()
+    return value if value in {"off", "shadow", "live"} else "live"
 
 
 def _greeting_only(text: str) -> bool:

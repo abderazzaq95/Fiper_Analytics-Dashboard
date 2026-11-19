@@ -54,6 +54,11 @@ def context(*customer, agent_last="Welcome to Fiper", first=False):
 
 
 class RulesTest(unittest.TestCase):
+    def test_live_by_default(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("REMINDER_AI_MODE", None)
+            self.assertEqual(reply_ai.mode(), "live")
+
     def test_rules_never_silence_a_reminder(self):
         for texts in (["شكرا"], ["ok"], ["👍"], [], ["مشكوره في انتظاركم"]):
             self.assertTrue(reply_ai.rules(context(*texts))["needs_reply"], texts)
