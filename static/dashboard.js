@@ -293,13 +293,32 @@ function renderWaiting() {
       <td>${waitPriority(i)}</td>
       <td class="num">${esc(fmtLocal(i.since))}</td>
       <td class="t-msg" dir="auto" title="${esc(i.body || '')}">${esc(i.body || '')}</td>
-      <td>${waitStatus(i)}</td></tr>`;
+      <td class="wait-status">${waitStatus(i)}${i.id ? `<button type="button" class="btn-answered" data-id="${esc(i.id)}" title="${esc(T('The agent already answered (e.g. by voice note): remove from the list and the morning list', 'الموظف ردّ بالفعل (مثلاً برسالة صوتية): إزالة من القائمة وقائمة الصباح'))}" onclick="event.stopPropagation();markAnswered(this)" onkeydown="event.stopPropagation()">✓ ${esc(T('Answered', 'تم الرد'))}</button>` : ''}</td></tr>`;
   }).join('');
   const more = rows.length > limit
     ? `<div style="padding:12px;text-align:center"><button class="btn-icon" onclick="_waitingShowAll=true;renderWaiting()">${esc(T(`Show all ${rows.length}`, `عرض الكل (${rows.length})`))}</button></div>` : '';
   list.innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>${more}`;
 }
 let _waitingChips = [];
+
+async function markAnswered(btn) {
+  // For replies we cannot see (voice notes sent before they were tracked). Stays closed until the customer writes again.
+  const id = btn.dataset.id;
+  const item = (_waiting?.items || []).find(i => i.id === id);
+  const who = item ? (item.name || item.phone || '') : '';
+  if (!confirm(T(`Mark ${who} as answered? The customer leaves the waiting list and gets no more reminders until they write again.`,
+                 `اعتبار ${who} تم الرد عليه؟ سيُزال العميل من القائمة ولن تُرسل تذكيرات حتى يكتب من جديد.`))) return;
+  btn.disabled = true;
+  try {
+    const r = await fetch(`${API}/api/waiting/answered`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id})});
+    if (!r.ok) throw new Error(r.status);
+    _waiting.items = _waiting.items.filter(i => i.id !== id);
+    renderWaiting();
+  } catch (e) {
+    btn.disabled = false;
+    alert(T('Could not save. Please try again.', 'تعذر الحفظ. حاول مرة أخرى.'));
+  }
+}
 
 // ── Conversation ─────────────────────────────────────────────────────────────
 function closeConversation() { document.getElementById('conversationModal').classList.remove('open'); }

@@ -71,6 +71,28 @@ class ReminderSyncTest(unittest.TestCase):
             self.assertEqual(reminders._load_sends([PHONE], T0), {})
 
 
+class MarkAnsweredTest(unittest.TestCase):
+    def dismissed(self, rows):
+        with mock.patch.object(reminders, "_paginate", return_value=rows):
+            return reminders._dismissal_times(T0)
+
+    def test_dismissed_wait_stays_closed_until_the_customer_writes_again(self):
+        messages = [inbound(0), inbound(2)]
+        times = self.dismissed([{"phone": PHONE, "waiting_since": at(0), "last_inbound_at": at(2)}])[PHONE]
+        self.assertIsNone(compute_wait_state(messages, times).waiting_since)
+        later = [*messages, inbound(300, "متى يصير السحب؟")]
+        self.assertEqual(compute_wait_state(later, times).waiting_since, T0 + timedelta(minutes=300))
+
+    def test_dismiss_only_closes_open_rows(self):
+        db = mock.Mock()
+        db.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value.data = []
+        with mock.patch.object(reminders, "supabase", db):
+            self.assertFalse(reminders.dismiss("row-1", "manual"))
+        fields = db.table.return_value.update.call_args[0][0]
+        self.assertEqual((fields["status"], fields["resolved_by"]), ("dismissed", "manual"))
+        db.table.return_value.update.return_value.eq.return_value.eq.assert_called_with("status", "open")
+
+
 class ConversationTimelineTest(unittest.TestCase):
     def test_voice_notes_show_but_sent_texts_are_not_doubled(self):
         messages = [inbound(0), {"direction": "outbound", "sent_at": at(10), "body": "*Zahrae:* Salam", "agent_name": "Zahrae"}]
@@ -112,6 +134,19 @@ class WebhookRecordTest(unittest.TestCase):
         for status in ("delivered", "read", "failed"):
             self.record({"id": "wamid.X", "status": status, "recipient_id": PHONE, "timestamp": "1763031120"})
         self.db.table.assert_not_called()
+
+    def test_mark_answered_endpoint_needs_login_and_a_valid_id(self):
+        from fastapi.testclient import TestClient
+        client = TestClient(self.main.app)
+        self.assertEqual(client.post("/api/waiting/answered", json={"id": "x"}).status_code, 401)  # no session
+        with mock.patch.dict(os.environ, {"DASHBOARD_PASSWORD": "pw-for-test"}):
+            from api import auth
+            client.cookies.set(auth.COOKIE, auth.make_token("fiper"))
+            self.assertEqual(client.post("/api/waiting/answered", json={"id": "not-a-uuid"}).status_code, 400)
+            with mock.patch.object(self.main.reminders, "dismiss", return_value=True) as dismiss:
+                r = client.post("/api/waiting/answered", json={"id": "0806aa92-fbbf-4c41-8115-964b8cf69c94"})
+            self.assertEqual((r.status_code, r.json()["closed"]), (200, True))
+            dismiss.assert_called_once_with("0806aa92-fbbf-4c41-8115-964b8cf69c94", "manual")
 
     def test_missing_table_pauses_writes(self):
         self.db.table.return_value.upsert.return_value.execute.side_effect = RuntimeError(

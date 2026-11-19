@@ -134,6 +134,10 @@ tbody tr:hover>td,tr:hover td{background:var(--hover)}
 .agent-name-cell{font-weight:600;color:var(--ink)}.agent-name-btn{color:var(--ink)!important;font-weight:600}
 th .sort-mark{display:inline-block;width:12px;margin-inline-start:4px;font-size:10px;color:var(--ink-3)}
 th.sorted .sort-mark{color:var(--primary)}
+.wait-status .pill{white-space:nowrap}
+.btn-answered{display:block;margin-top:6px;white-space:nowrap;height:26px;padding:0 9px;border:1px solid var(--line-2);border-radius:999px;background:var(--panel);color:var(--ink-2);font-size:12px;font-weight:500;cursor:pointer;vertical-align:middle}
+.btn-answered:hover{border-color:var(--ink-3);color:var(--ink);background:var(--hover)}
+.btn-answered:disabled{opacity:.5;cursor:default}
 .row-link{cursor:pointer}.t-msg{max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .panel-tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
 .panel-note{font-size:12.5px;color:var(--ink-3)}

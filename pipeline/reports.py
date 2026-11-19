@@ -321,6 +321,7 @@ def _waiting_now(agents: dict | None = None, include_no_reply: bool = False) -> 
         if agents is not None and ident and r.get("needs_reply") is not False:
             agents.setdefault(ident[0], AgentStats(ident[1])).waiting_now += 1
         out.append({
+            "id": r.get("id"),
             "name": r.get("customer_name"), "phone": r.get("phone"), "line": r.get("business_line"),
             "agent": ident[1] if ident else None, "elapsed_min": elapsed,
             "since": parse_dt(r.get("waiting_since")), "body": r.get("last_inbound_body"),

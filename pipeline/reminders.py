@@ -315,6 +315,8 @@ def _sync(now: datetime) -> tuple[list[dict], dict]:
     states = {k: compute_wait_state(c["messages"]) for k, c in convs.items()}
     phones_to_check |= {k for k, s in states.items() if s.waiting_since}
     calls = _contact_times(convs, sorted(phones_to_check), oldest)
+    for phone, times in _dismissal_times(oldest).items():
+        calls[phone] = [*calls.get(phone, []), *times]
     for k in phones_to_check:
         if k in convs:
             states[k] = compute_wait_state(convs[k]["messages"], calls.get(k))
@@ -448,6 +450,37 @@ def _classify(rows: list[dict], now: datetime) -> dict:
         stats[decision["source"]] = stats.get(decision["source"], 0) + 1
         stats["no_reply_needed"] += int(decision["needs_reply"] is False)
     return stats
+
+
+def _dismissal_times(since: datetime) -> dict[str, list[datetime]]:
+    """Waits a person marked as answered (or the cleanup closed): everything the
+    customer wrote up to that point counts as answered, so the sync does not
+    reopen it. A newer customer message opens a new wait as usual."""
+    try:
+        rows = _paginate(
+            lambda: supabase.table(TABLE).select("phone,waiting_since,last_inbound_at")
+            .eq("status", "dismissed").gte("resolved_at", since.isoformat())
+        )
+    except Exception as exc:
+        log.warning(f"[reminders] could not read dismissed waits: {notify_safe(exc)}")
+        return {}
+    times: dict[str, list[datetime]] = defaultdict(list)
+    for r in rows:
+        dt = parse_dt(r.get("last_inbound_at")) or parse_dt(r.get("waiting_since"))
+        if dt:
+            times[r["phone"]].append(dt)
+    return times
+
+
+def dismiss(row_id: str, reason: str, now: datetime | None = None) -> bool:
+    """Close one open wait as answered outside our data (e.g. a voice note sent
+    before voice notes were tracked). -> False if it was not open any more."""
+    now = now or datetime.now(timezone.utc)
+    res = supabase.table(TABLE).update({
+        "status": "dismissed", "resolved_by": reason,
+        "resolved_at": now.isoformat(), "updated_at": now.isoformat(),
+    }).eq("id", row_id).eq("status", "open").execute()
+    return bool(res.data)
 
 
 def _close(row: dict, status: str, reason: str, now: datetime, answered_at: datetime | None = None) -> None:

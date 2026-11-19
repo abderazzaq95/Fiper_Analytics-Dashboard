@@ -3310,6 +3310,7 @@ def waiting_now():
         "over_2h": sum(1 for w in real if w["elapsed_min"] >= 120),
         "by_agent": sorted(([a or None, n] for a, n in by_agent.items()), key=lambda x: -x[1]),
         "items": [{
+            "id": w.get("id"),
             "name": w.get("name"),
             "phone": reminder_templates.phone_display(w.get("phone")),
             "line": reminder_templates.line_labels(w.get("line"))[1],
@@ -3327,6 +3328,21 @@ def waiting_now():
         } for w in items],
         "generated_at": now.isoformat(),
     }
+
+
+@app.post("/api/waiting/answered")
+async def waiting_mark_answered(request: Request):
+    """Dashboard button: the agent already answered (e.g. by voice note) - close
+    the wait. It stays closed until the customer writes something new."""
+    try:
+        row_id = str((await request.json()).get("id") or "")
+    except Exception:
+        row_id = ""
+    if not _looks_like_uuid(row_id):
+        raise HTTPException(status_code=400, detail="invalid id")
+    closed = await asyncio.to_thread(reminders.dismiss, row_id, "manual")
+    log.info(f"[waiting] marked answered by dashboard user: {row_id[:8]} closed={closed}")
+    return {"ok": True, "closed": closed}
 
 
 @app.get("/api/reminders/status")
