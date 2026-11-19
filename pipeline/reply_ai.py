@@ -154,7 +154,7 @@ def available() -> bool:
 def _fallback(context: dict, why: str) -> dict:
     """Word rules, with the reason the AI was not used (stored in ai_reason)."""
     _state["last_error"] = why
-    return {**rules(context), "reason": f"word rules · {why}"[:120]}
+    return {**rules(context), "reason": f"word rules · {why}"[:400]}
 
 
 # ── Providers ─────────────────────────────────────────────────────────────────
@@ -185,7 +185,7 @@ def _ask_gemini(context: dict) -> tuple[dict | None, str]:
         except ValueError:
             message = ""
         _pause("gemini")  # quota (429) or setup problem: don't retry every check
-        return None, f"Gemini HTTP {response.status_code}: {_clean(message)}"[:100]
+        return None, f"Gemini HTTP {response.status_code}: {_clean(message)[:60]}"
     try:
         parts = response.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])
         answer = parse_answer(parts[0].get("text", "") if parts else "", "gemini")
@@ -223,7 +223,7 @@ def _ask_claude(context: dict) -> tuple[dict | None, str]:
         return None, f"Claude unreachable ({type(exc).__name__})"
     except anthropic.APIStatusError as exc:
         _pause("claude")
-        return None, f"Claude HTTP {exc.status_code}: {_clean(getattr(exc, 'message', ''))}"[:100]
+        return None, f"Claude HTTP {exc.status_code}: {_clean(getattr(exc, 'message', ''))[:200]}"
     if response.stop_reason in ("refusal", "max_tokens"):
         return None, f"Claude stopped: {response.stop_reason}"
     text = next((block.text for block in response.content if block.type == "text"), "")
