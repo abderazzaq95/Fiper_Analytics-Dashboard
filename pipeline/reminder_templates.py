@@ -148,6 +148,11 @@ def _customer_card(item: dict, tz: tzinfo, tz_label: str, *, show_agent: bool = 
         f"font-size:12px;font-weight:400;padding:2px 8px;border-radius:12px;margin-right:6px'>خط {_e(line_ar)}</span>"
         if line_ar else ""
     )
+    if item.get("priority") == "urgent":
+        line_badge += (
+            f"<span style='display:inline-block;background:{RED_BG};color:{RED_FG};font-size:12px;font-weight:700;"
+            f"padding:2px 8px;border-radius:12px;margin-right:6px'>عاجل · Urgent</span>"
+        )
     agent_row = ""
     if show_agent:
         agent = item.get("agent") or "غير مُسنَد · UNASSIGNED"
@@ -222,8 +227,9 @@ def agent_reminder_text(agent: str, items: list[dict], other_waiting: int, tz: t
         line_ar, _, flag = line_labels(i.get("line"))
         line = f" · {flag} {line_ar}" if line_ar else ""
         phone = phone_display(i.get("phone"))
+        urgent = "🔥 عاجل · " if i.get("priority") == "urgent" else ""
         blocks.append(
-            f"{idx}) {i.get('name') or 'عميل'} {phone}{line}\n"
+            f"{idx}) {urgent}{i.get('name') or 'عميل'} {phone}{line}\n"
             f"⏳ ينتظر منذ {wait_ar(i['elapsed_min'])} ({local_time(i.get('since'), tz)})\n"
             f"💬 {short(i.get('body'), 160)}"
         )
@@ -234,6 +240,51 @@ def agent_reminder_text(agent: str, items: list[dict], other_waiting: int, tz: t
         "\nPlease reply in ManyContacts or call the customer now."
         "\n\nيتوقف التذكير تلقائياً بمجرد الرد."
     )
+
+
+# ── Morning list (older waits, once a day) ───────────────────────────────────
+
+def morning_list(agent: str, items: list[dict], tz: tzinfo, tz_label: str, max_cards: int = 15) -> tuple[str, str, str]:
+    """One message per agent per working day with customers waiting since earlier days."""
+    n = len(items)
+    shown, hidden = items[:max_cards], max(0, n - max_cards)
+    subject = f"☀️ قائمة الصباح: {n} عملاء ما زالوا بانتظار ردك · Morning list"
+    cards = "".join(_customer_card({**i, "stage": 1}, tz, tz_label) for i in shown)
+    more = (
+        f"<p style='font-size:13px;color:{MUTED};margin:4px 0 0'>و{hidden} عملاء آخرون — تجدهم في صفحة \"بانتظار الرد\" على لوحة التحكم."
+        f" <span dir='ltr'>(+{hidden} more on the dashboard \"Waiting now\" page)</span></p>" if hidden else ""
+    )
+    body = f"""
+<p style="font-size:16px;color:{NAVY};margin:0 0 4px">صباح الخير <b>{_e(agent)}</b>،</p>
+<p style="font-size:14px;margin:0 0 16px">هؤلاء العملاء كتبوا لك في أيام سابقة وما زالوا دون رد. هذه رسالة واحدة في اليوم بدل تذكيرات متفرقة.
+  <br><span dir="ltr" style="color:{MUTED};font-size:13px">These customers wrote on earlier days and are still unanswered. One message a day instead of separate pings.</span></p>
+{cards}{more}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px"><tr>
+<td style="background:#EBF3FF;border-radius:10px;padding:14px 16px;font-size:14px;color:{NAVY}" dir="rtl">
+  <b>✅ المطلوب:</b> ابدأ يومك بالرد على هؤلاء العملاء أو الاتصال بهم، الأقدم أولاً.
+  <div dir="ltr" align="right" style="font-size:13px;color:{TEXT};margin-top:4px">Start your day by answering or calling these customers.</div>
+</td></tr></table>"""
+    html_doc = _shell(
+        preheader=f"{n} عملاء ما زالوا بانتظار ردك — {n} customer(s) still waiting",
+        accent=NAVY, gradient=f"linear-gradient(180deg,#3E5378 0%,{NAVY} 100%)",
+        icon="☀️", title_ar="قائمة الصباح", title_en="Morning list — still waiting from earlier days", body=body,
+        footer_ar="تصلك هذه القائمة مرة واحدة كل صباح عمل، ويخرج العميل منها تلقائياً بمجرد الرد عليه أو الاتصال به.",
+        footer_en="Sent once every working morning. A customer leaves the list as soon as you reply or call.",
+    )
+    lines = []
+    for idx, i in enumerate(shown, 1):
+        urgent = "🔥 عاجل · " if i.get("priority") == "urgent" else ""
+        lines.append(
+            f"{idx}) {urgent}{i.get('name') or 'عميل'} {phone_display(i.get('phone'))}\n"
+            f"⏳ منذ {local_time(i.get('since'), tz)} · 💬 {short(i.get('body'), 110)}"
+        )
+    text = (
+        f"☀️ قائمة الصباح · Morning list\n\nصباح الخير {agent}، هؤلاء العملاء ما زالوا بانتظار ردك ({n}):\n\n"
+        + "\n\n".join(lines)
+        + (f"\n\n… +{hidden} (لوحة التحكم · dashboard)" if hidden else "")
+        + "\n\n✅ ابدأ يومك بالرد عليهم أو الاتصال بهم.\nStart your day by answering or calling them."
+    )
+    return subject, text, html_doc
 
 
 # ── Supervisor escalation ────────────────────────────────────────────────────

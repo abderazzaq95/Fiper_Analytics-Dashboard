@@ -12,9 +12,14 @@ Every few minutes (scheduled in main.py) ``run_cycle()``:
       REMINDER_ESCALATE_MIN (default 120)            -> supervisor escalation
    Then it stops pinging the agent. If the customer is still unanswered the
    supervisor gets follow-ups REMINDER_FOLLOWUP_HOURS after the first
-   escalation (default 24h and 72h). Agents are never pinged about customers
-   who waited more than REMINDER_AGENT_MAX_WORKING_HOURS (default 20 working
-   hours); waits are closed as expired after REMINDER_TRACK_MAX_AGE_HOURS.
+   escalation (default 24h and 72h). Waits older than
+   REMINDER_AGENT_MAX_WORKING_HOURS (default 10 = one working day) get no new
+   pings or escalations; instead each agent gets ONE morning list per working
+   day (REMINDER_MORNING_LIST_TIME). Waits are closed as expired after
+   REMINDER_TRACK_MAX_AGE_HOURS.
+   AI check (pipeline/reply_ai.py, REMINDER_AI_MODE): Gemini decides per wait
+   whether a reply is needed and how urgent it is. In "live" it skips waits
+   that need no reply and uses faster (urgent) or lighter (low) ladders.
 4. Re-checks the database right before sending, so a customer who was just
    answered is never included. Each step is recorded BEFORE it is sent, so a
    database error can never make the same message repeat every cycle.
@@ -38,6 +43,7 @@ from zoneinfo import ZoneInfo
 from pipeline import agent_names
 from pipeline import email_notifications as notify
 from pipeline import reminder_templates as templates
+from pipeline import reply_ai
 from pipeline.reply_tracker import (
     Ladder,
     Schedule,
@@ -81,8 +87,26 @@ LADDER = Ladder(
     second_min=_env_int("REMINDER_SECOND_MIN", 45),
     escalate_min=_env_int("REMINDER_ESCALATE_MIN", 120),
     followup_hours=parse_hours_list(os.getenv("REMINDER_FOLLOWUP_HOURS", "24,72")),
-    agent_max_working_hours=_env_int("REMINDER_AGENT_MAX_WORKING_HOURS", 20),
+    agent_max_working_hours=_env_int("REMINDER_AGENT_MAX_WORKING_HOURS", 10),
 )
+_urgent = parse_hours_list(os.getenv("REMINDER_URGENT_MINUTES", "5,20,60"), (5, 20, 60))
+URGENT_STEPS = _urgent if len(_urgent) == 3 else (5, 20, 60)
+LOW_FIRST_MIN = _env_int("REMINDER_LOW_FIRST_MIN", 30)
+AI_MAX_PER_CYCLE = _env_int("REMINDER_AI_MAX_PER_CYCLE", 8)
+# "HH:MM" local time for the daily list of older waits per agent; "off" disables it.
+MORNING_LIST_AT = os.getenv("REMINDER_MORNING_LIST_TIME", "09:15").strip().lower()
+MORNING_LIST_MAX_CARDS = 15
+
+
+def ladder_for(row: dict) -> Ladder:
+    """Priority ladder, only once the AI check is live (shadow = record only)."""
+    if reply_ai.mode() != "live":
+        return LADDER
+    return LADDER.for_priority(row.get("priority"), URGENT_STEPS, LOW_FIRST_MIN)
+
+
+def no_reply_needed(row: dict) -> bool:
+    return reply_ai.mode() == "live" and row.get("needs_reply") is False
 # How long an unanswered customer is tracked (calendar). Must cover the last
 # follow-up plus a weekend; after this the wait is closed as "expired".
 MAX_AGE_HOURS = max(_env_int("REMINDER_TRACK_MAX_AGE_HOURS", 168), int(max(LADDER.followup_hours, default=0)) + 72)
@@ -95,6 +119,8 @@ _agent_send_log: dict[str, list[datetime]] = defaultdict(list)
 _shadow_buffer: list[dict] = []
 _last_shadow_flush: datetime | None = None
 _last_cycle: dict = {}
+_morning_sent: dict[str, set[str]] = {}  # local date -> agents that got today's list
+_ai_columns_warned = False
 
 
 def _escalation_emails() -> list[str]:
@@ -294,6 +320,7 @@ def _sync(now: datetime) -> tuple[list[dict], dict]:
                 log.warning(f"[reminders] insert skipped for {key[-4:]}: {exc}")
                 continue
         stats["waiting"] += 1
+        row["_context"] = _ai_context(conv, state.waiting_since)  # in memory only, never written
         current.append(row)
 
     # Open rows whose customer is no longer waiting: answered (or expired).
@@ -310,6 +337,73 @@ def _sync(now: datetime) -> tuple[list[dict], dict]:
             _close(row, "answered", "no_longer_waiting", now)
             stats["answered"] += 1
     return current, stats
+
+
+def _ai_context(conv: dict, waiting_since: datetime) -> dict:
+    """What the AI check reads: customer messages of this wait + the agent's last message."""
+    customer, agent_last, any_outbound = [], None, False
+    for m in conv["messages"]:
+        dt = parse_dt(m.get("sent_at"))
+        direction = (m.get("direction") or "").lower()
+        if direction == "outbound":
+            any_outbound = True
+            if dt and dt < waiting_since:
+                agent_last = m.get("body")
+        elif direction == "inbound" and dt and dt >= waiting_since:
+            customer.append((m.get("body") or "").strip() or "[media]")
+    return {"customer": customer[-5:], "agent_last": agent_last, "first_contact": not any_outbound}
+
+
+# ── Does it need a reply? How urgent? ─────────────────────────────────────────
+
+def _classify(rows: list[dict], now: datetime) -> dict:
+    """Store an AI (or word-rule) decision for each wait whose latest customer
+    message has not been checked yet. At most AI_MAX_PER_CYCLE Gemini calls;
+    the rest get the word rules now and the AI on a later cycle."""
+    global _ai_columns_warned
+    stats = {"ai": 0, "rules": 0, "no_reply_needed": 0}
+    if reply_ai.mode() == "off" or not rows:
+        return stats
+    if "ai_checked_inbound_at" not in rows[0]:
+        if not _ai_columns_warned:
+            log.warning("[reminders] AI check skipped: run migrations/003_reply_priority.sql in Supabase")
+            _ai_columns_warned = True
+        return stats
+
+    def checked(row):
+        return parse_dt(row.get("ai_checked_inbound_at")) == parse_dt(row.get("last_inbound_at"))
+
+    def in_window(row):
+        return SCHEDULE.working_minutes_between(parse_dt(row["waiting_since"]), now) <= LADDER.agent_max_working_hours * 60
+
+    todo = [r for r in rows if r.get("_context") and (not checked(r) or (r.get("ai_source") == "rules" and reply_ai.available()))]
+    # Fresh waits first (their reminders depend on it), never-checked before rule-checked.
+    todo.sort(key=lambda r: (not in_window(r), checked(r), r.get("waiting_since") or ""))
+    ai_budget = AI_MAX_PER_CYCLE
+    for row in todo:
+        if ai_budget > 0 and reply_ai.available():
+            ai_budget -= 1
+            decision = reply_ai.classify(row["_context"])
+        elif checked(row):
+            continue  # already has the word-rule decision; wait for AI budget
+        else:
+            decision = reply_ai.rules(row["_context"])
+        fields = {
+            "needs_reply": decision["needs_reply"],
+            "priority": decision["priority"],
+            "ai_reason": decision["reason"] or None,
+            "ai_source": decision["source"],
+            "ai_checked_inbound_at": row.get("last_inbound_at"),
+        }
+        try:
+            supabase.table(TABLE).update(fields).eq("id", row["id"]).execute()
+        except Exception as exc:
+            log.warning(f"[reminders] could not store AI decision: {notify_safe(exc)}")
+            continue
+        row.update(fields)
+        stats[decision["source"]] += 1
+        stats["no_reply_needed"] += int(decision["needs_reply"] is False)
+    return stats
 
 
 def _close(row: dict, status: str, reason: str, now: datetime, answered_at: datetime | None = None) -> None:
@@ -401,6 +495,8 @@ def _tpl_item(item: dict) -> dict:
         "agent": r.get("agent_name"),
         "reminders": r.get("reminder_count") or 0,
         "esc_stage": item.get("esc_stage", 0),  # 0 new escalation, 1 first follow-up, 2 final ...
+        # Shown only once the AI check is live; in shadow it is only recorded.
+        "priority": r.get("priority") if reply_ai.mode() == "live" else None,
     }
 
 
@@ -409,7 +505,8 @@ def _agent_texts(agent: str, items: list[dict], other_waiting: int) -> tuple[str
 
 
 def _escalation_texts(items: list[dict], shadow: bool) -> tuple[str, str, str]:
-    return templates.escalation([_tpl_item(i) for i in items], SCHEDULE.tz, TZ_LABEL, LADDER.escalate_min, shadow,
+    after = min((ladder_for(i["row"]).escalate_min or LADDER.escalate_min for i in items), default=LADDER.escalate_min)
+    return templates.escalation([_tpl_item(i) for i in items], SCHEDULE.tz, TZ_LABEL, after, shadow,
                                 followup_hours=LADDER.followup_hours)
 
 
@@ -496,6 +593,90 @@ def _deliver_to_agent(agent: str, items: list[dict], other_waiting: int, now: da
     return delivered
 
 
+def _deliver_morning_list(agent: str, items: list[dict], now: datetime) -> bool:
+    subject, text, body_html = templates.morning_list(agent, [_tpl_item(i) for i in items], SCHEDULE.tz, TZ_LABEL,
+                                                      max_cards=MORNING_LIST_MAX_CARDS)
+    meta = {"kind": "morning_list", "stage": "morning", "pending_reply_ids": [i["row"].get("id") for i in items]}
+    first_row = items[0]["row"]
+    if mode() == "shadow":
+        _log(first_row, agent, "all", None, "shadow", subject, text, meta)
+        return True
+    contact = notify.resolve_agent_contact(agent)
+    targets = {"email": (contact.get("email") or "").strip(), "telegram": notify._agent_telegram_id(agent)}
+    delivered = False
+    for channel, recipient in targets.items():
+        status, error = _send(channel, recipient, subject, text, body_html)
+        _log(first_row, agent, channel, recipient, status, subject, text, meta, error)
+        delivered = delivered or status == "sent"
+    return delivered
+
+
+def _morning_window(now: datetime) -> tuple[str, datetime, datetime] | None:
+    """(local day, local midnight UTC, work start UTC) while today's list may go out."""
+    if MORNING_LIST_AT in {"", "off", "none", "0"} or not SCHEDULE.is_working_time(now):
+        return None
+    try:
+        hour, minute = (int(x) for x in MORNING_LIST_AT.split(":"))
+    except ValueError:
+        return None
+    local = now.astimezone(SCHEDULE.tz)
+    at = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if not (at <= local < at + timedelta(hours=3)):  # a restart at 15:00 sends no "morning" list
+        return None
+    midnight = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    work_start = midnight + timedelta(hours=SCHEDULE.start_hour)
+    return local.date().isoformat(), midnight.astimezone(timezone.utc), work_start.astimezone(timezone.utc)
+
+
+def _agents_with_morning_list(since: datetime) -> set[str]:
+    rows = (
+        supabase.table("notification_deliveries").select("agent_name")
+        .gte("sent_at", since.isoformat()).eq("provider_response->>kind", "morning_list")
+        .execute().data or []
+    )
+    return {r["agent_name"] for r in rows if r.get("agent_name")}
+
+
+def _morning_lists(rows: list[dict], now: datetime) -> int:
+    """Once per working day: each agent gets ONE message with the customers
+    still waiting from earlier days, instead of separate pings about them."""
+    window = _morning_window(now)
+    if not window:
+        return 0
+    day, midnight, work_start = window
+    if day not in _morning_sent:
+        _morning_sent.clear()
+        _morning_sent[day] = _agents_with_morning_list(midnight)  # survives restarts
+    done = _morning_sent[day]
+
+    by_agent: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        agent = row.get("agent_name")
+        snoozed = parse_dt(row.get("snoozed_until"))
+        if not agent or agent in done or no_reply_needed(row) or (snoozed and snoozed > now):
+            continue
+        since, reminded = parse_dt(row["waiting_since"]), parse_dt(row.get("last_reminded_at"))
+        if since and since < work_start and not (reminded and reminded >= work_start):
+            by_agent[agent].append(row)
+    if not by_agent:
+        return 0
+
+    keep_ids = {r["id"] for r in _still_waiting([r for agent_rows in by_agent.values() for r in agent_rows])}
+    order = {"urgent": 0, "normal": 1, "low": 2}
+    sent = 0
+    for agent, agent_rows in by_agent.items():
+        done.add(agent)  # before sending: never twice, even if a channel fails
+        items = [{"row": r, "elapsed": SCHEDULE.working_minutes_between(parse_dt(r["waiting_since"]), now), "stage": 1}
+                 for r in agent_rows if r["id"] in keep_ids]
+        if not items:
+            continue
+        items.sort(key=lambda i: (order.get(i["row"].get("priority") if reply_ai.mode() == "live" else None, 1),
+                                  -i["elapsed"]))
+        if _deliver_morning_list(agent, items, now):
+            sent += 1
+    return sent
+
+
 def _deliver_escalation(items: list[dict]) -> None:
     shadow = mode() == "shadow"
     subject, text, body_html = _escalation_texts(items, shadow)
@@ -556,6 +737,11 @@ def run_cycle(now: datetime | None = None) -> dict:
 
     rows, stats = _sync(now)
     result = {"at": now.isoformat(), "mode": current_mode, **stats, "reminded": 0, "escalated": 0}
+    try:
+        # Also outside working hours, so the morning starts with checked messages.
+        result["checked"] = _classify(rows, now)
+    except Exception as exc:
+        log.error(f"[reminders] AI check failed, reminders continue: {notify_safe(exc)}")
 
     if not SCHEDULE.is_working_time(now):
         result["note"] = "outside working hours; tracking only"
@@ -569,7 +755,7 @@ def run_cycle(now: datetime | None = None) -> dict:
         if row.get("agent_name"):
             waiting_per_agent[row["agent_name"]] += 1
         snoozed = parse_dt(row.get("snoozed_until"))
-        if snoozed and snoozed > now:
+        if (snoozed and snoozed > now) or no_reply_needed(row):
             continue
         elapsed = SCHEDULE.working_minutes_between(parse_dt(row["waiting_since"]), now)
         escalated = bool(row.get("escalated_at"))
@@ -581,7 +767,7 @@ def run_cycle(now: datetime | None = None) -> dict:
             escalated=escalated,
             has_agent=bool(row.get("agent_name")),
             now=now,
-            ladder=LADDER,
+            ladder=ladder_for(row),
             escalation_count=esc_count,
             first_escalated_at=parse_dt(row.get("escalated_at")),
         )
@@ -622,11 +808,16 @@ def run_cycle(now: datetime | None = None) -> dict:
         result["escalated"] = sum(1 for i in marked if i["esc_stage"] == 0)
         result["followups"] = sum(1 for i in marked if i["esc_stage"] > 0)
 
+    try:
+        result["morning_lists"] = _morning_lists(rows, now)
+    except Exception as exc:
+        log.error(f"[reminders] morning list failed: {notify_safe(exc)}")
+
     if current_mode == "shadow":
         _flush_shadow_digest(now)
 
     _last_cycle = result
-    if result["reminded"] or result["escalated"] or result.get("followups") or stats["opened"]:
+    if result["reminded"] or result["escalated"] or result.get("followups") or result.get("morning_lists") or stats["opened"]:
         log.info(f"[reminders] {result}")
     return result
 
@@ -648,6 +839,10 @@ def status_snapshot() -> dict:
             "escalated": bool(r.get("escalated_at")),
             "supervisor_emails_sent": r.get("escalation_count") or (1 if r.get("escalated_at") else 0),
             "last_message": _short(r.get("last_inbound_body")),
+            "needs_reply": r.get("needs_reply"),
+            "priority": r.get("priority"),
+            "ai_reason": r.get("ai_reason"),
+            "ai_source": r.get("ai_source"),
         })
     return {
         "mode": mode(),
@@ -660,6 +855,11 @@ def status_snapshot() -> dict:
             "escalate_min": LADDER.escalate_min,
             "followup_hours_after_escalation": list(LADDER.followup_hours),
             "agent_max_working_hours": LADDER.agent_max_working_hours,
+            "ai_mode": reply_ai.mode(),
+            "ai_available_now": reply_ai.available(),
+            "urgent_minutes": list(URGENT_STEPS),
+            "low_first_min": LOW_FIRST_MIN,
+            "morning_list_at": MORNING_LIST_AT,
             "track_max_age_hours": MAX_AGE_HOURS,
             "escalation_emails_configured": len(_escalation_emails()),
         },

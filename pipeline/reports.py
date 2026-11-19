@@ -303,6 +303,8 @@ def _waiting_now(agents: dict | None = None) -> list[dict]:
             "since": parse_dt(r.get("waiting_since")), "body": r.get("last_inbound_body"),
             "reminders": r.get("reminder_count") or 0,
             "escalations": r.get("escalation_count") or (1 if r.get("escalated_at") else 0),
+            "needs_reply": r.get("needs_reply"), "priority": r.get("priority"),
+            "ai_reason": r.get("ai_reason"), "ai_source": r.get("ai_source"),
         })
     out.sort(key=lambda w: -w["elapsed_min"])
     return out

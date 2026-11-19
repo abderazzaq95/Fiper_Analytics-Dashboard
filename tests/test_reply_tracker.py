@@ -185,10 +185,40 @@ class LadderTest(unittest.TestCase):
     def test_rows_escalated_before_followups_existed_count_as_one(self):
         self.assertEqual(self.followup(0, 25), {"followup"})
 
-    def test_agent_never_pinged_about_very_old_wait(self):
-        # More than 20 working hours: supervisor only, no agent reminder.
-        self.assertEqual(self.due(21 * 60, count=0), {"escalate"})
-        self.assertEqual(self.due(21 * 60, count=0, agent=False), {"escalate"})
+    def test_old_wait_gets_no_new_pings_or_escalations(self):
+        # More than one working day (10 h): morning list + reports only.
+        self.assertEqual(self.due(10 * 60 + 1, count=0), set())
+        self.assertEqual(self.due(10 * 60 + 1, count=0, agent=False), set())
+        self.assertEqual(self.due(10 * 60, count=0), {"remind", "escalate"})  # still inside the day
+
+    def test_old_escalated_wait_keeps_its_followups(self):
+        self.assertEqual(due_actions(elapsed_working_min=40 * 60, reminder_count=2, last_reminded_at=None,
+                                     escalated=True, has_agent=True, now=self.now, ladder=LADDER,
+                                     escalation_count=1, first_escalated_at=self.now - timedelta(hours=25)),
+                         {"followup"})
+
+    def test_urgent_ladder_is_faster(self):
+        urgent = LADDER.for_priority("urgent")
+        due = lambda elapsed, count=0, last=None: due_actions(  # noqa: E731
+            elapsed_working_min=elapsed, reminder_count=count, last_reminded_at=last, escalated=False,
+            has_agent=True, now=self.now, ladder=urgent)
+        self.assertEqual(due(4), set())
+        self.assertEqual(due(5), {"remind"})
+        self.assertEqual(due(20, count=1, last=self.now - timedelta(minutes=15)), {"remind"})
+        self.assertEqual(due(60, count=2), {"escalate"})
+
+    def test_low_priority_one_reminder_never_escalated(self):
+        low = LADDER.for_priority("low")
+        due = lambda elapsed, count=0: due_actions(  # noqa: E731
+            elapsed_working_min=elapsed, reminder_count=count, last_reminded_at=self.now - timedelta(hours=1),
+            escalated=False, has_agent=True, now=self.now, ladder=low)
+        self.assertEqual(due(29), set())
+        self.assertEqual(due(30), {"remind"})
+        self.assertEqual(due(300, count=1), set())
+
+    def test_normal_or_unknown_priority_keeps_the_ladder(self):
+        self.assertIs(LADDER.for_priority("normal"), LADDER)
+        self.assertIs(LADDER.for_priority(None), LADDER)
 
     def test_weekend_message_still_reminds_agent_on_monday(self):
         # Friday 20:00 local -> Monday 09:15 local is only 15 working minutes.

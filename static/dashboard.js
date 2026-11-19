@@ -150,6 +150,7 @@ const WAIT_COLS = [
   {key: 'agent', en: 'Agent', ar: 'الموظف', val: i => i.agent || ''},
   {key: 'line', en: 'Line', ar: 'الخط', val: i => i.line || ''},
   {key: 'live', en: 'Waiting', ar: 'الانتظار', val: i => i.live},
+  {key: 'priority', en: 'Priority', ar: 'الأولوية', val: i => i.needs_reply === false ? 0 : ({urgent: 3, normal: 2, low: 1}[i.priority] || '')},
   {key: 'since', en: 'Since', ar: 'منذ', val: i => i.since ? Date.parse(i.since) : 0},
   {key: 'body', en: 'Last message', ar: 'آخر رسالة', val: i => i.body || ''},
   {key: 'status', en: 'Status', ar: 'الحالة', val: i => i.escalations * 100 + i.reminders},
@@ -186,7 +187,7 @@ function sortWaiting(key) {
   renderWaiting();
 }
 function compareWaiting(a, b) {
-  const col = WAIT_COLS.find(c => c.key === _waitSort.key) || WAIT_COLS[4];
+  const col = WAIT_COLS.find(c => c.key === _waitSort.key) || WAIT_COLS.find(c => c.key === 'live');
   const va = col.val(a), vb = col.val(b);
   if (va === '' && vb !== '') return 1;       // empty values stay last
   if (vb === '' && va !== '') return -1;
@@ -201,6 +202,17 @@ function waitStatus(i) {
   if (i.reminders) return `<span class="pill pill-warn">${T(`Reminded ×${i.reminders}`, `تذكير ×${i.reminders}`)}</span>`;
   return `<span class="pill pill-gray">${T('New', 'جديد')}</span>`;
 }
+function waitPriority(i) {
+  // The AI decision (or the word rules while the AI is unavailable); the reason shows on hover.
+  const why = [i.ai_reason, i.ai_source === 'rules' ? T('word rules, AI not checked yet', 'قواعد الكلمات، لم يفحصها الذكاء الاصطناعي بعد') : '']
+    .filter(Boolean).join(' · ');
+  const pill = (cls, en, ar) => `<span class="pill ${cls}" title="${esc(why)}">${esc(T(en, ar))}</span>`;
+  if (i.needs_reply === false) return pill('pill-green', 'No reply needed', 'لا يحتاج رداً');
+  if (i.priority === 'urgent') return pill('pill-red', 'Urgent', 'عاجل');
+  if (i.priority === 'low') return pill('pill-gray', 'Low', 'منخفضة');
+  if (i.priority === 'normal') return pill('pill-blue', 'Normal', 'عادية');
+  return '—';
+}
 function renderWaiting() {
   const list = document.getElementById('waitingList');
   if (!list || !_waiting) return;
@@ -212,17 +224,22 @@ function renderWaiting() {
   const oldest = all.reduce((m, i) => Math.max(m, i.live), 0);
   const unassigned = all.filter(i => !i.agent).length;
   const escalated = all.filter(i => i.escalations).length;
+  const urgent = all.filter(i => i.priority === 'urgent' && i.needs_reply !== false).length;
+  const noReply = all.filter(i => i.needs_reply === false).length;
   const kpi = (en, ar, value, tone = '', sub = '') =>
     `<div class="kpi"><div class="kpi-label">${esc(T(en, ar))}</div><div class="kpi-value ${tone}">${esc(value)}</div>${sub ? `<div class="kpi-foot">${esc(sub)}</div>` : ''}</div>`;
   document.getElementById('waitingKpis').innerHTML =
     kpi('Waiting now', 'بانتظار الرد', all.length, all.length ? 'mid' : 'good') +
     kpi('Over 2 hours', 'أكثر من ساعتين', over2, over2 ? 'bad' : 'good') +
     kpi('Longest wait', 'أطول انتظار', all.length ? waitMins(oldest) : '—', oldest >= 120 ? 'bad' : '') +
+    kpi('Urgent', 'عاجل', urgent, urgent ? 'bad' : 'good', T(`${noReply} need no reply (AI)`, `${noReply} لا يحتاج رداً (AI)`)) +
     kpi('Escalated', 'تم التصعيد', escalated, escalated ? 'bad' : 'good') +
     kpi('Unassigned', 'غير مُسنَد', unassigned, unassigned ? 'mid' : 'good');
   const modeTxt = d.mode === 'live' ? T('Reminders live', 'التذكيرات مفعّلة') : d.mode === 'shadow' ? T('Reminders in test mode', 'التذكيرات في وضع التجربة') : T('Reminders off', 'التذكيرات متوقفة');
+  const aiTxt = d.ai_mode === 'live' ? T('AI check live', 'فحص الذكاء الاصطناعي مفعّل')
+    : d.ai_mode === 'shadow' ? T('AI check in test mode (shown, not applied)', 'فحص الذكاء الاصطناعي تجريبي (يُعرض ولا يُطبَّق)') : T('AI check off', 'فحص الذكاء الاصطناعي متوقف');
   document.getElementById('waitingInfo').textContent =
-    `${modeTxt} · ${T(`working time ${d.work_hours}`, `وقت العمل ${d.work_hours}`)} · ${T(`reminders at ${d.ladder.first} and ${d.ladder.second} min, supervisor at ${d.ladder.escalate / 60}h`, `تذكير بعد ${d.ladder.first} و${d.ladder.second} د، المشرف بعد ${d.ladder.escalate / 60} س`)}`;
+    `${modeTxt} · ${aiTxt} · ${T(`working time ${d.work_hours}`, `وقت العمل ${d.work_hours}`)} · ${T(`reminders at ${d.ladder.first} and ${d.ladder.second} min, supervisor at ${d.ladder.escalate / 60}h`, `تذكير بعد ${d.ladder.first} و${d.ladder.second} د، المشرف بعد ${d.ladder.escalate / 60} س`)}`;
 
   const counts = new Map();
   all.forEach(i => counts.set(i.agent || null, (counts.get(i.agent || null) || 0) + 1));
@@ -254,6 +271,7 @@ function renderWaiting() {
       <td>${esc(i.agent || T('Unassigned', 'غير مُسنَد'))}</td>
       <td>${esc(i.line || '—')}</td>
       <td><span class="pill ${tone}">${esc(waitMins(i.live))}</span></td>
+      <td>${waitPriority(i)}</td>
       <td class="num">${esc(fmtLocal(i.since))}</td>
       <td class="t-msg" dir="auto" title="${esc(i.body || '')}">${esc(i.body || '')}</td>
       <td>${waitStatus(i)}</td></tr>`;

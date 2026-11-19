@@ -3246,6 +3246,7 @@ def waiting_now():
         "work_hours": f"{reminders.SCHEDULE.start_hour:02d}:00-{reminders.SCHEDULE.end_hour:02d}:00 {reminders.TZ_LABEL}",
         "ladder": {"first": reminders.LADDER.first_min, "second": reminders.LADDER.second_min,
                    "escalate": reminders.LADDER.escalate_min},
+        "ai_mode": reminders.reply_ai.mode(),
         "total": len(items),
         "over_2h": sum(1 for w in items if w["elapsed_min"] >= 120),
         "by_agent": sorted(([a or None, n] for a, n in by_agent.items()), key=lambda x: -x[1]),
@@ -3260,6 +3261,10 @@ def waiting_now():
             "body": reminder_templates.short(w.get("body"), 160),
             "reminders": w.get("reminders", 0),
             "escalations": w.get("escalations", 0),
+            "needs_reply": w.get("needs_reply"),
+            "priority": w.get("priority"),
+            "ai_reason": w.get("ai_reason"),
+            "ai_source": w.get("ai_source"),
         } for w in items],
         "generated_at": now.isoformat(),
     }

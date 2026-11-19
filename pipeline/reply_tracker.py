@@ -6,7 +6,7 @@ Supabase credentials.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta, timezone, tzinfo
 
 # ── Banal customer messages ───────────────────────────────────────────────────
@@ -251,16 +251,26 @@ def median(values: list[float]) -> float | None:
 @dataclass(frozen=True)
 class Ladder:
     first_min: float = 15
-    second_min: float = 45
-    escalate_min: float = 120
+    second_min: float | None = 45      # None = only one agent reminder
+    escalate_min: float | None = 120   # None = never escalated (low priority)
     min_gap_min: float = 10  # never two agent reminders closer than this (wall clock)
     # Supervisor follow-ups, in hours after the FIRST escalation (calendar time;
     # only sent during working hours, so a Saturday follow-up arrives Monday).
     followup_hours: tuple[float, ...] = (24, 72)
-    # Agents are never pinged about a customer who has waited more than this
-    # much WORKING time (2 working days by default). Working time, not calendar
-    # time, so a Friday-evening message is still "fresh" on Monday morning.
-    agent_max_working_hours: float = 20
+    # After this much WORKING time (one working day by default) a wait gets no
+    # new reminders or escalations: it goes into the agent's morning list and
+    # the supervisor reports instead. Working time, not calendar time, so a
+    # Friday-evening message is still "fresh" on Monday morning.
+    agent_max_working_hours: float = 10
+
+    def for_priority(self, priority: str | None, urgent: tuple[float, float, float] = (5, 20, 60),
+                     low_first_min: float = 30) -> "Ladder":
+        """urgent: faster steps; low: one late reminder, no escalation; else unchanged."""
+        if priority == "urgent":
+            return replace(self, first_min=urgent[0], second_min=urgent[1], escalate_min=urgent[2])
+        if priority == "low":
+            return replace(self, first_min=low_first_min, second_min=None, escalate_min=None)
+        return self
 
 
 def parse_hours_list(value: str | None, default: tuple[float, ...] = (24, 72)) -> tuple[float, ...]:
@@ -298,7 +308,10 @@ def due_actions(
             actions.add("followup")
         return actions
 
-    agent_ok = elapsed_working_min <= ladder.agent_max_working_hours * 60
+    if elapsed_working_min > ladder.agent_max_working_hours * 60:
+        # Old wait: no new pings and no new escalation. It is in the agent's
+        # morning list and in the supervisor reports instead.
+        return actions
 
     if not has_agent:
         # Nobody owns the chat: go straight to the supervisor at the first step.
@@ -306,20 +319,18 @@ def due_actions(
             actions.add("escalate")
         return actions
 
-    if elapsed_working_min >= ladder.escalate_min:
+    if ladder.escalate_min is not None and elapsed_working_min >= ladder.escalate_min:
         actions.add("escalate")
-        # The agent must still hear about it once, even if we only noticed late,
-        # unless the customer has been waiting too long (supervisor only then).
-        if reminder_count == 0 and agent_ok:
+        # The agent must still hear about it once, even if we only noticed late.
+        if reminder_count == 0:
             actions.add("remind")
         return actions
 
-    if not agent_ok:
-        return actions
     gap_ok = last_reminded_at is None or (now - last_reminded_at) >= timedelta(minutes=ladder.min_gap_min)
     if reminder_count == 0 and elapsed_working_min >= ladder.first_min:
         actions.add("remind")
-    elif reminder_count == 1 and elapsed_working_min >= ladder.second_min and gap_ok:
+    elif (reminder_count == 1 and ladder.second_min is not None
+          and elapsed_working_min >= ladder.second_min and gap_ok):
         actions.add("remind")
     return actions
 
