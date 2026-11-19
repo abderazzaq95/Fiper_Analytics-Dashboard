@@ -361,7 +361,7 @@ def _classify(rows: list[dict], now: datetime) -> dict:
     message has not been checked yet. At most AI_MAX_PER_CYCLE Gemini calls;
     the rest get the word rules now and the AI on a later cycle."""
     global _ai_columns_warned
-    stats = {"ai": 0, "rules": 0, "no_reply_needed": 0}
+    stats = {"gemini": 0, "claude": 0, "rules": 0, "no_reply_needed": 0}
     if reply_ai.mode() == "off" or not rows:
         return stats
     if "ai_checked_inbound_at" not in rows[0]:
@@ -403,7 +403,7 @@ def _classify(rows: list[dict], now: datetime) -> dict:
             log.warning(f"[reminders] could not store AI decision: {notify_safe(exc)}")
             continue
         row.update(fields)
-        stats[decision["source"]] += 1
+        stats[decision["source"]] = stats.get(decision["source"], 0) + 1
         stats["no_reply_needed"] += int(decision["needs_reply"] is False)
     return stats
 

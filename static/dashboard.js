@@ -204,7 +204,7 @@ function waitStatus(i) {
 }
 function waitPriority(i) {
   // The AI decision (or the word rules while the AI is unavailable); the reason shows on hover.
-  const why = [i.ai_reason, i.ai_source === 'rules' ? T('word rules, AI not checked yet', 'قواعد الكلمات، لم يفحصها الذكاء الاصطناعي بعد') : '']
+  const why = [i.ai_reason, i.ai_source === 'rules' ? T('word rules, AI not checked yet', 'قواعد الكلمات، لم يفحصها الذكاء الاصطناعي بعد') : (i.ai_source ? `AI: ${i.ai_source}` : '')]
     .filter(Boolean).join(' · ');
   const pill = (cls, en, ar) => `<span class="pill ${cls}" title="${esc(why)}">${esc(T(en, ar))}</span>`;
   if (i.needs_reply === false) return pill('pill-green', 'No reply needed', 'لا يحتاج رداً');

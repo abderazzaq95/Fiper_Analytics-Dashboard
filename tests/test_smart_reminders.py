@@ -78,16 +78,29 @@ class RulesTest(unittest.TestCase):
 
     def test_parse_answer(self):
         self.assertEqual(reply_ai.parse_answer('```json\n{"needs_reply": false, "priority": "low", "reason": "thanks only"}\n```'),
-                         {"needs_reply": False, "priority": "low", "reason": "thanks only", "source": "ai"})
+                         {"needs_reply": False, "priority": "low", "reason": "thanks only", "source": "gemini"})
         self.assertEqual(reply_ai.parse_answer('{"needs_reply": "maybe", "priority": "huge"}')["priority"], "normal")
         self.assertTrue(reply_ai.parse_answer('{"needs_reply": "maybe"}')["needs_reply"])  # only an explicit false skips
         self.assertIsNone(reply_ai.parse_answer("sorry, I cannot"))
 
 
+def reset_ai_state():
+    reply_ai._state.update(day=None, used=0, last_call=0.0, last_error=None, paused={"gemini": None, "claude": None})
+
+
+def claude_reply(text='{"needs_reply": true, "priority": "urgent", "reason": "withdrawal not received"}', stop="end_turn"):
+    client = mock.Mock()
+    message = mock.Mock(stop_reason=stop, content=[mock.Mock(type="thinking"), mock.Mock(type="text", text=text)])
+    client.beta.messages.create.return_value = message
+    client.messages.create.return_value = message
+    return client
+
+
 class ClassifyTest(unittest.TestCase):
     def setUp(self):
-        reply_ai._state.update(day=None, used=0, paused_until=None, last_call=0.0, last_error=None)
-        self.env = mock.patch.dict(os.environ, {"GEMINI_API_KEY": "test-key", "REMINDER_AI_SPACING_SECONDS": "0"})
+        reset_ai_state()
+        self.env = mock.patch.dict(os.environ, {"GEMINI_API_KEY": "test-key", "ANTHROPIC_API_KEY": "",
+                                                "REMINDER_AI_CLAUDE_MODEL": ""})
         self.env.start()
         self.spacing = mock.patch.object(reply_ai, "MIN_SECONDS_BETWEEN_CALLS", 0)
         self.spacing.start()
@@ -95,7 +108,7 @@ class ClassifyTest(unittest.TestCase):
     def tearDown(self):
         self.env.stop()
         self.spacing.stop()
-        reply_ai._state.update(day=None, used=0, paused_until=None, last_call=0.0)
+        reset_ai_state()
 
     def reply(self, status, text=""):
         response = mock.Mock(status_code=status)
@@ -133,7 +146,53 @@ class ClassifyTest(unittest.TestCase):
         self.assertFalse(reply_ai.available())  # paused, no retry storm
         self.assertIn("HTTP 404", reply_ai.classify(context("hi"))["reason"])
         with mock.patch.dict(os.environ, {"GEMINI_API_KEY": ""}):
-            self.assertIn("GEMINI_API_KEY not set", reply_ai.classify(context("hi"))["reason"])
+            self.assertIn("no AI key set", reply_ai.classify(context("hi"))["reason"])
+
+    def test_claude_answers_when_gemini_is_out_of_quota(self):
+        client = claude_reply()
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant-test"}), \
+             mock.patch.object(reply_ai.requests, "post", return_value=self.reply(429)) as post, \
+             mock.patch.object(reply_ai, "_claude", return_value=client):
+            first = reply_ai.classify(context("وين السحب تبعي"))
+            second = reply_ai.classify(context("وين السحب تبعي"))
+        self.assertEqual((first["source"], first["priority"]), ("claude", "urgent"))
+        self.assertEqual(second["source"], "claude")
+        self.assertEqual(post.call_count, 1)  # Gemini paused after its 429; Claude answers directly
+        kwargs = client.beta.messages.create.call_args.kwargs
+        self.assertEqual(kwargs["model"], "claude-opus-5-5")
+        self.assertEqual(kwargs["fallbacks"], "default")
+        self.assertEqual(kwargs["output_config"]["format"]["schema"], reply_ai.ANSWER_SCHEMA)
+
+    def test_claude_only_without_gemini_key(self):
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "", "ANTHROPIC_API_KEY": "sk-ant-test"}), \
+             mock.patch.object(reply_ai.requests, "post") as post, \
+             mock.patch.object(reply_ai, "_claude", return_value=claude_reply()):
+            self.assertEqual(reply_ai.classify(context("hi"))["source"], "claude")
+        post.assert_not_called()
+
+    def test_other_claude_model_uses_plain_endpoint(self):
+        client = claude_reply()
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "", "ANTHROPIC_API_KEY": "sk-ant-test",
+                                          "REMINDER_AI_CLAUDE_MODEL": "claude-haiku-5-5"}), \
+             mock.patch.object(reply_ai, "_claude", return_value=client):
+            self.assertEqual(reply_ai.classify(context("hi"))["source"], "claude")
+        self.assertEqual(client.messages.create.call_args.kwargs["model"], "claude-haiku-5-5")
+        client.beta.messages.create.assert_not_called()
+
+    def test_claude_refusal_or_error_falls_back_to_rules(self):
+        import anthropic
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "", "ANTHROPIC_API_KEY": "sk-ant-test"}), \
+             mock.patch.object(reply_ai, "_claude", return_value=claude_reply(stop="refusal")):
+            self.assertIn("Claude stopped: refusal", reply_ai.classify(context("hi"))["reason"])
+        failing = mock.Mock()
+        failing.beta.messages.create.side_effect = anthropic.AuthenticationError(
+            "invalid x-api-key", response=mock.Mock(status_code=401, headers={}), body=None)
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "", "ANTHROPIC_API_KEY": "sk-ant-test"}), \
+             mock.patch.object(reply_ai, "_claude", return_value=failing):
+            decision = reply_ai.classify(context("hi"))
+            self.assertEqual(decision["source"], "rules")
+            self.assertIn("Claude HTTP 401", decision["reason"])
+            self.assertFalse(reply_ai.available())  # paused
 
     def test_daily_limit(self):
         reply_ai._state.update(day=reply_ai.date.today(), used=reply_ai.DAILY_LIMIT)
@@ -185,13 +244,13 @@ class EngineTest(unittest.TestCase):
     def test_classify_respects_the_budget_and_rechecks_rules_later(self):
         rows = [row(i) for i in range(1, 12)]
         rows.append(row(20, checked="2026-11-16T10:00:00+00:00", source="ai", priority="normal", needs_reply=True))
-        decision = {"needs_reply": False, "priority": "low", "reason": "thanks", "source": "ai"}
+        decision = {"needs_reply": False, "priority": "low", "reason": "thanks", "source": "claude"}
         with mock.patch.object(reminders, "AI_MAX_PER_CYCLE", 8), \
              mock.patch.object(reply_ai, "available", return_value=True), \
              mock.patch.object(reply_ai, "classify", return_value=decision) as classify:
             stats = reminders._classify(rows, TUE_0920)
         self.assertEqual(classify.call_count, 8)
-        self.assertEqual(stats, {"ai": 8, "rules": 3, "no_reply_needed": 8})
+        self.assertEqual(stats, {"gemini": 0, "claude": 8, "rules": 3, "no_reply_needed": 8})
         self.assertEqual(len(self.db.updates), 11)  # the already-checked row is left alone
         self.assertEqual(sum(r["ai_source"] == "rules" for r in rows), 3)
         # Next cycle: the 3 rule-checked rows get the AI.
@@ -204,7 +263,7 @@ class EngineTest(unittest.TestCase):
         rows = [row(1)]
         for key in ("needs_reply", "priority", "ai_reason", "ai_source", "ai_checked_inbound_at"):
             del rows[0][key]
-        self.assertEqual(reminders._classify(rows, TUE_0920)["ai"], 0)
+        self.assertEqual(reminders._classify(rows, TUE_0920)["claude"], 0)
         self.assertEqual(self.db.updates, [])
 
     def test_shadow_ai_records_but_does_not_change_reminders(self):

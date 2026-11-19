@@ -1,12 +1,12 @@
 """Does a waiting customer really need an answer, and how urgently?
 
-Gemini reads the customer's latest messages together with the agent's last
-message. Word rules are the fallback whenever the AI is unavailable, paused
-by its quota, or over the daily limit. The rules never decide "no reply
-needed": a failing AI must not silence a reminder.
+The AI reads the customer's latest messages together with the agent's last
+message. Gemini (free tier) is asked first; when it fails or is out of quota,
+Claude (Anthropic API) answers instead. Word rules are the last fallback; they
+never decide "no reply needed": a failing AI must not silence a reminder.
 
-Free-tier friendly: callers limit how many checks run per cycle, calls are
-spaced, a 429 pauses the AI for a while, and there is a daily cap.
+Cost/quota guards: callers limit how many checks run per cycle, Gemini calls
+are spaced, an error pauses that provider for a while, and there is a daily cap.
 """
 from __future__ import annotations
 
@@ -26,8 +26,10 @@ log = logging.getLogger("fiper.reply_ai")
 
 PRIORITIES = ("urgent", "normal", "low")
 DAILY_LIMIT = int(os.getenv("REMINDER_AI_DAILY_LIMIT", "500"))
-MIN_SECONDS_BETWEEN_CALLS = float(os.getenv("REMINDER_AI_SPACING_SECONDS", "4.5"))
-PAUSE_AFTER_LIMIT = timedelta(minutes=15)
+MIN_SECONDS_BETWEEN_CALLS = float(os.getenv("REMINDER_AI_SPACING_SECONDS", "4.5"))  # Gemini free tier
+PAUSE_AFTER_ERROR = timedelta(minutes=15)
+# Models that support server-side refusal fallbacks (fallbacks="default").
+_CLAUDE_FALLBACK_MODELS = {"claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-fable-5-2"}
 
 URGENT = re.compile(
     r"(سحب|ايداع|إيداع|حوال[ةه]|تحويل|رصيد|ارباح|أرباح|فلوس|مبلغ|مصاري|شكوى|احتيال|نصب|"
@@ -37,14 +39,28 @@ GREETING = re.compile(
     r"^(ال?سلام عليكم|السلام|سلام|مرحب\S*|اهلا\S*|أهلا\S*|هلا\S*|hi+|hello|hey|صباح الخير|مساء الخير|"
     r"صباح النور|مساء النور|good (morning|evening))\b", re.I)
 
-_state = {"day": None, "used": 0, "paused_until": None, "last_call": 0.0, "last_error": None}
+ANSWER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "needs_reply": {"type": "boolean"},
+        "priority": {"type": "string", "enum": list(PRIORITIES)},
+        "reason": {"type": "string"},
+    },
+    "required": ["needs_reply", "priority", "reason"],
+    "additionalProperties": False,
+}
+
+_state = {"day": None, "used": 0, "last_call": 0.0, "last_error": None, "paused": {"gemini": None, "claude": None}}
 _lock = threading.Lock()
+_claude_client = None
 
 
 def mode() -> str:
     value = os.getenv("REMINDER_AI_MODE", "live").strip().lower()
     return value if value in {"off", "shadow", "live"} else "live"
 
+
+# ── Word rules (last fallback) ────────────────────────────────────────────────
 
 def _greeting_only(text: str) -> bool:
     words = " ".join(text.split()).strip(" .!,")
@@ -65,6 +81,8 @@ def rules(context: dict) -> dict:
     return {"needs_reply": True, "priority": priority, "reason": "word rules", "source": "rules"}
 
 
+# ── Shared prompt + answer parsing ────────────────────────────────────────────
+
 def _prompt(context: dict) -> str:
     customer = "\n".join(f"{i}) {t[:400]}" for i, t in enumerate(context.get("customer", [])[-5:], 1))
     return (
@@ -84,7 +102,7 @@ def _prompt(context: dict) -> str:
     )
 
 
-def parse_answer(text: str) -> dict | None:
+def parse_answer(text: str, source: str = "gemini") -> dict | None:
     match = re.search(r"\{.*\}", text or "", re.S)
     if not match:
         return None
@@ -97,19 +115,40 @@ def parse_answer(text: str) -> dict | None:
         "needs_reply": data.get("needs_reply") is not False,
         "priority": priority if priority in PRIORITIES else "normal",
         "reason": " ".join(str(data.get("reason") or "").split())[:120],
-        "source": "ai",
+        "source": source,
     }
 
 
+def _clean(message) -> str:
+    # Provider error text, never anything that looks like a key.
+    text = " ".join(str(message or "").split())
+    return re.sub(r"(key=|AIza|sk-ant-)[\w-]+", "[key]", text)
+
+
+# ── Availability / limits ─────────────────────────────────────────────────────
+
+def _key(provider: str) -> str:
+    return (os.getenv("GEMINI_API_KEY") if provider == "gemini" else os.getenv("ANTHROPIC_API_KEY")) or ""
+
+
+def _ready(provider: str) -> bool:
+    paused = _state["paused"].get(provider)
+    return bool(_key(provider)) and not (paused and datetime.now(timezone.utc) < paused)
+
+
+def _pause(provider: str) -> None:
+    with _lock:
+        _state["paused"][provider] = datetime.now(timezone.utc) + PAUSE_AFTER_ERROR
+
+
 def available() -> bool:
-    if not os.getenv("GEMINI_API_KEY"):
-        return False
     with _lock:
         today = date.today()
         if _state["day"] != today:
             _state.update(day=today, used=0)
-        paused = _state["paused_until"]
-        return _state["used"] < DAILY_LIMIT and not (paused and datetime.now(timezone.utc) < paused)
+        if _state["used"] >= DAILY_LIMIT:
+            return False
+    return _ready("gemini") or _ready("claude")
 
 
 def _fallback(context: dict, why: str) -> dict:
@@ -118,25 +157,11 @@ def _fallback(context: dict, why: str) -> dict:
     return {**rules(context), "reason": f"word rules · {why}"[:120]}
 
 
-def _google_error(response) -> str:
-    # Google's own message, never the request URL (it contains the key).
-    try:
-        message = response.json().get("error", {}).get("message", "")
-    except ValueError:
-        message = ""
-    message = re.sub(r"(key=|AIza)[\w-]+", "[key]", " ".join(str(message).split()))
-    return f"Gemini HTTP {response.status_code}: {message}"[:110]
+# ── Providers ─────────────────────────────────────────────────────────────────
 
-
-def classify(context: dict) -> dict:
-    """AI decision, or the rules when the AI cannot be used right now."""
-    if not os.getenv("GEMINI_API_KEY"):
-        return _fallback(context, "GEMINI_API_KEY not set")
-    if not available():
-        return _fallback(context, _state.get("last_error") or "AI paused or daily limit")
+def _ask_gemini(context: dict) -> tuple[dict | None, str]:
     with _lock:
         wait = _state["last_call"] + MIN_SECONDS_BETWEEN_CALLS - time.time()
-        _state["used"] += 1
     if wait > 0:
         time.sleep(wait)
     _state["last_call"] = time.time()
@@ -145,7 +170,7 @@ def classify(context: dict) -> dict:
     try:
         response = requests.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
-            params={"key": os.getenv("GEMINI_API_KEY")},
+            params={"key": _key("gemini")},
             json={
                 "contents": [{"role": "user", "parts": [{"text": _prompt(context)}]}],
                 "generationConfig": {"temperature": 0, "maxOutputTokens": 120, "responseMimeType": "application/json"},
@@ -153,21 +178,75 @@ def classify(context: dict) -> dict:
             timeout=20,
         )
     except Exception as exc:
-        log.warning(f"[reply_ai] Gemini unavailable: {type(exc).__name__}")
-        return _fallback(context, f"Gemini unreachable ({type(exc).__name__})")
+        return None, f"Gemini unreachable ({type(exc).__name__})"
     if response.status_code >= 400:
-        why = _google_error(response)
-        # Quota (429) or a setup problem (bad key/model): pause instead of failing 8 times a cycle.
-        with _lock:
-            _state["paused_until"] = datetime.now(timezone.utc) + PAUSE_AFTER_LIMIT
-        log.warning(f"[reply_ai] {why}; word rules for 15 minutes")
-        return _fallback(context, why)
+        try:
+            message = response.json().get("error", {}).get("message", "")
+        except ValueError:
+            message = ""
+        _pause("gemini")  # quota (429) or setup problem: don't retry every check
+        return None, f"Gemini HTTP {response.status_code}: {_clean(message)}"[:100]
     try:
         parts = response.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])
-        answer = parse_answer(parts[0].get("text", "") if parts else "")
+        answer = parse_answer(parts[0].get("text", "") if parts else "", "gemini")
     except Exception:
         answer = None
-    if not answer:
-        return _fallback(context, "Gemini answer unreadable")
-    _state["last_error"] = None
-    return answer
+    return answer, "" if answer else "Gemini answer unreadable"
+
+
+def _claude():
+    global _claude_client
+    if _claude_client is None:
+        import anthropic
+        _claude_client = anthropic.Anthropic(api_key=_key("claude"), timeout=60.0, max_retries=1)
+    return _claude_client
+
+
+def _ask_claude(context: dict) -> tuple[dict | None, str]:
+    import anthropic
+
+    model = os.getenv("REMINDER_AI_CLAUDE_MODEL", "").strip() or "claude-opus-5-5"
+    request = {
+        "model": model,
+        "max_tokens": 2000,  # thinking counts toward it; the answer itself is ~40 tokens
+        "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": ANSWER_SCHEMA}},
+        "messages": [{"role": "user", "content": _prompt(context)}],
+    }
+    try:
+        if model in _CLAUDE_FALLBACK_MODELS:
+            # Server-side refusal fallback: a declined request is re-run on another model.
+            response = _claude().beta.messages.create(
+                **request, betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+        else:
+            response = _claude().messages.create(**request)
+    except anthropic.APIConnectionError as exc:
+        return None, f"Claude unreachable ({type(exc).__name__})"
+    except anthropic.APIStatusError as exc:
+        _pause("claude")
+        return None, f"Claude HTTP {exc.status_code}: {_clean(getattr(exc, 'message', ''))}"[:100]
+    if response.stop_reason in ("refusal", "max_tokens"):
+        return None, f"Claude stopped: {response.stop_reason}"
+    text = next((block.text for block in response.content if block.type == "text"), "")
+    answer = parse_answer(text, "claude")
+    return answer, "" if answer else "Claude answer unreadable"
+
+
+def classify(context: dict) -> dict:
+    """AI decision (Gemini, then Claude), or the word rules when neither can answer."""
+    if not (_key("gemini") or _key("claude")):
+        return _fallback(context, "no AI key set (GEMINI_API_KEY / ANTHROPIC_API_KEY)")
+    if not available():
+        return _fallback(context, _state.get("last_error") or "AI paused or daily limit")
+    with _lock:
+        _state["used"] += 1
+    problems = []
+    for provider, ask in (("gemini", _ask_gemini), ("claude", _ask_claude)):
+        if not _ready(provider):
+            continue
+        answer, why = ask(context)
+        if answer:
+            _state["last_error"] = None
+            return answer
+        log.warning(f"[reply_ai] {why}")
+        problems.append(why)
+    return _fallback(context, " / ".join(problems) or "AI paused")
