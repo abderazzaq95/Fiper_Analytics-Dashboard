@@ -2,8 +2,10 @@
 
 Every few minutes (scheduled in main.py) ``run_cycle()``:
 
-1. Reads the recent WhatsApp timeline + Maqsam calls and works out which
-   customers are waiting (see reply_tracker.compute_wait_state).
+1. Reads the recent WhatsApp timeline + Maqsam calls + WhatsApp "sent"
+   events (agent voice notes, images and files, which ManyContacts does not
+   forward as messages) and works out which customers are waiting (see
+   reply_tracker.compute_wait_state).
 2. Keeps the ``pending_replies`` table in sync: one open row per customer
    phone; rows close automatically when an agent replies or calls.
 3. During working hours, sends a short reminder ladder per customer:
@@ -47,6 +49,7 @@ from pipeline import reply_ai
 from pipeline.reply_tracker import (
     Ladder,
     Schedule,
+    agent_send_times,
     compute_wait_state,
     due_actions,
     fmt_minutes,
@@ -227,6 +230,43 @@ def _load_call_times(phones: list[str], since: datetime) -> dict[str, list[datet
     return calls_by_phone
 
 
+SENDS_TABLE = "whatsapp_sends"
+_sends_warned = False
+
+
+def _load_sends(phones: list[str], since: datetime) -> dict[str, list[dict]]:
+    """WhatsApp "sent" events (migration 005) for these phones since `since`."""
+    global _sends_warned
+    real_phones = [p for p in phones if not p.startswith("lead:")]
+    sends: dict[str, list[dict]] = defaultdict(list)
+    try:
+        for chunk in _chunks(real_phones, 150):
+            for r in (
+                supabase.table(SENDS_TABLE).select("phone,sent_at,category")
+                .in_("phone", chunk).gte("sent_at", since.isoformat())
+                .execute().data or []
+            ):
+                key = phone_key(r.get("phone"))
+                if key:
+                    sends[key].append(r)
+    except Exception as exc:
+        if not _sends_warned:
+            log.warning(f"[reminders] voice-note replies not counted (run migrations/005_whatsapp_sends.sql?): {notify_safe(exc)}")
+            _sends_warned = True
+        return {}
+    return sends
+
+
+def _contact_times(convs: dict[str, dict], phones: list[str], since: datetime) -> dict[str, list[datetime]]:
+    """Agent contact besides WhatsApp texts: Maqsam calls + other messages
+    WhatsApp reported as sent (voice notes, images, files)."""
+    contact = _load_call_times(phones, since)
+    for phone, sends in _load_sends(phones, since).items():
+        messages = (convs.get(phone) or {}).get("messages", [])
+        contact[phone] = [*contact.get(phone, []), *agent_send_times(messages, sends)]
+    return contact
+
+
 def _canonical_agent(name: str | None) -> str | None:
     """Same person, one name (pipeline/agent_names.py, then the contact sheet)."""
     if not name:
@@ -274,7 +314,7 @@ def _sync(now: datetime) -> tuple[list[dict], dict]:
     # Pre-pass without calls to find candidates, then fetch calls only for them.
     states = {k: compute_wait_state(c["messages"]) for k, c in convs.items()}
     phones_to_check |= {k for k, s in states.items() if s.waiting_since}
-    calls = _load_call_times(sorted(phones_to_check), oldest)
+    calls = _contact_times(convs, sorted(phones_to_check), oldest)
     for k in phones_to_check:
         if k in convs:
             states[k] = compute_wait_state(convs[k]["messages"], calls.get(k))
@@ -450,10 +490,14 @@ def _still_waiting(rows: list[dict]) -> list[dict]:
             if dt and (m["lead_id"] not in latest_out or dt > latest_out[m["lead_id"]]):
                 latest_out[m["lead_id"]] = dt
 
+    sends = _load_sends(phones, parse_dt(since))
     keep = []
     for r in rows:
         since_r = parse_dt(r["waiting_since"])
         replied = any(latest_out.get(i) and latest_out[i] >= since_r for i in lead_ids_by_phone.get(r["phone"], ()))
+        if not replied and sends.get(r["phone"]):
+            known_inbound = [{"direction": "inbound", "sent_at": r.get(k)} for k in ("waiting_since", "last_inbound_at")]
+            replied = any(t >= since_r for t in agent_send_times(known_inbound, sends[r["phone"]]))
         if replied:
             log.info(f"[reminders] pre-send guard dropped …{r['phone'][-4:]} (agent replied)")
         else:

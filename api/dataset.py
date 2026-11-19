@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 from supabase import ClientOptions, create_client
 
 from pipeline import agent_names
-from pipeline.reply_tracker import parse_dt, phone_key
+from pipeline.reply_tracker import agent_send_times, parse_dt, phone_key
 from pipeline.time_ranges import is_closed, period_bounds
 from pipeline.whatsapp import add_whatsapp_line_select, matches_business_line, resolve_agent_name
 
@@ -168,11 +168,12 @@ def agent_key(name: str | None) -> str:
 
 class Period:
     def __init__(self, range_: str, *, calls, messages, context_messages, context_calls,
-                 activity, alerts, analyses, leads, start, end):
+                 activity, alerts, analyses, leads, start, end, sends=None):
         self.range = range_
         self.start, self.end = start, end
         self.calls, self.messages, self.activity = calls, messages, activity
         self.context_messages, self.context_calls = context_messages, context_calls
+        self.sends = sends or []  # WhatsApp "sent" events: agent voice notes / media count as replies
         self.alerts, self.analyses, self.leads = alerts, analyses, leads
         self.loaded_at = time.time()
         self.views: dict[tuple[str, str], View] = {}
@@ -303,6 +304,14 @@ def _compute_reply_stats(view: View) -> dict:
         when = parse_dt(call.get("called_at"))
         if key and when:
             calls_by_phone.setdefault(key, []).append(when)
+    sends_by_phone: dict[str, list] = {}
+    for send in period.sends:
+        key = phone_key(send.get("phone"))
+        if key in conversations:
+            sends_by_phone.setdefault(key, []).append(send)
+    for key, sends in sends_by_phone.items():
+        times = agent_send_times(conversations[key]["messages"], sends)
+        calls_by_phone[key] = [*calls_by_phone.get(key, []), *times]
     end = min(period.end or datetime.now(timezone.utc), datetime.now(timezone.utc))
     agents: dict = {}
     team = reports.responsiveness(conversations, calls_by_phone, period.start, end,
@@ -325,6 +334,15 @@ def team_members(team: str | None) -> set[str] | None:
     return None
 
 
+def _optional_rows(table: str, columns: str, apply: Callable, order: str) -> list[dict]:
+    """Like _rows, but a missing table (migration not run yet) gives no rows."""
+    try:
+        return _rows(table, columns, apply, order)
+    except Exception as exc:
+        log.warning(f"[dataset] {table} not loaded: {str(exc)[:160]}")
+        return []
+
+
 def load_period(range_: str) -> Period:
     start, end = period_bounds(range_)
     upper = end or datetime.now(timezone.utc) + timedelta(days=1)
@@ -333,7 +351,7 @@ def load_period(range_: str) -> Period:
     message_columns = add_whatsapp_line_select(MESSAGE_COLUMNS)
     lead_columns = add_whatsapp_line_select(LEAD_COLUMNS)
 
-    with ThreadPoolExecutor(max_workers=7) as pool:
+    with ThreadPoolExecutor(max_workers=8) as pool:
         jobs = {
             "calls": pool.submit(_rows, "calls", CALL_COLUMNS,
                                  lambda q: q.gte("called_at", since).lt("called_at", until), "called_at"),
@@ -349,6 +367,8 @@ def load_period(range_: str) -> Period:
                                   lambda q: q.gte("created_at", since).lt("created_at", until), "created_at"),
             "analyses": pool.submit(_rows, "ai_analysis", ANALYSIS_COLUMNS,
                                     lambda q: q.gte("analyzed_at", since).lt("analyzed_at", until), "analyzed_at"),
+            "sends": pool.submit(_optional_rows, "whatsapp_sends", "id,phone,sent_at,category",
+                                 lambda q: q.gte("sent_at", context_since).lt("sent_at", until), "sent_at"),
         }
         data = {name: job.result() for name, job in jobs.items()}
 

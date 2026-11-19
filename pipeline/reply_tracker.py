@@ -197,6 +197,36 @@ def compute_wait_state(messages: list[dict], call_times: list[datetime] | None =
     return WaitState(waiting_since, last_inbound, last_contact, last_agent)
 
 
+# ── Agent messages WhatsApp reported as sent ─────────────────────────────────
+# ManyContacts forwards agent texts but not voice notes / images / files.
+# WhatsApp's "sent" status covers every message; these rules decide which ones
+# count as an agent answer (texts are counted twice, which changes nothing).
+
+AUTO_SEND_SECONDS = 15          # sent this soon after the customer wrote: an automatic reply
+NOT_A_REPLY_CATEGORIES = {"marketing", "utility", "authentication", "authentication_international"}
+
+
+def agent_send_times(messages: list[dict], sends: list[dict]) -> list[datetime]:
+    """Times from `sends` ({sent_at, category}) that count as agent contact.
+
+    Skipped: template sends (marketing/utility/... broadcasts) and anything sent
+    within AUTO_SEND_SECONDS after a customer message (no person records and
+    sends a voice note that fast; an auto-reply does)."""
+    inbound = sorted(
+        dt for m in messages
+        if (m.get("direction") or "").lower() == "inbound" and (dt := parse_dt(m.get("sent_at")))
+    )
+    times = []
+    for s in sends:
+        dt = parse_dt(s.get("sent_at"))
+        if not dt or (s.get("category") or "").lower() in NOT_A_REPLY_CATEGORIES:
+            continue
+        if any(0 <= (dt - i).total_seconds() < AUTO_SEND_SECONDS for i in inbound):
+            continue
+        times.append(dt)
+    return times
+
+
 @dataclass
 class Episode:
     start: datetime          # first meaningful customer message of the wait

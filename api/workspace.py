@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Query
 from api import dataset
 
 from pipeline import agent_names
+from pipeline.reply_tracker import parse_dt
 from pipeline.swr_cache import SWRCache
 
 load_dotenv()
@@ -105,8 +106,27 @@ def _clean_body(message: dict) -> str:
     return re.sub(r"^\s*\*[^*\r\n]{1,60}:\*\s*", "", body) if message.get("direction") == "outbound" else body
 
 
-def build_timeline(messages: list[dict], calls: list[dict], limit: int = 200) -> list[dict]:
+TEXT_MATCH_SECONDS = 90  # a "sent" event this close to a stored agent text is that text
+
+
+def _untracked_sends(messages: list[dict], sends: list[dict]) -> list[dict]:
+    """WhatsApp "sent" events with no stored agent text: voice notes, images,
+    files (ManyContacts does not forward those as messages)."""
+    texts = [dt for m in messages if m.get("direction") == "outbound" and (dt := parse_dt(m.get("sent_at")))]
+    out = []
+    for s in sends:
+        dt = parse_dt(s.get("sent_at"))
+        if dt and not any(abs((dt - t).total_seconds()) <= TEXT_MATCH_SECONDS for t in texts):
+            out.append(s)
+    return out
+
+
+def build_timeline(messages: list[dict], calls: list[dict], limit: int = 200,
+                   sends: list[dict] | None = None) -> list[dict]:
     events = [{
+        "type": "media", "at": s.get("sent_at"), "direction": "outbound", "category": s.get("category"),
+    } for s in _untracked_sends(messages, sends or [])]
+    events += [{
         "type": "message", "at": m.get("sent_at"), "direction": m.get("direction"),
         "agent": agent_names.display(m.get("agent_name")) if m.get("agent_name") else None,
         "body": _clean_body(m), "line": m.get("whatsapp_business_number"),
@@ -134,6 +154,13 @@ def conversation(phone: str = Query(..., min_length=7, max_length=32)):
                 .in_("lead_id", ids).order("sent_at", desc=True).limit(200).execute().data or [])
     calls = (supabase.table("calls").select("agent_name,outcome,duration_seconds,called_at")
              .in_("lead_id", ids).order("called_at", desc=True).limit(50).execute().data or [])
+    try:
+        sends = (supabase.table("whatsapp_sends").select("sent_at,category")
+                 .eq("phone", variants[0]).order("sent_at", desc=True).limit(200).execute().data or [])
+    except Exception:  # migration 005 not run yet
+        sends = []
+    if messages and len(messages) == 200:  # older history is cut off: keep sends to the same window
+        sends = [s for s in sends if (s.get("sent_at") or "") >= messages[-1]["sent_at"]]
     whatsapp = next((lead for lead in leads if lead.get("channel") == "whatsapp"), leads[0])
     return {
         "phone": variants[1],
@@ -141,5 +168,5 @@ def conversation(phone: str = Query(..., min_length=7, max_length=32)):
         "agent": agent_names.display(whatsapp.get("assigned_agent")) if whatsapp.get("assigned_agent") else None,
         "status": whatsapp.get("status"),
         "score": whatsapp.get("score"),
-        "events": build_timeline(messages, calls),
+        "events": build_timeline(messages, calls, sends=sends),
     }

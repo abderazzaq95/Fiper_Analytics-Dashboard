@@ -262,7 +262,7 @@ def _load(start: datetime, end: datetime) -> dict:
         conv = convs.setdefault(key, {"phone": key, "messages": [], "leads": {}})
         conv["messages"].append(m)
         conv["leads"][lead["id"]] = lead
-    calls_by_phone = reminders._load_call_times(sorted(convs), ctx_start)
+    calls_by_phone = reminders._contact_times(convs, sorted(convs), ctx_start)  # calls + voice notes/media
     call_rows = _paginate(
         lambda: supabase.table("calls")
         .select("agent_name,outcome,duration_seconds,called_at")

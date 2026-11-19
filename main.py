@@ -1,4 +1,5 @@
 import os
+import base64
 import json
 import asyncio
 import logging
@@ -2361,6 +2362,57 @@ def _extract_mc_outbound(body: dict) -> tuple[str | None, str | None, str, str, 
     return phone, agent_name, body_text, sent_at, msg_id
 
 
+_sends_retry_after: datetime | None = None  # table missing: try again after this time
+
+
+def _phone_from_wamid(msg_id) -> str:
+    """WhatsApp ids ("wamid.HBgL…") carry the customer's number; used when the
+    status has no recipient_id."""
+    raw = str(msg_id or "").removeprefix("wamid.")
+    try:
+        decoded = base64.b64decode(raw + "=" * (-len(raw) % 4))
+    except (ValueError, TypeError):
+        return ""
+    match = re.match(rb"\x1c\x18.(\d{7,15})", decoded, re.S)
+    return match.group(1).decode() if match else ""
+
+
+def _record_whatsapp_send(status: dict, line_number: str | None, now_iso: str) -> None:
+    """Remember that the business sent a message to this customer.
+
+    ManyContacts forwards agent text replies but not voice notes, images or
+    files; WhatsApp's own "sent" status covers every message. Only "sent" is
+    used: "delivered"/"read" can arrive hours later and would look like a new
+    reply. Never writes a chat message, so chats and message counts stay as
+    they are."""
+    global _sends_retry_after
+    if (status.get("status") or "").lower() != "sent":
+        return
+    if _sends_retry_after and datetime.now(timezone.utc) < _sends_retry_after:
+        return
+    msg_id = status.get("id")
+    phone = re.sub(r"\D+", "", str(status.get("recipient_id") or "")) or _phone_from_wamid(msg_id)
+    if not (msg_id and len(phone) >= 7):
+        return
+    pricing = status.get("pricing") if isinstance(status.get("pricing"), dict) else {}
+    origin = ((status.get("conversation") or {}).get("origin") or {}) if isinstance(status.get("conversation"), dict) else {}
+    category = (pricing.get("category") or origin.get("type") or "").lower() or None
+    try:
+        supabase.table("whatsapp_sends").upsert({
+            "wa_message_id": str(msg_id),
+            "phone": phone,
+            "sent_at": _ts_to_iso(status.get("timestamp"), now_iso),
+            **({"business_line": line_number} if line_number else {}),
+            **({"category": category} if category else {}),
+        }, on_conflict="wa_message_id", ignore_duplicates=True).execute()
+    except Exception as e:
+        if "whatsapp_sends" in str(e) and ("does not exist" in str(e) or "PGRST205" in str(e)):
+            _sends_retry_after = datetime.now(timezone.utc) + timedelta(minutes=10)
+            log.warning("[webhook/mc] whatsapp_sends table missing: run migrations/005_whatsapp_sends.sql")
+        else:
+            log.warning(f"[webhook/mc] could not record send {str(msg_id)[:24]}: {e}")
+
+
 async def _handle_meta_format(body: dict, now_iso: str) -> None:
     """Process Meta WhatsApp Cloud API webhook payload."""
     for entry in (body.get("entry") or []):
@@ -2369,8 +2421,10 @@ async def _handle_meta_format(body: dict, now_iso: str) -> None:
 
             statuses = value.get("statuses")
             if statuses:
+                line_number = _extract_whatsapp_business_number(body)
                 for s in statuses:
                     log.info(f"[webhook/mc] status | id={s.get('id')!r} status={s.get('status')!r}")
+                    _record_whatsapp_send(s, line_number, now_iso)
                 continue
 
             messages = value.get("messages")
