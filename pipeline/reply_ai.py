@@ -236,7 +236,10 @@ def classify(context: dict) -> dict:
     if not (_key("gemini") or _key("claude")):
         return _fallback(context, "no AI key set (GEMINI_API_KEY / ANTHROPIC_API_KEY)")
     if not available():
-        return _fallback(context, _state.get("last_error") or "AI paused or daily limit")
+        # No call made: say so, so an old error is never mistaken for a new one.
+        last = _state.get("last_error")
+        return {**rules(context), "reason": (f"word rules · AI paused, last error: {last}" if last
+                                             else "word rules · AI paused or daily limit")[:400]}
     with _lock:
         _state["used"] += 1
     problems = []
