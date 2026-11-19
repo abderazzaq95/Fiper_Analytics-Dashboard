@@ -112,6 +112,8 @@ def no_reply_needed(row: dict) -> bool:
 MAX_AGE_HOURS = max(_env_int("REMINDER_TRACK_MAX_AGE_HOURS", 168), int(max(LADDER.followup_hours, default=0)) + 72)
 LOOKBACK_HOURS = MAX_AGE_HOURS + 6
 AGENT_MAX_PER_HOUR = _env_int("REMINDER_AGENT_MAX_PER_HOUR", 6)
+# Outside working hours nothing is sent, so the (heavy) sync runs less often.
+OFF_HOURS_SYNC_MINUTES = _env_int("REMINDER_OFF_HOURS_SYNC_MINUTES", 15)
 SHADOW_DIGEST_MINUTES = _env_int("REMINDER_SHADOW_DIGEST_MINUTES", 60)
 
 # Process-local state (reset on restart, which is harmless).
@@ -737,8 +739,14 @@ def run_cycle(now: datetime | None = None) -> dict:
         _last_cycle = {"at": now.isoformat(), "mode": "off"}
         return _last_cycle
 
+    last_sync = parse_dt(_last_cycle.get("synced_at"))
+    if (not SCHEDULE.is_working_time(now) and last_sync
+            and now - last_sync < timedelta(minutes=OFF_HOURS_SYNC_MINUTES)):
+        return {**_last_cycle, "skipped_at": now.isoformat(), "note": "outside working hours; next sync later"}
+
     rows, stats = _sync(now)
-    result = {"at": now.isoformat(), "mode": current_mode, **stats, "reminded": 0, "escalated": 0}
+    result = {"at": now.isoformat(), "synced_at": now.isoformat(), "mode": current_mode, **stats,
+              "reminded": 0, "escalated": 0}
     try:
         # Also outside working hours, so the morning starts with checked messages.
         result["checked"] = _classify(rows, now)

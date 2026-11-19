@@ -266,6 +266,20 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(reminders._classify(rows, TUE_0920)["claude"], 0)
         self.assertEqual(self.db.updates, [])
 
+    def test_off_hours_sync_runs_every_15_minutes_only(self):
+        night = datetime(2026, 11, 17, 21, 0, tzinfo=UTC)  # Tuesday 23:00 local
+        calls = []
+        with mock.patch.object(reminders, "_sync", side_effect=lambda now: calls.append(now) or ([], {
+                "waiting": 0, "opened": 0, "answered": 0, "expired": 0})), \
+             mock.patch.object(reminders, "_last_cycle", {}):
+            reminders.run_cycle(night)
+            reminders.run_cycle(night + timedelta(minutes=5))   # skipped
+            reminders.run_cycle(night + timedelta(minutes=10))  # skipped
+            reminders.run_cycle(night + timedelta(minutes=15))
+            reminders.run_cycle(TUE_0900 + timedelta(days=1))   # working time: always
+            reminders.run_cycle(TUE_0900 + timedelta(days=1, minutes=5))
+        self.assertEqual(len(calls), 4)
+
     def test_shadow_ai_records_but_does_not_change_reminders(self):
         r = row(1, needs_reply=False, priority="urgent")
         with mock.patch.dict(os.environ, {"REMINDER_AI_MODE": "shadow"}):

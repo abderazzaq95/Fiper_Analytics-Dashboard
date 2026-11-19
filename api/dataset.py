@@ -46,10 +46,32 @@ ANALYSIS_COLUMNS = "id,lead_id,sentiment,topics,treatment_score,risk_flags,analy
 UUID_RE = re.compile(r"[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 
-def ttl_seconds(range_: str) -> int:
+# How old a period may get before it is reloaded (seconds). While someone uses
+# the dashboard the data stays fresh; when nobody has opened it for
+# IDLE_AFTER_SECONDS, the background job reloads much less often to spare the
+# database (Supabase disk IO budget). The first request after a quiet time
+# still answers instantly and starts a fresh load in the background.
+ACTIVE_TTL = {"today": 120, "week": 600, "7d": 600, "month": 1800}
+IDLE_TTL = {"today": 900, "week": 3600, "7d": 3600, "month": 4 * 3600}
+OTHER_OPEN_TTL = 300
+CLOSED_TTL, CLOSED_IDLE_TTL = 3600, 6 * 3600
+IDLE_AFTER_SECONDS = int(os.getenv("DASHBOARD_IDLE_MINUTES", "15")) * 60
+_last_used = 0.0
+
+
+def mark_used() -> None:
+    global _last_used
+    _last_used = time.time()
+
+
+def is_idle() -> bool:
+    return time.time() - _last_used > IDLE_AFTER_SECONDS
+
+
+def ttl_seconds(range_: str, idle: bool = False) -> int:
     if is_closed(range_):
-        return 3600
-    return {"today": 60, "week": 180, "7d": 180}.get(range_, 300)
+        return CLOSED_IDLE_TTL if idle else CLOSED_TTL
+    return (IDLE_TTL if idle else ACTIVE_TTL).get(range_, OTHER_OPEN_TTL * (6 if idle else 1))
 
 
 _clients: queue.Queue = queue.Queue()
@@ -175,6 +197,9 @@ class Period:
     @property
     def stale(self) -> bool:
         return time.time() - self.loaded_at >= ttl_seconds(self.range)
+
+    def stale_for(self, idle: bool) -> bool:
+        return time.time() - self.loaded_at >= ttl_seconds(self.range, idle)
 
     def view(self, team: str = "", wa_line: str = "all") -> "View":
         members = team_members(team)
@@ -368,6 +393,7 @@ def _current(range_: str) -> Period | None:
 
 
 def get_period(range_: str) -> Period:
+    mark_used()  # a person is looking at the dashboard
     period = _current(range_)
     if period:
         if period.stale:
@@ -446,10 +472,11 @@ def refresh_in_background(range_: str) -> None:
 
 
 def warm() -> None:
-    """Scheduled: keep the common periods ready."""
+    """Scheduled: keep the common periods ready (slowly when nobody is using the dashboard)."""
+    idle = is_idle()
     for range_ in WARM_RANGES:
         period = _current(range_)
-        if period is None or period.stale:
+        if period is None or period.stale_for(idle):
             try:
                 refresh(range_)
             except Exception as exc:

@@ -1,6 +1,7 @@
 """Filters on the shared dashboard data. Run: python -m unittest discover -s tests -v (offline)"""
 import os
 import sys
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -110,6 +111,44 @@ class FilterTest(unittest.TestCase):
             dataset.refresh_in_background = original
             dataset.period_bounds = original_bounds
             dataset._periods.pop("today", None)
+
+
+class ReloadPaceTest(unittest.TestCase):
+    """Fewer database reads when nobody is looking at the dashboard."""
+
+    def test_idle_reloads_much_less(self):
+        for range_ in ("today", "week", "month"):
+            self.assertGreater(dataset.ttl_seconds(range_, idle=True), dataset.ttl_seconds(range_) * 3)
+        self.assertEqual(dataset.ttl_seconds("today"), 120)
+
+    def test_using_the_dashboard_marks_it_active(self):
+        original_used, original_load = dataset._last_used, dataset.load_period
+        try:
+            dataset._last_used = 0
+            self.assertTrue(dataset.is_idle())
+            dataset.load_period = lambda r: period()
+            dataset.get_period("custom:test")
+            self.assertFalse(dataset.is_idle())
+        finally:
+            dataset._last_used, dataset.load_period = original_used, original_load
+            dataset._periods.pop("custom:test", None)
+
+    def test_warm_skips_fresh_enough_periods_when_idle(self):
+        loaded = []
+        originals = (dataset.refresh, dataset._current, dataset._last_used)
+        p = period()
+        p.loaded_at = time.time() - 300  # 5 min old: stale when active, fine when idle
+        try:
+            dataset.refresh = loaded.append
+            dataset._current = lambda r: p
+            dataset._last_used = 0
+            dataset.warm()
+            self.assertEqual(loaded, [])
+            dataset._last_used = time.time()
+            dataset.warm()
+            self.assertIn("today", loaded)
+        finally:
+            dataset.refresh, dataset._current, dataset._last_used = originals
 
 
 if __name__ == "__main__":

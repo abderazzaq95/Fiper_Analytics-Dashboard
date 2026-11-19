@@ -3524,6 +3524,25 @@ function setLiveStatus(connected) {
     : (lang==='ar' ? 'غير متصل — استطلاع كل دقيقتين' : 'Disconnected — polling every 2 min');
 }
 
+// New data arrives with every WhatsApp message. Reload at most every 30 s, and
+// not at all in a hidden tab (it catches up when it is shown again): a
+// forgotten tab must not keep the database busy.
+let _pendingUpdate = false, _lastAutoLoad = 0, _autoLoadTimer = null;
+function autoRefresh() {
+  if (!_dashboardStarted) return;
+  if (document.hidden) { _pendingUpdate = true; return; }
+  if (_autoLoadTimer) return;
+  const wait = Math.max(0, 30 * 1000 - (Date.now() - _lastAutoLoad));
+  _autoLoadTimer = setTimeout(() => {
+    _autoLoadTimer = null;
+    _lastAutoLoad = Date.now();
+    loadAll(true);  // background: keep content visible while updating
+  }, wait);
+}
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && _pendingUpdate) { _pendingUpdate = false; autoRefresh(); loadWaiting(); }
+});
+
 function connectSSE() {
   clearTimeout(_sseRetryTimer);
   const es = new EventSource(`${API}/api/stream`);
@@ -3535,16 +3554,14 @@ function connectSSE() {
     _fallbackTimer = null;
   });
 
-  es.addEventListener('data_updated', () => {
-    loadAll(true);  // background: keep content visible while updating
-  });
+  es.addEventListener('data_updated', autoRefresh);
 
   es.onerror = () => {
     es.close();
     setLiveStatus(false);
     // Start fallback polling while SSE is down
     if (!_fallbackTimer) {
-      _fallbackTimer = setInterval(() => loadAll(true), 2 * 60 * 1000);
+      _fallbackTimer = setInterval(autoRefresh, 2 * 60 * 1000);
     }
     // Reconnect SSE after 5 seconds
     _sseRetryTimer = setTimeout(connectSSE, 5000);
