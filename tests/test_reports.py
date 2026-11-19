@@ -78,6 +78,26 @@ class ReportCalcTest(unittest.TestCase):
         self.assertEqual(res["escalated"], 1)
         self.assertEqual(res["followups"], 1)
         self.assertEqual(res["expired_unanswered"], 1)
+        self.assertEqual(res["ai_checked"], 0)
+
+    def test_reminder_metrics_ai_check(self):
+        s, e = MON, MON + timedelta(days=1)
+        rows = [
+            # urgent, answered after 30 working minutes
+            {"status": "answered", "ai_source": "claude", "priority": "urgent", "needs_reply": True,
+             "waiting_since": MON.isoformat(), "resolved_at": (MON + timedelta(minutes=30)).isoformat()},
+            {"status": "open", "ai_source": "claude", "priority": "urgent", "needs_reply": True,
+             "waiting_since": (MON + timedelta(hours=2)).isoformat()},
+            {"status": "open", "ai_source": "claude", "priority": "low", "needs_reply": False,
+             "waiting_since": (MON + timedelta(hours=3)).isoformat()},
+            {"status": "open", "ai_source": "rules", "priority": "low", "needs_reply": True,
+             "waiting_since": (MON + timedelta(hours=4)).isoformat()},
+            {"status": "open", "waiting_since": (MON + timedelta(hours=4)).isoformat()},  # not checked yet
+        ]
+        res = R.reminder_metrics(rows, s, e, SCHED)
+        self.assertEqual((res["decided"], res["ai_checked"], res["urgent"], res["urgent_answered"]), (4, 3, 2, 1))
+        self.assertEqual(res["urgent_median_answer_min"], 30)
+        self.assertEqual((res["no_reply_needed"], res["low"]), (1, 1))
 
 
 class ReportRenderTest(unittest.TestCase):
@@ -106,6 +126,21 @@ class ReportRenderTest(unittest.TestCase):
         self.assertIn("تم التصعيد", html)
         self.assertNotIn("<b>Ahmed</b>", html)  # escaped
         self.assertIn("fiper-logo-white.png", html)
+        self.assertNotIn("عملاء عاجلون", html)  # no AI cards before the AI has checked anything
+
+    def test_daily_render_ai_cards_and_urgent_first(self):
+        m, agents, waiting = self._data()
+        m["reminders"].update({"ai_checked": 40, "urgent": 6, "urgent_answered": 4, "urgent_median_answer_min": 12,
+                               "no_reply_needed": 7, "low": 3})
+        waiting.append({"name": "Urgent Sara", "phone": "96890000001", "line": "96897245526", "agent": "Ali Rizk",
+                        "elapsed_min": 20, "since": MON, "body": "وين المبلغ", "reminders": 1, "escalations": 0,
+                        "priority": "urgent"})
+        _, html = RT.daily_report({"now": MON + timedelta(hours=8), "start": MON, "metrics": m,
+                                   "agents": agents, "waiting": waiting}, TZ, "UTC+2")
+        self.assertIn("عملاء عاجلون", html)
+        self.assertIn("لا يحتاج رداً", html)
+        self.assertIn("12 min", html)
+        self.assertLess(html.index("Urgent Sara"), html.index("&lt;b&gt;Ahmed"))  # urgent listed first
 
     def test_weekly_render_with_deltas_and_insights(self):
         m, agents, _ = self._data()

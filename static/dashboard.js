@@ -143,6 +143,8 @@ function renderTeamSelect() {
 
 // ── Waiting now ──────────────────────────────────────────────────────────────
 let _waiting = null, _waitingAt = 0, _waitingFilter,  _waitingShowAll = false, _waitingSearch = '';
+let _waitingShowNoReply = false;   // customers the AI marked "no reply needed" are hidden by default
+function toggleNoReply() { _waitingShowNoReply = !_waitingShowNoReply; renderWaiting(); }
 let _waitSort = {key: 'live', desc: true};
 const WAIT_COLS = [
   {key: 'customer', en: 'Customer', ar: 'العميل', val: i => i.name || i.phone || ''},
@@ -218,28 +220,45 @@ function renderWaiting() {
   if (!list || !_waiting) return;
   const d = _waiting;
   const extra = d.working_time ? (Date.now() - _waitingAt) / 60000 : 0;
-  const all = d.items.map(i => ({...i, live: i.elapsed_min + extra})).filter(i => inTeam(i.agent) && inLine(i));
+  const everyone = d.items.map(i => ({...i, live: i.elapsed_min + extra})).filter(i => inTeam(i.agent) && inLine(i));
+  const noReply = everyone.filter(i => i.needs_reply === false).length;
+  // Counts always mean "customers who still need an answer"; the switch only adds the others to the list.
+  const all = everyone.filter(i => i.needs_reply !== false);
   document.getElementById('navWaitingBadge').textContent = all.length || '';
   const over2 = all.filter(i => i.live >= 120).length;
   const oldest = all.reduce((m, i) => Math.max(m, i.live), 0);
   const unassigned = all.filter(i => !i.agent).length;
   const escalated = all.filter(i => i.escalations).length;
-  const urgent = all.filter(i => i.priority === 'urgent' && i.needs_reply !== false).length;
-  const noReply = all.filter(i => i.needs_reply === false).length;
+  const urgent = all.filter(i => i.priority === 'urgent').length;
+  const noReplyBtn = document.getElementById('waitingNoReplyBtn');
+  if (noReplyBtn) {
+    noReplyBtn.hidden = !noReply;
+    noReplyBtn.classList.toggle('active', _waitingShowNoReply);
+    noReplyBtn.setAttribute('aria-pressed', String(_waitingShowNoReply));
+    noReplyBtn.innerHTML = `${esc(_waitingShowNoReply ? T('Hide “no reply needed”', 'إخفاء «لا يحتاج رداً»') : T('Show “no reply needed”', 'عرض «لا يحتاج رداً»'))} <b>${noReply}</b>`;
+  }
   const kpi = (en, ar, value, tone = '', sub = '') =>
     `<div class="kpi"><div class="kpi-label">${esc(T(en, ar))}</div><div class="kpi-value ${tone}">${esc(value)}</div>${sub ? `<div class="kpi-foot">${esc(sub)}</div>` : ''}</div>`;
   document.getElementById('waitingKpis').innerHTML =
     kpi('Waiting now', 'بانتظار الرد', all.length, all.length ? 'mid' : 'good') +
     kpi('Over 2 hours', 'أكثر من ساعتين', over2, over2 ? 'bad' : 'good') +
     kpi('Longest wait', 'أطول انتظار', all.length ? waitMins(oldest) : '—', oldest >= 120 ? 'bad' : '') +
-    kpi('Urgent', 'عاجل', urgent, urgent ? 'bad' : 'good', T(`${noReply} need no reply (AI)`, `${noReply} لا يحتاج رداً (AI)`)) +
+    kpi('Urgent', 'عاجل', urgent, urgent ? 'bad' : 'good', noReply ? T(`+ ${noReply} need no reply (hidden)`, `+ ${noReply} لا يحتاج رداً (مخفي)`) : '') +
     kpi('Escalated', 'تم التصعيد', escalated, escalated ? 'bad' : 'good') +
     kpi('Unassigned', 'غير مُسنَد', unassigned, unassigned ? 'mid' : 'good');
   const modeTxt = d.mode === 'live' ? T('Reminders live', 'التذكيرات مفعّلة') : d.mode === 'shadow' ? T('Reminders in test mode', 'التذكيرات في وضع التجربة') : T('Reminders off', 'التذكيرات متوقفة');
   const aiTxt = d.ai_mode === 'live' ? T('AI check live', 'فحص الذكاء الاصطناعي مفعّل')
     : d.ai_mode === 'shadow' ? T('AI check in test mode (shown, not applied)', 'فحص الذكاء الاصطناعي تجريبي (يُعرض ولا يُطبَّق)') : T('AI check off', 'فحص الذكاء الاصطناعي متوقف');
+  const L = d.ladder, U = L.urgent || [];
+  const hrs = m => (m >= 60 ? `${+(m / 60).toFixed(1)}h` : `${m} min`), hrsAr = m => (m >= 60 ? `${+(m / 60).toFixed(1)} س` : `${m} د`);
+  const steps = d.ai_mode === 'live' && U.length === 3
+    ? T(`urgent: ${U[0]} / ${U[1]} min, supervisor ${hrs(U[2])} · normal: ${L.first} / ${L.second} min, supervisor ${hrs(L.escalate)} · low: one reminder at ${L.low_first} min`,
+        `عاجل: ${U[0]} / ${U[1]} د، المشرف ${hrsAr(U[2])} · عادي: ${L.first} / ${L.second} د، المشرف ${hrsAr(L.escalate)} · منخفض: تذكير واحد بعد ${L.low_first} د`)
+    : T(`reminders at ${L.first} and ${L.second} min, supervisor at ${hrs(L.escalate)}`, `تذكير بعد ${L.first} و${L.second} د، المشرف بعد ${hrsAr(L.escalate)}`);
+  const older = L.day_limit_hours
+    ? T(` · older than ${L.day_limit_hours} working hours: morning list at ${L.morning_list_at}`, ` · أقدم من ${L.day_limit_hours} ساعات عمل: قائمة الصباح ${L.morning_list_at}`) : '';
   document.getElementById('waitingInfo').textContent =
-    `${modeTxt} · ${aiTxt} · ${T(`working time ${d.work_hours}`, `وقت العمل ${d.work_hours}`)} · ${T(`reminders at ${d.ladder.first} and ${d.ladder.second} min, supervisor at ${d.ladder.escalate / 60}h`, `تذكير بعد ${d.ladder.first} و${d.ladder.second} د، المشرف بعد ${d.ladder.escalate / 60} س`)}`;
+    `${modeTxt} · ${aiTxt} · ${T(`working time ${d.work_hours}`, `وقت العمل ${d.work_hours}`)} · ${steps}${older}`;
 
   const counts = new Map();
   all.forEach(i => counts.set(i.agent || null, (counts.get(i.agent || null) || 0) + 1));
@@ -249,7 +268,7 @@ function renderWaiting() {
   chips.innerHTML = _waitingChips.map(([agent, n], idx) =>
     `<button type="button" class="chip ${_waitingFilter === agent ? 'active' : ''}" aria-pressed="${_waitingFilter === agent}" onclick="setWaitingFilter(_waitingChips[${idx}][0])">${esc(agent || T('Unassigned', 'غير مُسنَد'))} <b>${n}</b></button>`).join('');
 
-  let rows = all;
+  let rows = _waitingShowNoReply ? everyone : all;
   if (_waitingFilter !== undefined && counts.has(_waitingFilter)) rows = rows.filter(i => (i.agent || null) === _waitingFilter);
   if (_waitingSearch) rows = rows.filter(i => [i.name, i.phone, i.agent, i.body, i.line].some(v => String(v || '').toLowerCase().includes(_waitingSearch)));
   rows = rows.slice().sort(compareWaiting);

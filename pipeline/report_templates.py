@@ -177,8 +177,10 @@ def _waiting_section(waiting: list[dict], tz: tzinfo, limit: int = 12) -> str:
         return section("✅", "بانتظار الرد الآن", "Waiting for a reply right now",
                        notice("لا يوجد عملاء بانتظار الرد الآن 👏", "No customer is waiting right now."))
     rows = []
+    # Urgent customers (money, complaints, new leads) first, then the longest waits.
+    waiting = sorted(waiting, key=lambda w: (w.get("priority") != "urgent", -w["elapsed_min"]))
     for w in waiting[:limit]:
-        status = []
+        status = [chip("عاجل · Urgent", "bad")] if w.get("priority") == "urgent" else []
         if w["escalations"] > 1:
             status.append(chip(f"متابعة ×{w['escalations'] - 1}", "bad"))
         elif w["escalations"]:
@@ -195,11 +197,29 @@ def _waiting_section(waiting: list[dict], tz: tzinfo, limit: int = 12) -> str:
             " ".join(status) or "—",
         ])
     more = len(waiting) - limit
-    note = (f"<span dir='ltr'>{len(waiting)}</span> عميل · الأطول انتظاراً أولاً"
+    note = (f"<span dir='ltr'>{len(waiting)}</span> عميل · العاجل أولاً ثم الأطول انتظاراً"
             f"{f' · و{more} آخرون في لوحة التحكم' if more > 0 else ''}")
-    return section("⚠️", "بانتظار الرد الآن", "Waiting for a reply right now (longest first)",
+    return section("⚠️", "بانتظار الرد الآن", "Waiting for a reply right now (urgent first, then longest)",
                    data_table([("العميل", "Customer"), ("الموظف", "Agent"), ("الانتظار", "Waiting"), ("الحالة", "Status")],
                               rows, "46%"), note)
+
+
+def ai_cards(rem: dict) -> list[dict]:
+    """What the AI check decided (empty until it has checked something)."""
+    if not (rem.get("decided") or rem.get("ai_checked")):
+        return []
+    med = rem.get("urgent_median_answer_min")
+    return [
+        {"ar": "عملاء عاجلون", "en": "Urgent customers", "value": rem.get("urgent", 0),
+         "tone": "warn" if rem.get("urgent") else "good",
+         "sub": "مال، شكوى أو عميل جديد"},
+        {"ar": "وسيط الرد على العاجل", "en": "Median reply to urgent", "value": mins_en(med) if med is not None else "—",
+         "tone": reply_tone(med) if med is not None else "neutral",
+         "sub": f"تم الرد على <b dir='ltr'>{rem.get('urgent_answered', 0)}</b>"},
+        {"ar": "لا يحتاج رداً (بدون تذكير)", "en": "No reply needed (no reminder sent)", "value": rem.get("no_reply_needed", 0),
+         "tone": "good",
+         "sub": f"من <b dir='ltr'>{rem.get('ai_checked', 0)}</b> فحصها الذكاء الاصطناعي"},
+    ]
 
 
 def _reminder_strip(rem: dict) -> str:
@@ -208,8 +228,8 @@ def _reminder_strip(rem: dict) -> str:
         {"ar": "تم الرد بعد التذكير", "en": "Answered after a reminder", "value": rem.get("answered_after_reminder", 0), "tone": "good"},
         {"ar": "تصعيد للمشرف", "en": "Escalated to supervisor", "value": rem.get("escalated", 0),
          "tone": "bad" if rem.get("escalated") else "good"},
-    ]
-    return section("🔔", "نظام التذكير", "Reply reminders", kpi_grid(cards))
+    ] + ai_cards(rem)
+    return section("🔔", "نظام التذكير", "Reply reminders · AI check", kpi_grid(cards))
 
 
 def _footer(tz_label: str) -> tuple[str, str]:
@@ -411,7 +431,7 @@ def weekly_report(data: dict, tz: tzinfo, tz_label: str, label: str = "") -> tup
         {"ar": "تم الرد بعد التذكير", "en": "Answered after reminder", "value": rem.get("answered_after_reminder", 0), "tone": "good"},
         {"ar": "متابعات للمشرف", "en": "Supervisor follow-ups", "value": rem.get("followups", 0),
          "tone": "warn" if rem.get("followups") else "good"},
-    ]
+    ] + ai_cards(rem)
 
     body = (
         kpi_grid(cards)
@@ -420,7 +440,7 @@ def weekly_report(data: dict, tz: tzinfo, tz_label: str, label: str = "") -> tup
         + trend_html
         + hours_html
         + topics_html
-        + section("🔔", "نظام التذكير", "Reply reminders this week", kpi_grid(rem_cards))
+        + section("🔔", "نظام التذكير", "Reply reminders this week · AI check", kpi_grid(rem_cards))
     )
     footer_ar, footer_en = _footer(tz_label)
     html_doc = T.email_shell(

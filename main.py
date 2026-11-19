@@ -3234,9 +3234,10 @@ def debug_send_agent_alert(agent: str = Query("Jehad Qasim"), token: str = Query
 def waiting_now():
     """Dashboard 'Waiting now': customers without an answer (login required)."""
     from pipeline import reports, reminder_templates
-    items = reports._waiting_now()
+    items = reports._waiting_now(include_no_reply=True)  # the page can show them on request
+    real = [w for w in items if w.get("needs_reply") is not False]
     by_agent: dict[str, int] = {}
-    for w in items:
+    for w in real:
         key = w.get("agent") or ""
         by_agent[key] = by_agent.get(key, 0) + 1
     now = datetime.now(timezone.utc)
@@ -3245,10 +3246,14 @@ def waiting_now():
         "working_time": reminders.SCHEDULE.is_working_time(now),
         "work_hours": f"{reminders.SCHEDULE.start_hour:02d}:00-{reminders.SCHEDULE.end_hour:02d}:00 {reminders.TZ_LABEL}",
         "ladder": {"first": reminders.LADDER.first_min, "second": reminders.LADDER.second_min,
-                   "escalate": reminders.LADDER.escalate_min},
+                   "escalate": reminders.LADDER.escalate_min,
+                   "urgent": list(reminders.URGENT_STEPS), "low_first": reminders.LOW_FIRST_MIN,
+                   "day_limit_hours": reminders.LADDER.agent_max_working_hours,
+                   "morning_list_at": reminders.MORNING_LIST_AT},
         "ai_mode": reminders.reply_ai.mode(),
-        "total": len(items),
-        "over_2h": sum(1 for w in items if w["elapsed_min"] >= 120),
+        "total": len(real),
+        "no_reply_needed": len(items) - len(real),
+        "over_2h": sum(1 for w in real if w["elapsed_min"] >= 120),
         "by_agent": sorted(([a or None, n] for a, n in by_agent.items()), key=lambda x: -x[1]),
         "items": [{
             "name": w.get("name"),

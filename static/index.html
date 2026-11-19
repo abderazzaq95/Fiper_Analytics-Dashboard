@@ -618,6 +618,7 @@ html[dir=rtl] .traffic-tbl th{text-align:right}
   <div class="panel">
     <div class="panel-tools">
       <label class="search"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg><input class="input" type="search" oninput="setWaitingSearch(this.value)" data-placeholder-en="Find customer, number, agent or message" data-placeholder-ar="ابحث عن عميل أو رقم أو موظف أو رسالة" placeholder="Find customer, number, agent or message" aria-label="Search"/></label>
+      <button type="button" class="chip" id="waitingNoReplyBtn" onclick="toggleNoReply()" aria-pressed="false" hidden></button>
       <span class="panel-note" id="waitingInfo"></span>
     </div>
     <div class="chips" id="waitingAgents" hidden></div>

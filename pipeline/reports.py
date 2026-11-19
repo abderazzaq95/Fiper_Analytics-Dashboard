@@ -195,7 +195,7 @@ def call_metrics(rows: list[dict], agents: dict, schedule: Schedule | None = Non
     }
 
 
-def reminder_metrics(rows: list[dict], start: datetime, end: datetime) -> dict:
+def reminder_metrics(rows: list[dict], start: datetime, end: datetime, schedule=None) -> dict:
     def within(v):
         dt = parse_dt(v)
         return bool(dt and start <= dt < end)
@@ -204,12 +204,31 @@ def reminder_metrics(rows: list[dict], start: datetime, end: datetime) -> dict:
     escalated = [r for r in rows if within(r.get("escalated_at"))]
     followups = [r for r in rows if within(r.get("last_escalated_at")) and (r.get("escalation_count") or 0) > 1]
     expired = [r for r in rows if r.get("status") == "expired" and within(r.get("resolved_at"))]
+
+    # Priority decisions (AI or word rules) for waits that started, ended or are still open in this period.
+    decided = [r for r in rows if r.get("ai_source") and (within(r.get("waiting_since")) or within(r.get("resolved_at"))
+                                                          or r.get("status") == "open")]
+    checked = [r for r in decided if r.get("ai_source") in ("gemini", "claude")]  # by the AI itself
+    urgent = [r for r in decided if r.get("priority") == "urgent" and r.get("needs_reply") is not False]
+    urgent_answer_min = []
+    if schedule is not None:
+        for r in urgent:
+            since, done = parse_dt(r.get("waiting_since")), parse_dt(r.get("resolved_at"))
+            if r.get("status") == "answered" and since and done and within(r.get("resolved_at")):
+                urgent_answer_min.append(schedule.working_minutes_between(since, done))
     return {
         "reminded_customers": len(reminded),
         "answered_after_reminder": len(answered_after),
         "escalated": len(escalated),
         "followups": len(followups),
         "expired_unanswered": len(expired),
+        "ai_checked": len(checked),
+        "urgent": len(urgent),
+        "urgent_answered": len(urgent_answer_min),
+        "urgent_median_answer_min": median(urgent_answer_min),
+        "no_reply_needed": sum(1 for r in checked if r.get("needs_reply") is False),
+        "low": sum(1 for r in decided if r.get("priority") == "low" and r.get("needs_reply") is not False),
+        "decided": len(decided),
     }
 
 
@@ -285,7 +304,9 @@ def _period_metrics(data: dict, start: datetime, end: datetime) -> tuple[dict, d
     return {"resp": resp, "calls": calls, "new_leads": sum(leads.values()), "new_leads_by_channel": dict(leads)}, agents
 
 
-def _waiting_now(agents: dict | None = None) -> list[dict]:
+def _waiting_now(agents: dict | None = None, include_no_reply: bool = False) -> list[dict]:
+    """Open waits, longest first. Customers the AI marked "no reply needed"
+    are left out unless include_no_reply (the dashboard can show them)."""
     now = datetime.now(timezone.utc)
     try:
         rows = _paginate(lambda: supabase.table("pending_replies").select("*").eq("status", "open").order("waiting_since"))
@@ -293,9 +314,11 @@ def _waiting_now(agents: dict | None = None) -> list[dict]:
         return []
     out = []
     for r in rows:
+        if r.get("needs_reply") is False and not include_no_reply:
+            continue
         elapsed = reminders.SCHEDULE.working_minutes_between(parse_dt(r["waiting_since"]), now)
         ident = agent_identity(r.get("agent_name"))
-        if agents is not None and ident:
+        if agents is not None and ident and r.get("needs_reply") is not False:
             agents.setdefault(ident[0], AgentStats(ident[1])).waiting_now += 1
         out.append({
             "name": r.get("customer_name"), "phone": r.get("phone"), "line": r.get("business_line"),
@@ -320,7 +343,7 @@ def build_daily(now: datetime | None = None) -> dict:
     metrics, agents = _period_metrics(data, start, now)
     waiting = _waiting_now(agents)
     pend = _pending_rows(start)
-    metrics["reminders"] = reminder_metrics(pend, start, now)
+    metrics["reminders"] = reminder_metrics(pend, start, now, reminders.SCHEDULE)
     for r in pend:
         dt = parse_dt(r.get("escalated_at"))
         ident = agent_identity(r.get("agent_name"))
@@ -354,7 +377,7 @@ def build_weekly(now: datetime | None = None) -> dict:
     metrics, agents = _period_metrics(data, start, end)
     prev_metrics, prev_agents = _period_metrics(data, prev_start, start)
     pend = _pending_rows(prev_start)
-    metrics["reminders"] = reminder_metrics(pend, start, end)
+    metrics["reminders"] = reminder_metrics(pend, start, end, reminders.SCHEDULE)
     for r in pend:
         dt = parse_dt(r.get("escalated_at"))
         ident = agent_identity(r.get("agent_name"))
