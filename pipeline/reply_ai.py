@@ -37,7 +37,7 @@ GREETING = re.compile(
     r"^(ال?سلام عليكم|السلام|سلام|مرحب\S*|اهلا\S*|أهلا\S*|هلا\S*|hi+|hello|hey|صباح الخير|مساء الخير|"
     r"صباح النور|مساء النور|good (morning|evening))\b", re.I)
 
-_state = {"day": None, "used": 0, "paused_until": None, "last_call": 0.0}
+_state = {"day": None, "used": 0, "paused_until": None, "last_call": 0.0, "last_error": None}
 _lock = threading.Lock()
 
 
@@ -112,10 +112,28 @@ def available() -> bool:
         return _state["used"] < DAILY_LIMIT and not (paused and datetime.now(timezone.utc) < paused)
 
 
+def _fallback(context: dict, why: str) -> dict:
+    """Word rules, with the reason the AI was not used (stored in ai_reason)."""
+    _state["last_error"] = why
+    return {**rules(context), "reason": f"word rules · {why}"[:120]}
+
+
+def _google_error(response) -> str:
+    # Google's own message, never the request URL (it contains the key).
+    try:
+        message = response.json().get("error", {}).get("message", "")
+    except ValueError:
+        message = ""
+    message = re.sub(r"(key=|AIza)[\w-]+", "[key]", " ".join(str(message).split()))
+    return f"Gemini HTTP {response.status_code}: {message}"[:110]
+
+
 def classify(context: dict) -> dict:
     """AI decision, or the rules when the AI cannot be used right now."""
+    if not os.getenv("GEMINI_API_KEY"):
+        return _fallback(context, "GEMINI_API_KEY not set")
     if not available():
-        return rules(context)
+        return _fallback(context, _state.get("last_error") or "AI paused or daily limit")
     with _lock:
         wait = _state["last_call"] + MIN_SECONDS_BETWEEN_CALLS - time.time()
         _state["used"] += 1
@@ -134,17 +152,22 @@ def classify(context: dict) -> dict:
             },
             timeout=20,
         )
-        if response.status_code == 429:
-            with _lock:
-                _state["paused_until"] = datetime.now(timezone.utc) + PAUSE_AFTER_LIMIT
-            log.warning("[reply_ai] Gemini limit reached; using word rules for 15 minutes")
-            return rules(context)
-        if response.status_code in (400, 403, 404):
-            log.warning(f"[reply_ai] Gemini refused the request ({response.status_code}); check REMINDER_AI_MODEL / key")
-        response.raise_for_status()
-        parts = response.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])
-        answer = parse_answer(parts[0].get("text", "") if parts else "")
-        return answer or rules(context)
     except Exception as exc:
         log.warning(f"[reply_ai] Gemini unavailable: {type(exc).__name__}")
-        return rules(context)
+        return _fallback(context, f"Gemini unreachable ({type(exc).__name__})")
+    if response.status_code >= 400:
+        why = _google_error(response)
+        # Quota (429) or a setup problem (bad key/model): pause instead of failing 8 times a cycle.
+        with _lock:
+            _state["paused_until"] = datetime.now(timezone.utc) + PAUSE_AFTER_LIMIT
+        log.warning(f"[reply_ai] {why}; word rules for 15 minutes")
+        return _fallback(context, why)
+    try:
+        parts = response.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])
+        answer = parse_answer(parts[0].get("text", "") if parts else "")
+    except Exception:
+        answer = None
+    if not answer:
+        return _fallback(context, "Gemini answer unreadable")
+    _state["last_error"] = None
+    return answer

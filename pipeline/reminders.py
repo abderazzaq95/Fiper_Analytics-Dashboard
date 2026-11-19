@@ -386,8 +386,10 @@ def _classify(rows: list[dict], now: datetime) -> dict:
             decision = reply_ai.classify(row["_context"])
         elif checked(row):
             continue  # already has the word-rule decision; wait for AI budget
+        elif not reply_ai.available():
+            decision = reply_ai.classify(row["_context"])  # no network call: rules + the reason why
         else:
-            decision = reply_ai.rules(row["_context"])
+            decision = {**reply_ai.rules(row["_context"]), "reason": "word rules · AI check next cycle"}
         fields = {
             "needs_reply": decision["needs_reply"],
             "priority": decision["priority"],

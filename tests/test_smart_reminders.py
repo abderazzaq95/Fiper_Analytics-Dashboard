@@ -86,7 +86,7 @@ class RulesTest(unittest.TestCase):
 
 class ClassifyTest(unittest.TestCase):
     def setUp(self):
-        reply_ai._state.update(day=None, used=0, paused_until=None, last_call=0.0)
+        reply_ai._state.update(day=None, used=0, paused_until=None, last_call=0.0, last_error=None)
         self.env = mock.patch.dict(os.environ, {"GEMINI_API_KEY": "test-key", "REMINDER_AI_SPACING_SECONDS": "0"})
         self.env.start()
         self.spacing = mock.patch.object(reply_ai, "MIN_SECONDS_BETWEEN_CALLS", 0)
@@ -119,6 +119,21 @@ class ClassifyTest(unittest.TestCase):
             self.assertEqual(reply_ai.classify(context("hi"))["source"], "rules")
         with mock.patch.object(reply_ai.requests, "post", return_value=self.reply(200, "no json here")):
             self.assertEqual(reply_ai.classify(context("hi"))["source"], "rules")
+
+    def test_setup_error_is_visible_without_the_key(self):
+        bad = self.reply(404)
+        bad.json.return_value = {"error": {"message": "models/gemini-x is not found for API version v1beta"}}
+        bad.url = "https://generativelanguage.googleapis.com/...?key=test-key"
+        with mock.patch.object(reply_ai.requests, "post", return_value=bad):
+            decision = reply_ai.classify(context("hi"))
+        self.assertEqual(decision["source"], "rules")
+        self.assertIn("HTTP 404", decision["reason"])
+        self.assertIn("not found", decision["reason"])
+        self.assertNotIn("test-key", decision["reason"])
+        self.assertFalse(reply_ai.available())  # paused, no retry storm
+        self.assertIn("HTTP 404", reply_ai.classify(context("hi"))["reason"])
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": ""}):
+            self.assertIn("GEMINI_API_KEY not set", reply_ai.classify(context("hi"))["reason"])
 
     def test_daily_limit(self):
         reply_ai._state.update(day=reply_ai.date.today(), used=reply_ai.DAILY_LIMIT)
