@@ -17,6 +17,7 @@ from supabase import create_client
 from dotenv import load_dotenv
 
 from pipeline import whatsapp, maqsam, ai_analyzer, alert_engine, email_notifications, reminders
+from pipeline.reply_tracker import parse_dt
 from api import overview, agents, leads, channels, quality, journey, journey_v2, auth, workspace, dataset
 
 load_dotenv()
@@ -164,6 +165,25 @@ def _maqsam_row(call: dict, phone_to_lead: dict[str, str], existing: dict[str, d
         "maqsam_sentiment": call.get("sentiment") or prev.get("maqsam_sentiment"),
         "auto_tags": auto_tags or prev.get("auto_tags"),
     }
+
+
+_CALL_COMPARE_KEYS = ("lead_id", "agent_name", "duration_seconds", "outcome", "called_at",
+                      "transcript", "summary_en", "summary_ar", "maqsam_sentiment", "auto_tags")
+
+
+def _call_row_changed(row: dict, stored: dict | None) -> bool:
+    """False when the stored call already has exactly these values: rewriting
+    an identical row (with its transcript) only costs disk IO."""
+    if not stored:
+        return True
+    for key in _CALL_COMPARE_KEYS:
+        new, old = row.get(key), stored.get(key)
+        if key == "called_at":
+            if parse_dt(new) != parse_dt(old):
+                return True
+        elif new != old:
+            return True
+    return False
 
 
 def _latest_maqsam_called_at() -> datetime | None:
@@ -366,11 +386,43 @@ async def ingest_manycontacts_activity(days_back: int = 1, api_key: str | None =
             **({"assigned_agent": agent_name} if agent_name else {}),
         })
 
-    for chunk in _chunks(rows, 200):
+    changed = _changed_leads(rows)
+    for chunk in _chunks(changed, 200):
         supabase.table("leads").upsert(chunk, on_conflict="wa_contact_id").execute()
 
-    log.info(f"ManyContacts activity sync done — {len(rows)} contacts")
-    return {"contacts_seen": len(contacts), "contacts_upserted": len(rows)}
+    log.info(f"ManyContacts activity sync done — {len(rows)} contacts, {len(changed)} changed")
+    return {"contacts_seen": len(contacts), "contacts_upserted": len(changed)}
+
+
+def _changed_leads(rows: list[dict]) -> list[dict]:
+    """Only contacts whose stored lead row differs. The sync sees the same
+    contacts every 2 minutes; rewriting identical rows only costs disk IO.
+    `updated_at` is ignored in the comparison (it is "now" on every run)."""
+    keys = sorted({k for r in rows for k in r} - {"wa_contact_id", "updated_at"})
+    stored: dict[str, dict] = {}
+    ids = [r["wa_contact_id"] for r in rows if r.get("wa_contact_id")]
+    try:
+        for chunk in _chunks(ids, 200):
+            for s in supabase.table("leads").select(",".join(["wa_contact_id", *keys])).in_("wa_contact_id", chunk).execute().data or []:
+                stored[s["wa_contact_id"]] = s
+    except Exception as e:
+        log.warning(f"ManyContacts activity: could not compare with stored leads, writing all: {e}")
+        return rows
+
+    def same(row: dict, old: dict | None) -> bool:
+        if old is None:
+            return False
+        for k, v in row.items():
+            if k in ("wa_contact_id", "updated_at"):
+                continue
+            if k == "last_message_at":
+                if parse_dt(v) != parse_dt(old.get(k)):
+                    return False
+            elif v != old.get(k):
+                return False
+        return True
+
+    return [r for r in rows if not same(r, stored.get(r.get("wa_contact_id")))]
 
 
 async def ingest_maqsam(days_back: int = 3, overlap_minutes: int = 30) -> dict:
@@ -409,33 +461,31 @@ async def ingest_maqsam(days_back: int = 3, overlap_minutes: int = 30) -> dict:
         if phone:
             unique_phones[phone] = None
 
-    if unique_phones:
-        lead_rows = [
-            {"wa_contact_id": p, "phone": p, "channel": "maqsam", "updated_at": now_iso}
-            for p in unique_phones
-        ]
+    # Build phone → lead_id map; create lead rows only for new numbers (rewriting
+    # existing rows every 2 minutes cost disk IO and flipped their channel).
+    def lookup_leads(phones: list[str]) -> dict[str, str]:
+        found: dict[str, str] = {}
+        for chunk in _chunks(phones, 500):
+            result = supabase.table("leads").select("id,wa_contact_id").in_("wa_contact_id", chunk).execute()
+            found.update({r["wa_contact_id"]: r["id"] for r in (result.data or [])})
+        return found
+
+    phone_to_lead: dict[str, str] = lookup_leads(list(unique_phones)) if unique_phones else {}
+    new_phones = [p for p in unique_phones if p not in phone_to_lead]
+    if new_phones:
+        lead_rows = [{"wa_contact_id": p, "phone": p, "channel": "maqsam", "updated_at": now_iso} for p in new_phones]
         for chunk in _chunks(lead_rows, 200):
-            supabase.table("leads").upsert(chunk, on_conflict="wa_contact_id").execute()
+            supabase.table("leads").upsert(chunk, on_conflict="wa_contact_id", ignore_duplicates=True).execute()
+        phone_to_lead.update(lookup_leads(new_phones))
 
-    # Build phone → lead_id map
-    phone_to_lead: dict[str, str] = {}
-    if unique_phones:
-        for phones in _chunks(list(unique_phones.keys()), 500):
-            result = (
-                supabase.table("leads")
-                .select("id,wa_contact_id")
-                .in_("wa_contact_id", phones)
-                .execute()
-            )
-            phone_to_lead.update({r["wa_contact_id"]: r["id"] for r in (result.data or [])})
-
-    # Preserve transcript/summary data if the fresh Maqsam row does not contain it.
+    # Preserve transcript/summary data if the fresh Maqsam row does not contain it,
+    # and skip calls that did not change since the last sync.
     maqsam_ids = list({str(call.get("id")) for call in calls if call.get("id")})
     existing_calls: dict[str, dict] = {}
     for ids in _chunks(maqsam_ids, 500):
         rows = (
             supabase.table("calls")
-            .select("maqsam_id,transcript,summary_en,summary_ar,maqsam_sentiment,auto_tags")
+            .select("maqsam_id," + ",".join(_CALL_COMPARE_KEYS))
             .in_("maqsam_id", ids)
             .execute().data or []
         )
@@ -459,6 +509,9 @@ async def ingest_maqsam(days_back: int = 3, overlap_minutes: int = 30) -> dict:
         for k in ALL_CALL_KEYS:
             if k not in row:
                 row[k] = None
+    seen = len(call_rows)
+    call_rows = [r for r in call_rows if _call_row_changed(r, existing_calls.get(r["maqsam_id"]))]
+    log.info(f"Maqsam ingestion: {seen - len(call_rows)} unchanged calls skipped")
 
     chunk_size = 200
     for i in range(0, len(call_rows), chunk_size):
@@ -1104,17 +1157,21 @@ async def run_maqsam_realtime_sync():
     global _last_maqsam_sync
     stats = await ingest_maqsam(days_back=1, overlap_minutes=45)
     _last_maqsam_sync = datetime.now(timezone.utc)
-    await _broadcast("data_updated", {"source": "maqsam", **stats})
+    if stats.get("calls_upserted"):  # nothing new: open dashboards need not reload
+        await _broadcast("data_updated", {"source": "maqsam", **stats})
 
 
 async def run_whatsapp_activity_sync():
     """Lightweight high-frequency job for WhatsApp conversation activity."""
     stats = await ingest_manycontacts_activity(days_back=1)
+    changed = stats.get("contacts_upserted", 0)
     # Sync Turkey account if key is configured
     mc_key_turkey = os.getenv("MC_API_KEY_TURKEY")
     if mc_key_turkey:
-        await ingest_manycontacts_activity(days_back=1, api_key=mc_key_turkey, line_number="905318880855")
-    await _broadcast("data_updated", {"source": "whatsapp_activity", **stats})
+        turkey = await ingest_manycontacts_activity(days_back=1, api_key=mc_key_turkey, line_number="905318880855")
+        changed += turkey.get("contacts_upserted", 0)
+    if changed:  # nothing changed: open dashboards need not reload
+        await _broadcast("data_updated", {"source": "whatsapp_activity", **stats})
 
 
 async def run_whatsapp_message_sync():
@@ -2098,7 +2155,10 @@ def _assign_whatsapp_business_line(lead_id: str | None, phone: str | None, line_
     try:
         update = {"whatsapp_business_number": line_number}
         if lead_id:
-            supabase.table("leads").update(update).eq("id", lead_id).execute()
+            # Only rows that are not tagged with this line yet: an UPDATE that writes
+            # the same value still rewrites the row on disk (on every message).
+            not_this_line = f"whatsapp_business_number.is.null,whatsapp_business_number.neq.{line_number}"
+            supabase.table("leads").update(update).eq("id", lead_id).or_(not_this_line).execute()
             # Retroactively tag historical messages for this lead on first re-contact.
             # Only patches rows that are still null — never overwrites an already-attributed message.
             supabase.table("messages").update(update).eq("lead_id", lead_id).is_("whatsapp_business_number", "null").execute()
@@ -2112,8 +2172,9 @@ def _assign_whatsapp_business_line(lead_id: str | None, phone: str | None, line_
             )
             phone_ids = [row["id"] for row in phone_rows if row.get("id")]
             if phone_ids:
-                supabase.table("leads").update(update).in_("id", phone_ids).execute()
-                supabase.table("messages").update(update).in_("lead_id", phone_ids).execute()
+                not_this_line = f"whatsapp_business_number.is.null,whatsapp_business_number.neq.{line_number}"
+                supabase.table("leads").update(update).in_("id", phone_ids).or_(not_this_line).execute()
+                supabase.table("messages").update(update).in_("lead_id", phone_ids).or_(not_this_line).execute()
     except Exception as e:
         log.debug(f"[webhook/mc] could not assign line {line_number} to {phone or lead_id}: {e}")
 
