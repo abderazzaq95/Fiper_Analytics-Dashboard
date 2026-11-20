@@ -348,8 +348,10 @@ async function openConversation(phone) {
       if (e.type === 'media') {
         // Sent from our WhatsApp number but not forwarded by ManyContacts: voice note, image or file.
         const template = ['marketing', 'utility', 'authentication'].includes(e.category);
-        const label = template ? T('Template message', 'رسالة قالب') : T('Voice note, image or file', 'رسالة صوتية أو صورة أو ملف');
-        return `${sep}<div class="bubble out media" dir="auto">${template ? '📣' : '🎤'} ${esc(label)}<small>${esc(T('content not stored', 'المحتوى غير محفوظ'))} · ${esc(fmtLocal(e.at, false))}</small></div>`;
+        const [icon, label] = template ? ['📣', T('Template message', 'رسالة قالب')]
+          : e.auto ? ['🤖', T('Automatic reply (welcome bot)', 'رد آلي (رسالة الترحيب)')]
+          : ['🎤', T('Voice note, image or file', 'رسالة صوتية أو صورة أو ملف')];
+        return `${sep}<div class="bubble out media" dir="auto">${icon} ${esc(label)}<small>${esc(T('content not stored', 'المحتوى غير محفوظ'))} · ${esc(fmtLocal(e.at, false))}</small></div>`;
       }
       const out = e.direction === 'outbound';
       return `${sep}<div class="bubble ${out ? 'out' : ''}" dir="auto">${esc(e.body)}<small>${esc([out ? e.agent : '', fmtLocal(e.at, false)].filter(Boolean).join(' · '))}</small></div>`;

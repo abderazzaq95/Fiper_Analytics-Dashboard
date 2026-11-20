@@ -104,6 +104,28 @@ class ConversationTimelineTest(unittest.TestCase):
         self.assertEqual([e["type"] for e in events], ["message", "message", "media"])
 
 
+class WelcomeBotTest(unittest.TestCase):
+    """Muslim, 20 Nov: greeting -> bot menu (3 s) -> "5" -> bot "transferring you" (2 s)."""
+    messages = [inbound(0, "السلام عليكم"), inbound(0, "5", seconds=9)]
+    sends = [{"sent_at": at(0, 3), "category": "service"}, {"sent_at": at(0, 11), "category": "service"}]
+
+    def test_bot_messages_are_labelled_automatic(self):
+        media = [e for e in workspace.build_timeline(self.messages, [], sends=self.sends) if e["type"] == "media"]
+        self.assertEqual([e["auto"] for e in media], [True, True])
+
+    def test_voice_note_minutes_later_is_not_automatic(self):
+        media = [e for e in workspace.build_timeline(self.messages, [], sends=[send(4)]) if e["type"] == "media"]
+        self.assertEqual([e["auto"] for e in media], [False])
+
+    def test_greeting_plus_menu_choice_is_normal_not_urgent_or_low(self):
+        from pipeline import reply_ai
+        ctx = {"customer": ["السلام عليكم", "5"], "agent_last": "تمت", "first_contact": False}
+        self.assertEqual(reply_ai.rules(ctx)["priority"], "normal")
+        self.assertEqual(reply_ai.rules({**ctx, "customer": ["السلام عليكم"]})["priority"], "low")
+        self.assertEqual(reply_ai.rules({**ctx, "customer": ["3", "متى يصير السحب"]})["priority"], "urgent")
+        self.assertIn("5 = talk to a staff member", reply_ai._prompt(ctx))
+
+
 class WebhookRecordTest(unittest.TestCase):
     def setUp(self):
         import main

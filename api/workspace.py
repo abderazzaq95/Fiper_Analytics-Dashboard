@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Query
 from api import dataset
 
 from pipeline import agent_names
-from pipeline.reply_tracker import parse_dt
+from pipeline.reply_tracker import AUTO_SEND_SECONDS, parse_dt
 from pipeline.swr_cache import SWRCache
 
 load_dotenv()
@@ -113,11 +113,14 @@ def _untracked_sends(messages: list[dict], sends: list[dict]) -> list[dict]:
     """WhatsApp "sent" events with no stored agent text: voice notes, images,
     files (ManyContacts does not forward those as messages)."""
     texts = [dt for m in messages if m.get("direction") == "outbound" and (dt := parse_dt(m.get("sent_at")))]
+    inbound = [dt for m in messages if m.get("direction") == "inbound" and (dt := parse_dt(m.get("sent_at")))]
     out = []
     for s in sends:
         dt = parse_dt(s.get("sent_at"))
         if dt and not any(abs((dt - t).total_seconds()) <= TEXT_MATCH_SECONDS for t in texts):
-            out.append(s)
+            # Seconds after the customer wrote: the welcome bot, not a person (same rule as the reminders).
+            auto = any(0 <= (dt - t).total_seconds() < AUTO_SEND_SECONDS for t in inbound)
+            out.append({**s, "auto": auto})
     return out
 
 
@@ -125,6 +128,7 @@ def build_timeline(messages: list[dict], calls: list[dict], limit: int = 200,
                    sends: list[dict] | None = None) -> list[dict]:
     events = [{
         "type": "media", "at": s.get("sent_at"), "direction": "outbound", "category": s.get("category"),
+        "auto": s["auto"],
     } for s in _untracked_sends(messages, sends or [])]
     events += [{
         "type": "message", "at": m.get("sent_at"), "direction": m.get("direction"),

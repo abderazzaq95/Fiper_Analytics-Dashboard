@@ -39,6 +39,9 @@ GREETING = re.compile(
     r"^(ال?سلام عليكم|السلام|سلام|مرحب\S*|اهلا\S*|أهلا\S*|هلا\S*|hi+|hello|hey|صباح الخير|مساء الخير|"
     r"صباح النور|مساء النور|good (morning|evening))\b", re.I)
 
+# Fiper's ManyContacts welcome menu: 1 account, 2 copy trading, 3 withdrawal/deposit, 5 staff.
+MENU_CHOICE = re.compile(r"^\s*[1-5١-٥]\s*$")
+
 ANSWER_SCHEMA = {
     "type": "object",
     "properties": {
@@ -72,8 +75,11 @@ def rules(context: dict) -> dict:
     "urgent" only for clear money/complaint words, so a failing AI can never
     cause MORE reminders than before."""
     texts = [t for t in context.get("customer", []) if t and not is_banal_message(t)]
+    menu_choice = any(MENU_CHOICE.match(t or "") for t in context.get("customer", []))
     if URGENT.search(" ".join(texts)):
         priority = "urgent"
+    elif menu_choice:
+        priority = "normal"  # picked an option in the welcome menu (e.g. 5 = talk to staff)
     elif texts and all(_greeting_only(t) for t in texts) and not context.get("first_contact"):
         priority = "low"
     else:
@@ -93,6 +99,11 @@ def _prompt(context: dict) -> str:
         "priority: urgent = money (deposit, withdrawal, payout, balance, transfer), account problem, complaint or "
         "anger, repeated messages, or a new lead asking how to start; low = only a greeting or small talk in an "
         "ongoing chat; otherwise normal.\n"
+        "Fiper's WhatsApp sends an automatic menu that you do not see: 1 = open an account, 2 = copy-trading "
+        "details, 3 = withdrawal and deposit methods, 5 = talk to a staff member (the bot promises a reply within "
+        "moments). A message that is only one of these numbers is a menu choice: needs_reply=true. A greeting "
+        "and/or a menu choice alone is priority normal, never urgent and never low; only the customer's own words "
+        "about money, a withdrawal or deposit problem, or a complaint make it urgent.\n"
         "Voice notes [audio], images [image] or documents cannot be read: needs_reply=true.\n"
         'Answer JSON only: {"needs_reply": true|false, "priority": "urgent"|"normal"|"low", '
         '"reason": "max 10 English words"}\n\n'
