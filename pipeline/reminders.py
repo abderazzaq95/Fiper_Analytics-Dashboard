@@ -134,8 +134,10 @@ def _escalation_emails() -> list[str]:
     return notify._split_recipients(os.getenv("REMINDER_ESCALATION_EMAILS", ""))
 
 
-def _escalation_telegram() -> str:
-    return os.getenv("REMINDER_ESCALATION_TELEGRAM_CHAT_ID", "").strip() or notify.TELEGRAM_ADMIN_CHAT_ID
+def _escalation_telegram() -> list[str]:
+    """Telegram chat ids for escalations, comma-separated (e.g. supervisor,admin)."""
+    raw = os.getenv("REMINDER_ESCALATION_TELEGRAM_CHAT_ID", "").strip() or notify.TELEGRAM_ADMIN_CHAT_ID or ""
+    return list(dict.fromkeys(part.strip() for part in raw.split(",") if part.strip()))
 
 
 def _escalation_whatsapp() -> str:
@@ -766,7 +768,8 @@ def _deliver_escalation(items: list[dict]) -> None:
         status, error = _send("email", email, subject, text, body_html)
         _log(items[0]["row"], "supervisor", "email", email, status, subject, text, meta, error)
     if not shadow:
-        for channel, recipient in (("telegram", _escalation_telegram()), ("whatsapp", _escalation_whatsapp())):
+        targets = [("telegram", chat) for chat in _escalation_telegram()] + [("whatsapp", _escalation_whatsapp())]
+        for channel, recipient in targets:
             if recipient:
                 status, error = _send(channel, recipient, subject, text, body_html)
                 _log(items[0]["row"], "supervisor", channel, recipient, status, subject, text, meta, error)

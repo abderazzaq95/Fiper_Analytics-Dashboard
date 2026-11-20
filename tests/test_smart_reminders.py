@@ -53,6 +53,26 @@ def context(*customer, agent_last="Welcome to Fiper", first=False):
     return {"customer": list(customer), "agent_last": agent_last, "first_contact": first}
 
 
+class EscalationTelegramTest(unittest.TestCase):
+    def test_several_chat_ids_each_get_the_escalation(self):
+        sent = []
+        with mock.patch.dict(os.environ, {"REMINDER_ESCALATION_TELEGRAM_CHAT_ID": "449195882, 1244415565,449195882",
+                                          "REMINDER_ESCALATION_EMAILS": "", "REMINDER_ESCALATION_WHATSAPP": "",
+                                          "REMINDER_MODE": "live"}), \
+             mock.patch.object(reminders, "_escalation_texts", return_value=("s", "t", "<p>t</p>")), \
+             mock.patch.object(reminders, "_send", side_effect=lambda ch, to, *a: sent.append((ch, to)) or ("sent", None)), \
+             mock.patch.object(reminders, "_log"):
+            reminders._deliver_escalation([{"row": {"id": "r1"}}])
+        self.assertEqual([to for ch, to in sent if ch == "telegram"], ["449195882", "1244415565"])
+
+    def test_single_id_and_admin_fallback_still_work(self):
+        with mock.patch.dict(os.environ, {"REMINDER_ESCALATION_TELEGRAM_CHAT_ID": "449195882"}):
+            self.assertEqual(reminders._escalation_telegram(), ["449195882"])
+        with mock.patch.dict(os.environ, {"REMINDER_ESCALATION_TELEGRAM_CHAT_ID": ""}), \
+             mock.patch.object(reminders.notify, "TELEGRAM_ADMIN_CHAT_ID", "1244415565"):
+            self.assertEqual(reminders._escalation_telegram(), ["1244415565"])
+
+
 class RulesTest(unittest.TestCase):
     def test_live_by_default(self):
         with mock.patch.dict(os.environ, {}, clear=False):
