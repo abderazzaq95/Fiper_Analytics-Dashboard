@@ -70,5 +70,15 @@ class LineTagTest(unittest.TestCase):
         self.assertEqual(len(filters), 3)   # lead, phone leads, phone messages (the 4th update was already null-only)
 
 
+class AssetVersionTest(unittest.TestCase):
+    def test_page_asks_for_the_scripts_of_this_deploy(self):
+        from fastapi.testclient import TestClient
+        main._index_html = None
+        html = TestClient(main.app).get("/").text
+        self.assertIn(f"/static/dashboard.js?v={main.ASSET_VERSION}", html)
+        self.assertIn(f"/static/dashboard.css?v={main.ASSET_VERSION}", html)
+        self.assertNotIn("dashboard.js?v=7", html)
+
+
 if __name__ == "__main__":
     unittest.main()

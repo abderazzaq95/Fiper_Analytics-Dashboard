@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from typing import AsyncGenerator
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from supabase import create_client
@@ -1746,9 +1746,19 @@ app.include_router(journey_v2.router)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
+# Changes with every deploy, so browsers load the new dashboard.js/.css instead
+# of a saved old copy (the "?v=" in index.html was bumped by hand before).
+ASSET_VERSION = (os.getenv("RENDER_GIT_COMMIT") or str(int(datetime.now(timezone.utc).timestamp())))[:10]
+_index_html: str | None = None
+
+
 @app.get("/")
 def dashboard():
-    return FileResponse("static/index.html")
+    global _index_html
+    if _index_html is None:
+        with open("static/index.html", encoding="utf-8") as f:
+            _index_html = re.sub(r"(/static/dashboard\.(?:js|css))\?v=[\w.-]+", rf"\1?v={ASSET_VERSION}", f.read())
+    return HTMLResponse(_index_html, headers={"Cache-Control": "no-cache"})
 
 
 # ---------------------------------------------------------------------------
